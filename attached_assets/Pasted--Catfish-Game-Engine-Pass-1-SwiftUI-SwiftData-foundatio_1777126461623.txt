@@ -1,0 +1,94 @@
+# Catfish — Game Engine (Pass 1)
+
+SwiftUI + SwiftData foundation for the Catfish mobile game. This pass
+delivers the persistent data model, game-state clock, and the Swipe feature
+as the first playable surface.
+
+## Layout
+
+```
+Catfish/
+├── App/                     CatfishApp entry, RootView routing, TitleView, MainTabView
+├── Core/
+│   ├── Models/              Identity enums + SwiftData @Models (CaseRun, Fact, etc)
+│   ├── GameState/           @Observable GameState — clock + run lifecycle
+│   ├── Clues/               KillerIdentity protocol + 5 stubs (Miles is fleshed out)
+│   └── Content/             (placeholder — RunBootstrapper / ContentScheduler TODOs)
+├── DesignSystem/            CFColor palette, CFFont, pixel chrome modifiers
+├── Features/
+│   └── Swipe/               SwipeDeckViewModel, SwipeCard, SwipeView
+├── Resources/               Assets.xcassets + bundled JSON content (future)
+└── Shared/                  Utilities (future)
+```
+
+## How to wire this into Xcode
+
+1. Create a new iOS App project in Xcode (“Catfish”, SwiftUI, SwiftData).
+1. Delete the stock `ContentView.swift` and the `CatfishApp.swift` Xcode generated.
+1. Drop the folders from this archive into the project, matching the layout above.
+1. Add your generated PNGs to `Assets.xcassets`. Naming must match the
+   asset_id prefix convention (e.g. `A001_app_icon`). Preserve pixel dims
+   with **“Preserve Vector Data” off** and **“Scales” set to Single Scale**.
+1. Optional — drop `PressStart2P-Regular.ttf` (or another pixel font)
+   into `Resources/Fonts`, add it to the app target, and register it in
+   `Info.plist` under `UIAppFonts`. The theme falls back gracefully if
+   it’s missing.
+1. Target iOS 17+ (SwiftData and the `@Observable` macro both require it).
+
+## What works today
+
+- Start a new run (randomizes killer, or force one via the DEBUG menu).
+- Swipe through the five candidate profiles, left or right.
+- Right-swipe creates a persistent MatchRelationship and opens the
+  celebration overlay.
+- Left-swipe passes the card. State persists through app relaunch.
+- Exhausting the deck shows the empty state.
+
+## What’s stubbed
+
+- `RunBootstrapper.apply(identity:to:)` — needs to read the authored fact
+  universe from JSON and materialize per-run Fact rows with resolved
+  payloads. This is the Core/Content authoring pass.
+- `ContentScheduler.fireContent(for:)` — needs to queue day-N messages
+  into the appropriate ChatThreads.
+- Matches, Journal, Profile tabs — placeholder views only.
+- Chat engine — deferred to Pass 2 alongside the Chat feature.
+- KillerImplementations — only Miles has real content; the other four are
+  compilable stubs with TODO narrative beats.
+
+## Key design decisions (locked in earlier)
+
+- **Player-paced day model.** Day advances via explicit `GameState.advanceDay()`,
+  not a real clock. Keeps the game playable in one 45-min session or across
+  a week without gating.
+- **KillerIdentity is stamped at run start and immutable.** Flipping the
+  killer mid-run would invalidate every discovered fact’s payload. See
+  the clue-graph schema doc for details.
+- **Journal commit (drag-to-log) is the discovery contract.** Facts must be
+  logged to count toward deductions. Forces engagement and gives the UI a job.
+- **Hybrid SwiftUI / SpriteKit.** SwiftUI for all chrome and chat. SpriteKit
+  comes in when Date mode is built — not yet imported anywhere.
+
+## Next passes
+
+|Pass|Scope                                                                            |
+|----|---------------------------------------------------------------------------------|
+|2   |Chat engine: ChatView, scripted-turn playback, choice handling, voice-line hookup|
+|3   |Matches list (post-match inbox) + Profile view with SocialFeed                   |
+|4   |Content/Bootstrapper: JSON fact authoring + RunBootstrapper materialization      |
+|5   |Journal feature: drag-to-log, cross-reference linking, deduction highlighting    |
+|6   |Accusation flow + four ending screens                                            |
+|7   |Date mode (SpriteKit scenes, Inworld ambient dialogue handoff, ElevenLabs voice) |
+
+## Notes on the code
+
+- All SwiftData models encode complex payloads via `JSONEncoder` into `Data`
+  properties. SwiftData doesn’t yet support enum-with-associated-values
+  attributes natively in a clean way, and this keeps the schema portable.
+- `GameState` is `@Observable` and `@MainActor` — all mutations happen on
+  the main actor, which matches SwiftData’s preferred usage pattern for
+  simple apps.
+- `AssetImage` shows a labeled placeholder when the named asset isn’t in
+  the catalog yet. Lets you develop the UI before all 107 PNGs land.
+- Drag-gesture commit uses a horizontal threshold (110pt) — tuneable in
+  `SwipeCard.commitThreshold`.

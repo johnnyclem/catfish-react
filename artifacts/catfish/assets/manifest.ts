@@ -31,6 +31,13 @@
  * NOPE stamp (A201), ornate portrait frame (A303), and the two-sided
  * chat bubbles (A503/A504) — await screen-level wiring in later passes.
  *
+ * NPC portrait families (A075-A084) bundled this pass for non-killer
+ * profiles — the player avatar (4 expressions: neutral/smile/worried/
+ * shocked) for chat outgoing-bubble headers, plus two tertiary
+ * NPCs (Dev: 3 expressions, Morgan: 3 expressions) for AI-dialogue
+ * decoy profiles you swipe past or chat with but never accuse. None
+ * are wired to an IdentityModule — they're surface art only.
+ *
  * UI library expansion (A021, A103-A109, A202-A204, A304, A401, A505)
  * bundled this pass. A300 (case journal book) and A501 (charm fire)
  * were upgraded in place. A021 (gothic accuse-modal background with
@@ -92,6 +99,16 @@ export type AssetId =
   | "A072_player_fullbody_default"
   | "A073_sam_fullbody_casual"
   | "A074_sam_fullbody_formal"
+  | "A075_player_portrait_neutral"
+  | "A076_player_portrait_smile"
+  | "A077_player_portrait_worried"
+  | "A078_player_portrait_shocked"
+  | "A079_dev_portrait_neutral"
+  | "A080_dev_portrait_concerned"
+  | "A081_dev_portrait_excited"
+  | "A082_morgan_portrait_neutral"
+  | "A083_morgan_portrait_concerned"
+  | "A084_morgan_portrait_excited"
   | "A100_fx_heart_particle"
   | "A101_fx_glitch_overlay"
   | "A102_fx_message_pop"
@@ -176,6 +193,16 @@ const REGISTRY: Partial<Record<AssetId, ImageSourcePropType>> = {
   A071_jules_fullbody_dressed_up: require("./images/A071_jules_fullbody_dressed_up.png"),
   A073_sam_fullbody_casual: require("./images/A073_sam_fullbody_casual.png"),
   A074_sam_fullbody_formal: require("./images/A074_sam_fullbody_formal.png"),
+  A075_player_portrait_neutral: require("./images/A075_player_portrait_neutral.png"),
+  A076_player_portrait_smile: require("./images/A076_player_portrait_smile.png"),
+  A077_player_portrait_worried: require("./images/A077_player_portrait_worried.png"),
+  A078_player_portrait_shocked: require("./images/A078_player_portrait_shocked.png"),
+  A079_dev_portrait_neutral: require("./images/A079_dev_portrait_neutral.png"),
+  A080_dev_portrait_concerned: require("./images/A080_dev_portrait_concerned.png"),
+  A081_dev_portrait_excited: require("./images/A081_dev_portrait_excited.png"),
+  A082_morgan_portrait_neutral: require("./images/A082_morgan_portrait_neutral.png"),
+  A083_morgan_portrait_concerned: require("./images/A083_morgan_portrait_concerned.png"),
+  A084_morgan_portrait_excited: require("./images/A084_morgan_portrait_excited.png"),
   A103_fx_unmatch_shatter: require("./images/A103_fx_unmatch_shatter.png"),
   A104_fx_exclamation_sheet: require("./images/A104_fx_exclamation_sheet.png"),
   A105_fx_heart_animation_alt: require("./images/A105_fx_heart_animation_alt.png"),

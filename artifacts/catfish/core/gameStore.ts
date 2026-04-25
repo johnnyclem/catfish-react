@@ -27,6 +27,7 @@ import {
   Fact,
   FactId,
   KillerIdentity,
+  MatchId,
   MatchRelationship,
   Message,
   MessageId,
@@ -104,6 +105,13 @@ interface GameStateValue {
    * blow away a freshly stashed entry.
    */
   clearRecentlyDiscarded: (factId: FactId) => void;
+  /**
+   * Flip a match's `unmatched` flag to true. The thread itself is
+   * preserved on the run so Pass 3's Journal can still cite anything
+   * the suspect said. Idempotent — re-calling on an already-unmatched
+   * row is a no-op.
+   */
+  unmatchThread: (matchId: MatchId) => Promise<void>;
   resetRun: () => Promise<void>;
 }
 
@@ -476,6 +484,24 @@ export const useGameState = create<GameStateValue>((set, get) => ({
     cancelDiscardTimer();
     set({ recentlyDiscarded: null });
   },
+
+  unmatchThread: async (matchId) => {
+    const prev = get().run;
+    if (!prev) return;
+    const target = prev.matches.find((m) => m.id === matchId);
+    // No-op if the match is gone or already unmatched — saves a write
+    // and keeps the action idempotent for double-tap callers.
+    if (!target || target.unmatched) return;
+    const matches = prev.matches.map((m) =>
+      m.id === matchId ? { ...m, unmatched: true } : m,
+    );
+    // NB: we deliberately leave run.threads untouched. Pass 3's Journal
+    // still needs to be able to cite messages from dropped suspects.
+    const next: CaseRun = { ...prev, matches };
+    set({ run: next });
+    await saveActiveRun(next);
+  },
+
 
   resetRun: async () => {
     cancelDiscardTimer();

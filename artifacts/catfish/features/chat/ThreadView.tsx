@@ -32,6 +32,86 @@ import { useGameState } from "@/core/gameStore";
 import { getScriptForCandidate } from "@/core/identities";
 import { ThreadId } from "@/core/models";
 
+interface UnmatchControlProps {
+  isUnmatched: boolean;
+  pending: boolean;
+  onConfirm: () => void;
+}
+
+/**
+ * Two-tap confirm for the unmatch gesture. Lives in the chat header so
+ * the player has to be looking at the suspect they're about to drop.
+ *
+ * State machine: idle → confirming → (confirm | cancel) → idle.
+ * The confirming view exposes both a CANCEL and a CONFIRM hit so the
+ * player can back out without leaving the screen.
+ */
+function UnmatchControl({ isUnmatched, pending, onConfirm }: UnmatchControlProps) {
+  const [confirming, setConfirming] = useState(false);
+
+  if (isUnmatched) {
+    return (
+      <View style={styles.unmatchedTag} testID="thread-unmatched-tag">
+        <PixelText size={6} color={cfPalette.fog} uppercase>
+          dropped
+        </PixelText>
+      </View>
+    );
+  }
+
+  if (!confirming) {
+    return (
+      <Pressable
+        onPress={() => setConfirming(true)}
+        disabled={pending}
+        hitSlop={8}
+        style={({ pressed }) => [
+          styles.unmatchBtn,
+          { opacity: pressed ? 0.6 : pending ? 0.4 : 1 },
+        ]}
+        testID="thread-unmatch"
+      >
+        <PixelText size={7} color={cfPalette.err} uppercase>
+          drop
+        </PixelText>
+      </Pressable>
+    );
+  }
+
+  return (
+    <View style={styles.confirmRow}>
+      <Pressable
+        onPress={() => setConfirming(false)}
+        disabled={pending}
+        hitSlop={6}
+        style={({ pressed }) => [
+          styles.confirmCancelBtn,
+          { opacity: pressed ? 0.6 : 1 },
+        ]}
+        testID="thread-unmatch-cancel"
+      >
+        <PixelText size={7} color={cfPalette.ash} uppercase>
+          keep
+        </PixelText>
+      </Pressable>
+      <Pressable
+        onPress={onConfirm}
+        disabled={pending}
+        hitSlop={6}
+        style={({ pressed }) => [
+          styles.confirmDangerBtn,
+          { opacity: pressed ? 0.6 : pending ? 0.5 : 1 },
+        ]}
+        testID="thread-unmatch-confirm"
+      >
+        <PixelText size={7} color={cfPalette.bone} uppercase>
+          confirm drop
+        </PixelText>
+      </Pressable>
+    </View>
+  );
+}
+
 interface ThreadViewProps {
   threadId: ThreadId;
 }
@@ -42,8 +122,10 @@ export function ThreadView({ threadId }: ThreadViewProps) {
   const hydrated = useGameState((s) => s.hydrated);
   const openThread = useGameState((s) => s.openThread);
   const sendReply = useGameState((s) => s.sendReply);
+  const unmatchThread = useGameState((s) => s.unmatchThread);
 
   const [pending, setPending] = useState(false);
+  const [unmatchPending, setUnmatchPending] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
 
   const thread = useMemo(
@@ -57,6 +139,11 @@ export function ThreadView({ threadId }: ThreadViewProps) {
         : null,
     [run, thread],
   );
+  const match = useMemo(
+    () => run?.matches.find((m) => m.threadId === threadId) ?? null,
+    [run, threadId],
+  );
+  const isUnmatched = match?.unmatched ?? false;
 
   // Lazy push the opening turn the first time the player lands here.
   // openThread() is itself idempotent so re-mounts (back nav) are safe.
@@ -96,6 +183,20 @@ export function ThreadView({ threadId }: ThreadViewProps) {
     },
     [thread, pending, sendReply],
   );
+
+  const handleUnmatch = useCallback(async () => {
+    if (!match || match.unmatched || unmatchPending) return;
+    setUnmatchPending(true);
+    try {
+      await unmatchThread(match.id);
+      // Pop back to the matches tab so the player sees their refreshed
+      // (de-emphasized) row immediately. The thread route still
+      // resolves — but with the picker hidden — if they navigate back.
+      router.back();
+    } finally {
+      setUnmatchPending(false);
+    }
+  }, [match, unmatchPending, unmatchThread]);
 
   const topPad = Math.max(insets.top, Platform.OS === "web" ? 24 : 12);
 
@@ -186,6 +287,13 @@ export function ThreadView({ threadId }: ThreadViewProps) {
             {candidate.tagline}
           </PixelText>
         </View>
+        {match && (
+          <UnmatchControl
+            isUnmatched={isUnmatched}
+            pending={unmatchPending}
+            onConfirm={handleUnmatch}
+          />
+        )}
       </View>
 
       <ScrollView
@@ -197,7 +305,28 @@ export function ThreadView({ threadId }: ThreadViewProps) {
         {thread.messages.map((m) => (
           <MessageBubble key={m.id} message={m} />
         ))}
-        {isOutOfScript && (
+        {isUnmatched && (
+          <PixelPanel variant="ghost" style={styles.endHint}>
+            <PixelText
+              size={7}
+              color={cfPalette.fog}
+              align="center"
+              uppercase
+              style={{ letterSpacing: 1 }}
+            >
+              thread dropped
+            </PixelText>
+            <PixelText
+              size={6}
+              color={cfPalette.fog}
+              align="center"
+              style={{ marginTop: 6, lineHeight: 10 }}
+            >
+              archived for your case file. they can't reply.
+            </PixelText>
+          </PixelPanel>
+        )}
+        {!isUnmatched && isOutOfScript && (
           <PixelPanel variant="ghost" style={styles.endHint}>
             <PixelText
               size={7}
@@ -220,18 +349,20 @@ export function ThreadView({ threadId }: ThreadViewProps) {
         )}
       </ScrollView>
 
-      <View
-        style={[
-          styles.footer,
-          { paddingBottom: Math.max(insets.bottom, 12) },
-        ]}
-      >
-        <ReplyPicker
-          options={replyOptions}
-          pending={pending}
-          onPick={handlePick}
-        />
-      </View>
+      {!isUnmatched && (
+        <View
+          style={[
+            styles.footer,
+            { paddingBottom: Math.max(insets.bottom, 12) },
+          ]}
+        >
+          <ReplyPicker
+            options={replyOptions}
+            pending={pending}
+            onPick={handlePick}
+          />
+        </View>
+      )}
     </View>
   );
 }
@@ -291,5 +422,35 @@ const styles = StyleSheet.create({
     borderTopWidth: 2,
     borderTopColor: cfPalette.purple,
     backgroundColor: cfPalette.navy,
+  },
+  unmatchBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: cfPalette.err,
+  },
+  unmatchedTag: {
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: cfPalette.fog,
+  },
+  confirmRow: {
+    flexDirection: "row",
+    gap: 6,
+    alignItems: "center",
+  },
+  confirmCancelBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: cfPalette.ash,
+  },
+  confirmDangerBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: cfPalette.err,
+    backgroundColor: cfPalette.err,
   },
 });

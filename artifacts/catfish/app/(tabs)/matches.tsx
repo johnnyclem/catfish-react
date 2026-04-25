@@ -26,6 +26,13 @@ export default function MatchesTab() {
   const topPad = Math.max(insets.top, Platform.OS === "web" ? 24 : 12);
 
   const matches = run?.matches ?? [];
+  // Live leads first, dropped rows pinned to the bottom. We sort instead
+  // of filtering them out so the player can re-open dropped threads to
+  // re-read evidence — Pass 3's Journal still cites them.
+  const orderedMatches = [...matches].sort((a, b) => {
+    if (a.unmatched === b.unmatched) return 0;
+    return a.unmatched ? 1 : -1;
+  });
 
   return (
     <View style={[styles.root, { paddingTop: topPad }]}>
@@ -38,14 +45,14 @@ export default function MatchesTab() {
       </PixelText>
 
       <ScrollView contentContainerStyle={styles.list}>
-        {matches.length === 0 ? (
+        {orderedMatches.length === 0 ? (
           <PixelPanel variant="raised" style={styles.empty}>
             <PixelText size={9} color={cfPalette.ash} align="center" style={{ lineHeight: 14 }}>
               No matches yet.{"\n"}Swipe right on someone to start a thread.
             </PixelText>
           </PixelPanel>
         ) : (
-          matches.map((m) => {
+          orderedMatches.map((m) => {
             const cand = run!.deck.find((c) => c.id === m.candidateId);
             const thread = run!.threads.find((t) => t.id === m.threadId);
             const lastMsg = thread?.messages[thread.messages.length - 1];
@@ -58,7 +65,9 @@ export default function MatchesTab() {
               previewRaw.length > 64
                 ? `${previewRaw.slice(0, 61).trimEnd()}…`
                 : previewRaw;
-            const isUnopened = !thread || thread.messages.length === 0;
+            const isUnopened =
+              !m.unmatched && (!thread || thread.messages.length === 0);
+            const isDropped = m.unmatched;
             return (
               <Link
                 key={m.id}
@@ -69,10 +78,19 @@ export default function MatchesTab() {
                   testID={`match-row-${m.id}`}
                   style={({ pressed }) => [
                     styles.rowPress,
-                    { opacity: pressed ? 0.7 : 1 },
+                    {
+                      opacity: pressed
+                        ? 0.7
+                        : isDropped
+                          ? 0.55
+                          : 1,
+                    },
                   ]}
                 >
-                  <PixelPanel variant="default" style={styles.row}>
+                  <PixelPanel
+                    variant="default"
+                    style={[styles.row, isDropped && styles.rowDropped]}
+                  >
                     <View style={styles.avatarWrap}>
                       <AssetImage
                         id={cand?.portraitAssetId ?? "A500_avatar_placeholder"}
@@ -83,7 +101,11 @@ export default function MatchesTab() {
                     </View>
                     <View style={styles.body}>
                       <View style={styles.bodyHeader}>
-                        <PixelText size={10} color={cfPalette.bone} uppercase>
+                        <PixelText
+                          size={10}
+                          color={isDropped ? cfPalette.fog : cfPalette.bone}
+                          uppercase
+                        >
                           {cand?.displayName ?? "unknown"}
                         </PixelText>
                         {isUnopened && (
@@ -97,10 +119,24 @@ export default function MatchesTab() {
                             </PixelText>
                           </View>
                         )}
+                        {isDropped && (
+                          <View
+                            style={styles.droppedPip}
+                            testID={`match-dropped-${m.id}`}
+                          >
+                            <PixelText
+                              size={6}
+                              color={cfPalette.fog}
+                              uppercase
+                            >
+                              dropped
+                            </PixelText>
+                          </View>
+                        )}
                       </View>
                       <PixelText
                         size={7}
-                        color={cfPalette.ash}
+                        color={isDropped ? cfPalette.fog : cfPalette.ash}
                         style={styles.preview}
                       >
                         {preview}
@@ -113,7 +149,11 @@ export default function MatchesTab() {
                         {`matched day ${m.matchedOnDay}`}
                       </PixelText>
                     </View>
-                    <PixelText size={7} color={cfPalette.purpleHot} uppercase>
+                    <PixelText
+                      size={7}
+                      color={isDropped ? cfPalette.fog : cfPalette.purpleHot}
+                      uppercase
+                    >
                       ▸
                     </PixelText>
                   </PixelPanel>
@@ -183,5 +223,14 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderWidth: 1,
     borderColor: cfPalette.cyanHot,
+  },
+  droppedPip: {
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: cfPalette.fog,
+  },
+  rowDropped: {
+    borderColor: cfPalette.fog,
   },
 });

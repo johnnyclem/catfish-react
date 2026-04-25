@@ -1,7 +1,7 @@
 /**
- * KillerIdentity protocol + 7 identity modules.
+ * KillerIdentity protocol + 8 identity modules.
  *
- * Pass 1: Miles, Jules, Kai and River are fully authored (seed
+ * Pass 1: Miles, Jules, Kai, River and Sam are fully authored (seed
  * candidates + narrative beats); the remaining three (Tessa, Ren,
  * Delphine) are typed stubs with TODO markers — they still produce a
  * valid five-candidate roster so the swipe deck never crashes.
@@ -26,6 +26,15 @@
  *     same Pass 2 / Pass 3 consumption points. Note: dropped art
  *     filenames numbered River's portraits A046-A051, but A047-A051
  *     were already taken by Jules — bumped to A052-A057 on bundle.
+ *   Sam — A059 (smile) is wired into her swipe-deck portrait below.
+ *     A058, A060-A063 (curious/uneasy/neutral/sinister/flirty) and
+ *     A073-A074 (casual cardigan and formal blazer fullbody) are
+ *     bundled for Pass 2 / Pass 3. Note: dropped art filenames
+ *     numbered Sam's portraits A052-A057 and her fullbody A070-A071,
+ *     all of which collided with River and Jules — bumped to
+ *     A058-A063 (portraits) and A073-A074 (fullbody) on bundle.
+ *     The dropped portraits had no expression suffix; expressions
+ *     were assigned by reading the art.
  *
  * Pass 4 (Content/Bootstrapper) will replace these in-line rosters with
  * authored JSON fact universes resolved at run start.
@@ -542,6 +551,106 @@ const river: IdentityModule = {
   },
 };
 
+/* ───────────────────────── Sam — fully authored ──────────────────────── */
+
+const sam: IdentityModule = {
+  identity: "sam",
+  displayName: "Samira Okonkwo",
+  concept:
+    "Hospice nurse who reads paperback mysteries on her breaks. Quiet, watchful, makes you feel safe — until you start to wonder why she's so good at it.",
+  buildDeck: () => [
+    {
+      id: newCandidateId(),
+      identity: "sam",
+      displayName: "Sam",
+      age: 31,
+      tagline: "Nurse. Soft voice, very steady hands.",
+      bio:
+        "Works the overnight rotation on a hospice floor downtown. Drinks her coffee with too much sugar and won't apologize for it. Says the best dates are the ones where you both forget what time it is.",
+      portraitAssetId: "A059_sam_portrait_smile",
+      prompts: [
+        "On a first date I'll notice: how you talk to the server.",
+        "Comfort thing nobody knows: I keep a list of every paperback I've finished on a shift.",
+        "Honest red flag: people who say they 'don't really do hospitals'.",
+      ],
+      isKillerCandidate: true,
+    },
+    {
+      id: newCandidateId(),
+      identity: "sam",
+      displayName: "Adaeze",
+      age: 29,
+      tagline: "Pharmacist. Reads ingredient lists like poetry.",
+      bio:
+        "Runs the late shift at an independent pharmacy near the university. Has strong opinions about scented candles and very gentle ones about people.",
+      portraitAssetId: "A500_avatar_placeholder",
+      prompts: [
+        "Skill I'm proud of: spotting a knockoff at twenty paces.",
+        "Slow Sunday: the long crossword and a market walk.",
+      ],
+      isKillerCandidate: false,
+    },
+    {
+      id: newCandidateId(),
+      identity: "sam",
+      displayName: "Cassidy",
+      age: 27,
+      tagline: "Vet tech. Better with animals than email.",
+      bio:
+        "Works at a small animal clinic and fosters whatever no one else will take home. Bad at texting, generous in person, makes a mean chili.",
+      portraitAssetId: "A500_avatar_placeholder",
+      prompts: [
+        "Wildest day at work: a goat. Don't ask.",
+        "Date plan: a long walk and an even longer dinner.",
+      ],
+      isKillerCandidate: false,
+    },
+    {
+      id: newCandidateId(),
+      identity: "sam",
+      displayName: "Lila",
+      age: 33,
+      tagline: "Medical illustrator. Draws hearts for textbooks.",
+      bio:
+        "Freelance illustrator for med school publishers. Lives in a sunny studio with too many house plants and one very judgmental cat.",
+      portraitAssetId: "A500_avatar_placeholder",
+      prompts: [
+        "I get into arguments about: serif fonts on diagrams.",
+        "Sunday morning: I draw something I'll never show anyone.",
+      ],
+      isKillerCandidate: false,
+    },
+    {
+      id: newCandidateId(),
+      identity: "sam",
+      displayName: "Yvonne",
+      age: 35,
+      tagline: "Hospital chaplain. Listens for a living.",
+      bio:
+        "Sits with people on the worst days of their lives and somehow comes home full of stories about kindness. Walks everywhere; never owned a car.",
+      portraitAssetId: "A500_avatar_placeholder",
+      prompts: [
+        "I won't apologize for: long silences.",
+        "What I'm reading: poetry, almost always.",
+      ],
+      isKillerCandidate: false,
+    },
+  ],
+  beats: {
+    1: [
+      "Sam opens with a soft compliment — 'you have a kind face, I've gotten good at noticing those'. Invites you to a Tuesday open mic at a quiet bar she likes.",
+      "Mentions she's between rotations 'right now' and her schedule is finally human (TODO Pass 4 — anchor fact for shift hours).",
+    ],
+    2: [
+      "Asks about the last time you saw someone you loved cry. Listens really carefully.",
+      "Drops that she 'pulled a double on the unit' the night something happened in the neighborhood (TODO Pass 4 — anchor fact).",
+    ],
+    3: [
+      "TODO Pass 4 — first contradiction beat (claimed double shift vs. badge swipe records placing her offsite for two hours).",
+    ],
+  },
+};
+
 /* ─────────────────────────── registry ────────────────────────────────── */
 
 export const IDENTITY_REGISTRY: Record<KillerIdentity, IdentityModule> = {
@@ -552,6 +661,7 @@ export const IDENTITY_REGISTRY: Record<KillerIdentity, IdentityModule> = {
   delphine,
   jules,
   river,
+  sam,
 };
 
 export function getIdentityModule(id: KillerIdentity): IdentityModule {

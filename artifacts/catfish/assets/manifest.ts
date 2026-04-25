@@ -51,6 +51,12 @@ export type AssetId =
   | "A055_river_portrait_smile"
   | "A056_river_portrait_curious"
   | "A057_river_portrait_neutral"
+  | "A058_sam_portrait_curious"
+  | "A059_sam_portrait_smile"
+  | "A060_sam_portrait_uneasy"
+  | "A061_sam_portrait_neutral"
+  | "A062_sam_portrait_sinister"
+  | "A063_sam_portrait_flirty"
   | "A064_kai_fullbody_casual"
   | "A065_kai_fullbody_formal"
   | "A066_miles_fullbody_casual"
@@ -60,6 +66,8 @@ export type AssetId =
   | "A070_jules_fullbody_casual"
   | "A071_jules_fullbody_dressed_up"
   | "A072_player_fullbody_default"
+  | "A073_sam_fullbody_casual"
+  | "A074_sam_fullbody_formal"
   | "A100_fx_heart_particle"
   | "A101_fx_glitch_overlay"
   | "A102_fx_message_pop"
@@ -106,6 +114,12 @@ const REGISTRY: Partial<Record<AssetId, ImageSourcePropType>> = {
   A055_river_portrait_smile: require("./images/A055_river_portrait_smile.png"),
   A056_river_portrait_curious: require("./images/A056_river_portrait_curious.png"),
   A057_river_portrait_neutral: require("./images/A057_river_portrait_neutral.png"),
+  A058_sam_portrait_curious: require("./images/A058_sam_portrait_curious.png"),
+  A059_sam_portrait_smile: require("./images/A059_sam_portrait_smile.png"),
+  A060_sam_portrait_uneasy: require("./images/A060_sam_portrait_uneasy.png"),
+  A061_sam_portrait_neutral: require("./images/A061_sam_portrait_neutral.png"),
+  A062_sam_portrait_sinister: require("./images/A062_sam_portrait_sinister.png"),
+  A063_sam_portrait_flirty: require("./images/A063_sam_portrait_flirty.png"),
   A064_kai_fullbody_casual: require("./images/A064_kai_fullbody_casual.png"),
   A065_kai_fullbody_formal: require("./images/A065_kai_fullbody_formal.png"),
   A066_miles_fullbody_casual: require("./images/A066_miles_fullbody_casual.png"),
@@ -114,6 +128,8 @@ const REGISTRY: Partial<Record<AssetId, ImageSourcePropType>> = {
   A069_river_fullbody_casual: require("./images/A069_river_fullbody_casual.png"),
   A070_jules_fullbody_casual: require("./images/A070_jules_fullbody_casual.png"),
   A071_jules_fullbody_dressed_up: require("./images/A071_jules_fullbody_dressed_up.png"),
+  A073_sam_fullbody_casual: require("./images/A073_sam_fullbody_casual.png"),
+  A074_sam_fullbody_formal: require("./images/A074_sam_fullbody_formal.png"),
   A200_match_overlay: require("./images/A200_match_overlay.png"),
   A300_journal_book: require("./images/A300_journal_book.png"),
   A301_search_sparkle: require("./images/A301_search_sparkle.png"),

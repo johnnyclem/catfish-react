@@ -10,7 +10,7 @@
  */
 import { spawn } from "node:child_process";
 
-const PORT = process.env.PORT || "21328";
+const PORT = process.env.PORT || "8000";
 
 const env = {
   ...process.env,
@@ -22,9 +22,13 @@ const env = {
   REACT_NATIVE_PACKAGER_HOSTNAME: process.env.REPLIT_DEV_DOMAIN,
 };
 
+// Bind to all interfaces (default `expo start` behavior) so the Replit
+// port-readiness probe can reach Metro from the proxy. Using --localhost
+// would restrict the bind to 127.0.0.1 and the workspace iframe preview
+// would never go ready.
 const child = spawn(
   "pnpm",
-  ["exec", "expo", "start", "--localhost", "--port", PORT],
+  ["exec", "expo", "start", "--port", PORT],
   { stdio: "inherit", env },
 );
 child.on("exit", (code) => process.exit(code ?? 0));

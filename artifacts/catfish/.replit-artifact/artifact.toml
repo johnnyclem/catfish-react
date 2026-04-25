@@ -13,7 +13,7 @@ kind = "mobile"
   ensurePreviewReachable = "/status"
   name = "expo"
   paths = [ "/" ]
-  localPort = 21328
+  localPort = 8000
 
   [services.development]
   run = "pnpm --filter @workspace/catfish run dev"
@@ -23,6 +23,5 @@ kind = "mobile"
   run = [ "pnpm", "--filter", "@workspace/catfish", "run", "serve" ]
 
   [services.env]
-  PORT = "21328"
+  PORT = "8000"
   BASE_PATH = "/"
-  

@@ -41,18 +41,21 @@ Pixel-art dating-detective game. Pass 1 of 7 implemented:
 - 10 PNGs in `assets/images/` wired through `AssetImage` with labeled placeholder fallback
 - UUIDs via `Date.now() + Math.random()` (no `uuid` package — that crashes on RN)
 
-### Known limitation: Replit preview iframe
+### Replit preview iframe
 
-The `artifacts/catfish: expo` workflow currently fails the Replit port-readiness
-check (`DIDNT_OPEN_A_PORT` on 21328) even though the dev server binds the port
-correctly (verified via `/proc/net/tcp` and `curl localhost:21328`). The cause
-is that this artifact's registry entry has a path-style ID
-(`id = "artifacts/catfish"`) instead of a UUID, so port 21328 was never added
-to the root `.replit` file's `[[ports]]` table. There is no agent-callable
-mechanism to repair this — `verifyAndReplaceArtifactToml` validates the toml
-but does not reallocate the port, and `createArtifact` rejects re-creation
-because a mobile app already exists. The agent cannot edit `.replit` directly.
+The `artifacts/catfish: expo` workflow runs Metro on local port `8000`, which
+is mapped to external port `3000` via the `[[ports]]` table in the root
+`.replit` file. The dev wrapper (`scripts/dev.mjs`) launches `expo start` with
+the default LAN binding (no `--localhost`) so the platform's port-readiness
+probe can reach Metro from the proxy. The artifact still uses the
+`expo-domain` router, so Expo Go users continue to scan the QR code at
+`$REPLIT_EXPO_DEV_DOMAIN`, while the workspace iframe loads the web build at
+`/`.
 
-The app itself is fully functional — use **Expo Go** to scan the QR code in
-the workflow logs (run `pnpm --filter @workspace/catfish run dev` in a shell)
-and the React Native experience works as designed.
+If the preview ever breaks again with `DIDNT_OPEN_A_PORT`, check that:
+1. `scripts/dev.mjs` is NOT passing `--localhost` (that flag restricts Metro
+   to 127.0.0.1, which the readiness probe cannot reach).
+2. `.replit` still contains the `[[ports]]` entry for `localPort = 8000`.
+   If that entry is missing, the readiness probe will never see the port open
+   even though Metro is listening.
+3. `artifact.toml` still pins `localPort = 8000` and `PORT = "8000"`.

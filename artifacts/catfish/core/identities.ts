@@ -41,6 +41,7 @@
  * authored JSON fact universes resolved at run start.
  */
 
+import { decoysForKiller } from "./decoyPool";
 import {
   Candidate,
   KillerIdentity,
@@ -157,66 +158,7 @@ const miles: IdentityModule = {
       ],
       isKillerCandidate: true,
     },
-    {
-      id: newCandidateId(),
-      identity: "miles",
-      displayName: "Priya",
-      age: 27,
-      tagline: "ER nurse. Sharp humor, soft hands.",
-      bio:
-        "Twelve-hour shifts and a houseplant problem. Looking for someone who can sit through a Sunday afternoon without checking the time.",
-      portraitAssetId: "A500_avatar_placeholder",
-      prompts: [
-        "I'm weirdly competitive about: trivia night.",
-        "I'll never get over: the last episode of The Leftovers.",
-      ],
-      isKillerCandidate: false,
-    },
-    {
-      id: newCandidateId(),
-      identity: "miles",
-      displayName: "Jonas",
-      age: 31,
-      tagline: "Chef. Always smells faintly of citrus.",
-      bio:
-        "Runs the line at a tiny Nordic place downtown. Speaks three languages, swears in all of them.",
-      portraitAssetId: "A500_avatar_placeholder",
-      prompts: [
-        "First thing I notice: how someone holds their fork.",
-        "Sunday morning: market run, then nothing.",
-      ],
-      isKillerCandidate: false,
-    },
-    {
-      id: newCandidateId(),
-      identity: "miles",
-      displayName: "Cleo",
-      age: 26,
-      tagline: "Architect with a vinyl problem.",
-      bio:
-        "Drafts buildings nobody has built yet. Plays bass in a band that practices once a year.",
-      portraitAssetId: "A500_avatar_placeholder",
-      prompts: [
-        "I get unreasonably into: typeface arguments.",
-        "If we get along we will eventually talk about: the moon.",
-      ],
-      isKillerCandidate: false,
-    },
-    {
-      id: newCandidateId(),
-      identity: "miles",
-      displayName: "Sebastián",
-      age: 33,
-      tagline: "Documentary editor. Quiet eyes.",
-      bio:
-        "Cuts true-crime docs for a living and is, ironically, the easiest person at any party.",
-      portraitAssetId: "A500_avatar_placeholder",
-      prompts: [
-        "I cry at: ad campaigns about families. Embarrassing.",
-        "Best date: a long walk and a worse dinner.",
-      ],
-      isKillerCandidate: false,
-    },
+    ...decoysForKiller("miles"),
   ],
   beats: {
     1: [
@@ -290,7 +232,9 @@ function stubDeck(
   killerName: string,
   killerTagline: string,
 ): Candidate[] {
-  // TODO Pass 4: replace with authored rosters per identity.
+  // TODO Pass 4: replace the killer placeholder with an authored entry.
+  // Decoys are now drawn from the shared NPC pool (core/decoyPool.ts) so
+  // every stub identity ships with real portraits + bios from day one.
   return [
     {
       id: newCandidateId(),
@@ -303,50 +247,7 @@ function stubDeck(
       prompts: [`TODO ${identity} prompt 1`, `TODO ${identity} prompt 2`],
       isKillerCandidate: true,
     },
-    {
-      id: newCandidateId(),
-      identity,
-      displayName: "Avery",
-      age: 27,
-      tagline: "TODO — placeholder candidate.",
-      bio: "TODO Pass 4 — author bio.",
-      portraitAssetId: "A500_avatar_placeholder",
-      prompts: ["TODO prompt"],
-      isKillerCandidate: false,
-    },
-    {
-      id: newCandidateId(),
-      identity,
-      displayName: "Indra",
-      age: 30,
-      tagline: "TODO — placeholder candidate.",
-      bio: "TODO Pass 4 — author bio.",
-      portraitAssetId: "A500_avatar_placeholder",
-      prompts: ["TODO prompt"],
-      isKillerCandidate: false,
-    },
-    {
-      id: newCandidateId(),
-      identity,
-      displayName: "Marcellus",
-      age: 32,
-      tagline: "TODO — placeholder candidate.",
-      bio: "TODO Pass 4 — author bio.",
-      portraitAssetId: "A500_avatar_placeholder",
-      prompts: ["TODO prompt"],
-      isKillerCandidate: false,
-    },
-    {
-      id: newCandidateId(),
-      identity,
-      displayName: "Nori",
-      age: 25,
-      tagline: "TODO — placeholder candidate.",
-      bio: "TODO Pass 4 — author bio.",
-      portraitAssetId: "A500_avatar_placeholder",
-      prompts: ["TODO prompt"],
-      isKillerCandidate: false,
-    },
+    ...decoysForKiller(identity),
   ];
 }
 
@@ -467,66 +368,7 @@ const kai: IdentityModule = {
       ],
       isKillerCandidate: true,
     },
-    {
-      id: newCandidateId(),
-      identity: "kai",
-      displayName: "Imani",
-      age: 29,
-      tagline: "Gallery curator. Soft hands, sharp opinions.",
-      bio:
-        "Runs a small project space on the east side. Hates the word 'edgy'. Will absolutely tell you what your apartment needs.",
-      portraitAssetId: "A500_avatar_placeholder",
-      prompts: [
-        "What I'm reading: an essay collection I'll quote at you uninvited.",
-        "Date plan: openings on Friday, dim sum after, no plans Saturday.",
-      ],
-      isKillerCandidate: false,
-    },
-    {
-      id: newCandidateId(),
-      identity: "kai",
-      displayName: "Dev",
-      age: 27,
-      tagline: "Ceramicist. Hands always a little dusty.",
-      bio:
-        "Throws pots in a shared studio behind a laundromat. Sells at one weekend market. Says he's bad at texting and means it.",
-      portraitAssetId: "A500_avatar_placeholder",
-      prompts: [
-        "I'd cook for you: something with too much garlic.",
-        "Studio rule: no shoes, no podcasts, only records.",
-      ],
-      isKillerCandidate: false,
-    },
-    {
-      id: newCandidateId(),
-      identity: "kai",
-      displayName: "Noor",
-      age: 31,
-      tagline: "Documentary photographer. Quiet in crowds.",
-      bio:
-        "Shoots for a small magazine that mostly survives on grants. Has been to a lot of places and doesn't lead with that.",
-      portraitAssetId: "A500_avatar_placeholder",
-      prompts: [
-        "Camera I actually use: a beat-up point-and-shoot from 2003.",
-        "Worst assignment: a cat show. (I loved it.)",
-      ],
-      isKillerCandidate: false,
-    },
-    {
-      id: newCandidateId(),
-      identity: "kai",
-      displayName: "Marco",
-      age: 28,
-      tagline: "Music producer. Lives at 110 BPM.",
-      bio:
-        "Mixes for local bands out of his bedroom. Will play you something he's working on within twenty minutes of meeting you.",
-      portraitAssetId: "A500_avatar_placeholder",
-      prompts: [
-        "Reference track for a first date: bossa nova, low volume.",
-        "I trust people who: clap on two and four.",
-      ],
-      isKillerCandidate: false,
-    },
+    ...decoysForKiller("kai"),
   ],
   beats: {
     1: [
@@ -652,66 +494,7 @@ const jules: IdentityModule = {
       ],
       isKillerCandidate: true,
     },
-    {
-      id: newCandidateId(),
-      identity: "jules",
-      displayName: "Wren",
-      age: 26,
-      tagline: "Tattoo apprentice. Patient hands.",
-      bio:
-        "Apprentices at a shop that's been open since the eighties. Spends days drawing flash sheets and nights at noise shows.",
-      portraitAssetId: "A500_avatar_placeholder",
-      prompts: [
-        "First tattoo I ever did: on myself, in a kitchen, badly.",
-        "Off-night plans: cheap noodles and a movie I've already seen.",
-      ],
-      isKillerCandidate: false,
-    },
-    {
-      id: newCandidateId(),
-      identity: "jules",
-      displayName: "Sasha",
-      age: 30,
-      tagline: "Sound engineer. Hates small talk in elevators.",
-      bio:
-        "Mixes live shows around town. Notices everyone in the room within thirty seconds. Doesn't always tell you what she noticed.",
-      portraitAssetId: "A500_avatar_placeholder",
-      prompts: [
-        "Worst venue I've worked: a wedding in a parking garage.",
-        "I trust people who: don't fidget when it's quiet.",
-      ],
-      isKillerCandidate: false,
-    },
-    {
-      id: newCandidateId(),
-      identity: "jules",
-      displayName: "Theo",
-      age: 32,
-      tagline: "Locksmith. Yes, really.",
-      bio:
-        "Family business, third generation. Reads paperback mysteries between calls. Will absolutely not help you break into your ex's place.",
-      portraitAssetId: "A500_avatar_placeholder",
-      prompts: [
-        "Strangest call this month: an antique safe with a love letter inside.",
-        "Date idea: walking around an open house like we're going to buy it.",
-      ],
-      isKillerCandidate: false,
-    },
-    {
-      id: newCandidateId(),
-      identity: "jules",
-      displayName: "Marisol",
-      age: 27,
-      tagline: "Late-shift baker. Smells like cardamom.",
-      bio:
-        "Up at three, off by noon, in bed by nine. Says her dating window is brutally short and that's a personality test in itself.",
-      portraitAssetId: "A500_avatar_placeholder",
-      prompts: [
-        "I'll bring: a paper bag of whatever didn't sell.",
-        "Skip me if: you need someone awake at midnight.",
-      ],
-      isKillerCandidate: false,
-    },
+    ...decoysForKiller("jules"),
   ],
   beats: {
     1: [
@@ -802,66 +585,7 @@ const river: IdentityModule = {
       ],
       isKillerCandidate: true,
     },
-    {
-      id: newCandidateId(),
-      identity: "river",
-      displayName: "Hank",
-      age: 32,
-      tagline: "Trail-running coach. Up before sunrise.",
-      bio:
-        "Coaches a small ultra crew out of a barn east of town. Drinks his coffee cold because he forgets it. Easy company on long miles, quiet in a kitchen.",
-      portraitAssetId: "A500_avatar_placeholder",
-      prompts: [
-        "Best date: a sunrise loop and breakfast we're too tired to talk through.",
-        "I won't apologize for: the alarm at 4:30.",
-      ],
-      isKillerCandidate: false,
-    },
-    {
-      id: newCandidateId(),
-      identity: "river",
-      displayName: "Soren",
-      age: 29,
-      tagline: "Arborist. Quiet about it.",
-      bio:
-        "Climbs the kind of trees most people don't notice. Carries a paperback in his harness bag. Will name three birds before you've finished your sentence.",
-      portraitAssetId: "A500_avatar_placeholder",
-      prompts: [
-        "I get evangelical about: pruning timing.",
-        "Sunday: somewhere green, no signal, slow lunch after.",
-      ],
-      isKillerCandidate: false,
-    },
-    {
-      id: newCandidateId(),
-      identity: "river",
-      displayName: "Marit",
-      age: 31,
-      tagline: "Wilderness EMT. Calm in a crisis.",
-      bio:
-        "Spends summers stationed near alpine huts and winters teaching avalanche awareness. Has the kind of laugh that defuses a room. Doesn't tell stories on a first date.",
-      portraitAssetId: "A500_avatar_placeholder",
-      prompts: [
-        "Skill I'm weirdly proud of: tying a sling out of a bandana.",
-        "Green flag: knowing which end of a map is north without thinking.",
-      ],
-      isKillerCandidate: false,
-    },
-    {
-      id: newCandidateId(),
-      identity: "river",
-      displayName: "Pax",
-      age: 27,
-      tagline: "Mapmaker. Draws places nobody walks anymore.",
-      bio:
-        "Ink-and-paper cartographer; sells small editions at a bookshop on the river. Geeks out about old fire-lookout routes and the typography of contour lines.",
-      portraitAssetId: "A500_avatar_placeholder",
-      prompts: [
-        "I'll bring on a hike: a thermos and a hand-drawn map of where we are.",
-        "If we get along we'll eventually argue about: the right shade of forest green.",
-      ],
-      isKillerCandidate: false,
-    },
+    ...decoysForKiller("river"),
   ],
   beats: {
     1: [
@@ -940,66 +664,7 @@ const sam: IdentityModule = {
       ],
       isKillerCandidate: true,
     },
-    {
-      id: newCandidateId(),
-      identity: "sam",
-      displayName: "Adaeze",
-      age: 29,
-      tagline: "Pharmacist. Reads ingredient lists like poetry.",
-      bio:
-        "Runs the late shift at an independent pharmacy near the university. Has strong opinions about scented candles and very gentle ones about people.",
-      portraitAssetId: "A500_avatar_placeholder",
-      prompts: [
-        "Skill I'm proud of: spotting a knockoff at twenty paces.",
-        "Slow Sunday: the long crossword and a market walk.",
-      ],
-      isKillerCandidate: false,
-    },
-    {
-      id: newCandidateId(),
-      identity: "sam",
-      displayName: "Cassidy",
-      age: 27,
-      tagline: "Vet tech. Better with animals than email.",
-      bio:
-        "Works at a small animal clinic and fosters whatever no one else will take home. Bad at texting, generous in person, makes a mean chili.",
-      portraitAssetId: "A500_avatar_placeholder",
-      prompts: [
-        "Wildest day at work: a goat. Don't ask.",
-        "Date plan: a long walk and an even longer dinner.",
-      ],
-      isKillerCandidate: false,
-    },
-    {
-      id: newCandidateId(),
-      identity: "sam",
-      displayName: "Lila",
-      age: 33,
-      tagline: "Medical illustrator. Draws hearts for textbooks.",
-      bio:
-        "Freelance illustrator for med school publishers. Lives in a sunny studio with too many house plants and one very judgmental cat.",
-      portraitAssetId: "A500_avatar_placeholder",
-      prompts: [
-        "I get into arguments about: serif fonts on diagrams.",
-        "Sunday morning: I draw something I'll never show anyone.",
-      ],
-      isKillerCandidate: false,
-    },
-    {
-      id: newCandidateId(),
-      identity: "sam",
-      displayName: "Yvonne",
-      age: 35,
-      tagline: "Hospital chaplain. Listens for a living.",
-      bio:
-        "Sits with people on the worst days of their lives and somehow comes home full of stories about kindness. Walks everywhere; never owned a car.",
-      portraitAssetId: "A500_avatar_placeholder",
-      prompts: [
-        "I won't apologize for: long silences.",
-        "What I'm reading: poetry, almost always.",
-      ],
-      isKillerCandidate: false,
-    },
+    ...decoysForKiller("sam"),
   ],
   beats: {
     1: [

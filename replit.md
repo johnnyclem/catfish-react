@@ -34,7 +34,7 @@ Pixel-art dating-detective game. Pass 1 of 7 implemented:
 - 4-tab shell (Swipe / Matches / Journal / Profile) with custom pixel chrome
 - Persistent CaseRun state in `core/gameStore.ts` (Zustand + AsyncStorage, JSON-encoded). `useGameHydration()` is mounted once in the root layout to rehydrate on cold start.
 - Immutable killer identity stamped at first match (6 killers in `core/identities.ts` — Miles and Jules fully authored, four others are stubs)
-- Swipe deck (`features/swipe/`) — 110pt drag-to-commit, right-swipe = match + celebration overlay
+- Swipe deck (`features/swipe/`) — 110pt drag-to-commit, right-swipe = match + celebration overlay. Each killer's deck is 1 killer + 4 decoys; decoys come from the shared NPC pool in `core/decoyPool.ts` (10 personas Lola/Ari/Onyx/Micah/Sienna/Eli/Penny/Cam/Zora/Reyn backed by portraits A085–A094). `decoysForKiller(identity)` picks 4 unique entries deterministically per killer (FNV-1a seeded Fisher-Yates) so the cast varies between killers but stays stable across reloads of the same run.
 - DEBUG menus on both the title screen and the Profile tab — force killer, reset run
 - Press Start 2P pixel font (`@expo-google-fonts/press-start-2p`)
 - Neon palette in `constants/colors.ts` (#0a0420 navy, #ff2f8f pink, #22e0ff cyan, #7a3cff purple)

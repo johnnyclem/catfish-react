@@ -54,6 +54,14 @@
  * decoy profiles you swipe past or chat with but never accuse. None
  * are wired to an IdentityModule — they're surface art only.
  *
+ * Decoy NPC swipe-stack pool (A085-A094) — ten distinct named profiles
+ * the player swipes through across every case. Each killer's deck draws
+ * 4 of these deterministically (see core/decoyPool.ts) so the visible
+ * cast is coherent within a run and varies between killers without
+ * authoring per-killer rosters. Personas: Lola (beach), Ari (bookstore),
+ * Onyx (neon), Micah (trail), Sienna (gallery), Eli (bookish),
+ * Penny (studio), Cam (plaid cap), Zora (city), Reyn (neon stage).
+ *
  * UI library expansion (A021, A103-A109, A202-A204, A304, A401, A505)
  * bundled this pass. A300 (case journal book) and A501 (charm fire)
  * were upgraded in place. A021 (gothic accuse-modal background with
@@ -125,6 +133,16 @@ export type AssetId =
   | "A082_morgan_portrait_neutral"
   | "A083_morgan_portrait_concerned"
   | "A084_morgan_portrait_excited"
+  | "A085_lola_portrait_beach"
+  | "A086_ari_portrait_bookstore"
+  | "A087_onyx_portrait_neon"
+  | "A088_micah_portrait_trail"
+  | "A089_sienna_portrait_gallery"
+  | "A090_eli_portrait_bookish"
+  | "A091_penny_portrait_studio"
+  | "A092_cam_portrait_plaid"
+  | "A093_zora_portrait_city"
+  | "A094_reyn_portrait_neon"
   | "A100_fx_heart_particle"
   | "A101_fx_glitch_overlay"
   | "A102_fx_message_pop"
@@ -243,6 +261,16 @@ const REGISTRY: Partial<Record<AssetId, ImageSourcePropType>> = {
   A082_morgan_portrait_neutral: require("./images/A082_morgan_portrait_neutral.png"),
   A083_morgan_portrait_concerned: require("./images/A083_morgan_portrait_concerned.png"),
   A084_morgan_portrait_excited: require("./images/A084_morgan_portrait_excited.png"),
+  A085_lola_portrait_beach: require("./images/A085_lola_portrait_beach.png"),
+  A086_ari_portrait_bookstore: require("./images/A086_ari_portrait_bookstore.png"),
+  A087_onyx_portrait_neon: require("./images/A087_onyx_portrait_neon.png"),
+  A088_micah_portrait_trail: require("./images/A088_micah_portrait_trail.png"),
+  A089_sienna_portrait_gallery: require("./images/A089_sienna_portrait_gallery.png"),
+  A090_eli_portrait_bookish: require("./images/A090_eli_portrait_bookish.png"),
+  A091_penny_portrait_studio: require("./images/A091_penny_portrait_studio.png"),
+  A092_cam_portrait_plaid: require("./images/A092_cam_portrait_plaid.png"),
+  A093_zora_portrait_city: require("./images/A093_zora_portrait_city.png"),
+  A094_reyn_portrait_neon: require("./images/A094_reyn_portrait_neon.png"),
   A103_fx_unmatch_shatter: require("./images/A103_fx_unmatch_shatter.png"),
   A104_fx_exclamation_sheet: require("./images/A104_fx_exclamation_sheet.png"),
   A105_fx_heart_animation_alt: require("./images/A105_fx_heart_animation_alt.png"),

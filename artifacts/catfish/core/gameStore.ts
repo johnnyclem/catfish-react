@@ -58,6 +58,15 @@ export interface CommitFactInput {
 interface GameStateValue {
   hydrated: boolean;
   run: CaseRun | null;
+  /**
+   * In-memory only — the most recent Fact removed via `removeFact`,
+   * stashed so the Journal tab can offer a brief undo affordance.
+   * Cleared when the player either undoes the discard, discards
+   * another fact, or the undo window times out. Not persisted to
+   * AsyncStorage on purpose: a re-discardable fact across cold start
+   * would feel like ghost data.
+   */
+  recentlyDiscarded: Fact | null;
   hydrate: () => Promise<void>;
   startNewRun: (forced?: KillerIdentity) => Promise<CaseRun>;
   advanceDay: () => Promise<void>;
@@ -82,6 +91,19 @@ interface GameStateValue {
     threadId: ThreadId,
     replyText: string,
   ) => Promise<ChatThread | null>;
+  /**
+   * Restore the most recent fact removed via `removeFact`, provided
+   * `recentlyDiscarded` still matches. Acts as the undo handler for
+   * the Journal's discard banner.
+   */
+  restoreFact: (factId: FactId) => Promise<void>;
+  /**
+   * Drop the recently-discarded slot without restoring. Called when
+   * the undo window expires or the banner is dismissed. No-op if
+   * `recentlyDiscarded` doesn't match `factId`, so a stale timer can't
+   * blow away a freshly stashed entry.
+   */
+  clearRecentlyDiscarded: (factId: FactId) => void;
   resetRun: () => Promise<void>;
 }
 
@@ -144,22 +166,52 @@ function migrateRun(run: CaseRun | null): CaseRun | null {
 
 let hydrationPromise: Promise<void> | null = null;
 
+/**
+ * Window for the Journal's "fact discarded" undo affordance. Owned by
+ * the store (not the banner component) so expiry is enforced even if
+ * the player navigates away from the Journal tab before tapping undo.
+ */
+export const UNDO_WINDOW_MS = 4500;
+
+/**
+ * Module-level timer that clears `recentlyDiscarded` after the undo
+ * window. Lives outside the Zustand state because it's pure side
+ * effect — putting timers in state forces unnecessary re-renders and
+ * makes serialization awkward.
+ */
+let discardClearTimer: ReturnType<typeof setTimeout> | null = null;
+
+function cancelDiscardTimer(): void {
+  if (discardClearTimer) {
+    clearTimeout(discardClearTimer);
+    discardClearTimer = null;
+  }
+}
+
 export const useGameState = create<GameStateValue>((set, get) => ({
   hydrated: false,
   run: null,
+  recentlyDiscarded: null,
 
   hydrate: async () => {
     if (hydrationPromise) return hydrationPromise;
     hydrationPromise = (async () => {
       const existing = migrateRun(await loadActiveRun());
-      set({ run: existing, hydrated: true });
+      // Cold-start invariant: undo state is in-memory only, so a
+      // dangling stash from a prior process is impossible. Still,
+      // explicitly clearing here documents the contract.
+      cancelDiscardTimer();
+      set({ run: existing, hydrated: true, recentlyDiscarded: null });
     })();
     return hydrationPromise;
   },
 
   startNewRun: async (forced) => {
     const next = buildRun(forced);
-    set({ run: next });
+    // Starting a fresh run forfeits any pending undo — a fact stashed
+    // against the previous run must not be restorable into the new one.
+    cancelDiscardTimer();
+    set({ run: next, recentlyDiscarded: null });
     await saveActiveRun(next);
     return next;
   },
@@ -283,11 +335,25 @@ export const useGameState = create<GameStateValue>((set, get) => ({
   removeFact: async (factId) => {
     const prev = get().run;
     if (!prev) return;
+    const removed = prev.facts.find((f) => f.id === factId);
+    if (!removed) return;
     const filtered = prev.facts.filter((f) => f.id !== factId);
-    if (filtered.length === prev.facts.length) return;
     const next: CaseRun = { ...prev, facts: filtered };
-    set({ run: next });
+    // Stash the removed fact so the Journal can offer a brief undo.
+    // Replacing any prior stash is intentional — only the latest
+    // discard is recoverable, matching standard mobile snackbar UX.
+    cancelDiscardTimer();
+    set({ run: next, recentlyDiscarded: removed });
     await saveActiveRun(next);
+    // Schedule expiry from the store itself so the undo window stays
+    // honest even if the player navigates away from the Journal tab.
+    discardClearTimer = setTimeout(() => {
+      discardClearTimer = null;
+      const current = get().recentlyDiscarded;
+      if (current && current.id === removed.id) {
+        set({ recentlyDiscarded: null });
+      }
+    }, UNDO_WINDOW_MS);
   },
 
   openThread: async (threadId) => {
@@ -375,8 +441,45 @@ export const useGameState = create<GameStateValue>((set, get) => ({
     return updatedThread;
   },
 
+  restoreFact: async (factId) => {
+    const { run: prev, recentlyDiscarded } = get();
+    if (!prev || !recentlyDiscarded || recentlyDiscarded.id !== factId) {
+      return;
+    }
+    // Run-identity guard — a stash from an earlier run must not be
+    // injected into the active one. Belt-and-braces with the
+    // startNewRun/hydrate clears, in case anything ever schedules a
+    // restore across run boundaries.
+    if (recentlyDiscarded.runId !== prev.id) {
+      cancelDiscardTimer();
+      set({ recentlyDiscarded: null });
+      return;
+    }
+    cancelDiscardTimer();
+    // Guard against the rare race where the same fact id was already
+    // re-added (e.g. a re-capture beat the undo tap).
+    if (prev.facts.some((f) => f.id === factId)) {
+      set({ recentlyDiscarded: null });
+      return;
+    }
+    const next: CaseRun = {
+      ...prev,
+      facts: [...prev.facts, recentlyDiscarded],
+    };
+    set({ run: next, recentlyDiscarded: null });
+    await saveActiveRun(next);
+  },
+
+  clearRecentlyDiscarded: (factId) => {
+    const current = get().recentlyDiscarded;
+    if (!current || current.id !== factId) return;
+    cancelDiscardTimer();
+    set({ recentlyDiscarded: null });
+  },
+
   resetRun: async () => {
-    set({ run: null });
+    cancelDiscardTimer();
+    set({ run: null, recentlyDiscarded: null });
     await saveActiveRun(null);
   },
 }));

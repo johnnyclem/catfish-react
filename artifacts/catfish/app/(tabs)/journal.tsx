@@ -35,6 +35,7 @@ import {
   JournalSortMode,
 } from "@/features/journal/JournalControls";
 import { SuspectGroup } from "@/features/journal/SuspectGroup";
+import { UndoDiscardBanner } from "@/features/journal/UndoDiscardBanner";
 
 interface CandidateGroup {
   candidate: Candidate;
@@ -199,6 +200,10 @@ export default function JournalTab() {
           ))
         )}
       </ScrollView>
+
+      <UndoDiscardBanner
+        bottomOffset={Platform.OS === "web" ? 16 : Math.max(insets.bottom, 12)}
+      />
     </View>
   );
 }

@@ -19,7 +19,8 @@ export type KillerIdentity =
   | "tessa"
   | "ren"
   | "kai"
-  | "delphine";
+  | "delphine"
+  | "jules";
 
 export const ALL_KILLERS: KillerIdentity[] = [
   "miles",
@@ -27,6 +28,7 @@ export const ALL_KILLERS: KillerIdentity[] = [
   "ren",
   "kai",
   "delphine",
+  "jules",
 ];
 
 export type CandidateId = string;

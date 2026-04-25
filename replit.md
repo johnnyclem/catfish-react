@@ -33,7 +33,7 @@ Pixel-art dating-detective game. Pass 1 of 7 implemented:
 
 - 4-tab shell (Swipe / Matches / Journal / Profile) with custom pixel chrome
 - Persistent CaseRun state in `core/gameStore.ts` (Zustand + AsyncStorage, JSON-encoded). `useGameHydration()` is mounted once in the root layout to rehydrate on cold start.
-- Immutable killer identity stamped at first match (5 killer stubs in `core/identities.ts`, Miles fleshed out)
+- Immutable killer identity stamped at first match (6 killers in `core/identities.ts` — Miles and Jules fully authored, four others are stubs)
 - Swipe deck (`features/swipe/`) — 110pt drag-to-commit, right-swipe = match + celebration overlay
 - DEBUG menus on both the title screen and the Profile tab — force killer, reset run
 - Press Start 2P pixel font (`@expo-google-fonts/press-start-2p`)

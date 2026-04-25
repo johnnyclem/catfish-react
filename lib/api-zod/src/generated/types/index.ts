@@ -7,3 +7,6 @@
  */
 
 export * from "./healthStatus";
+export * from "./voiceErrorResponse";
+export * from "./voiceSettings";
+export * from "./voiceSpeakRequest";

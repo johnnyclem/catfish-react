@@ -5,18 +5,25 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type {
+  MutationFunction,
   QueryFunction,
   QueryKey,
+  UseMutationOptions,
+  UseMutationResult,
   UseQueryOptions,
   UseQueryResult,
 } from "@tanstack/react-query";
 
-import type { HealthStatus } from "./api.schemas";
+import type {
+  HealthStatus,
+  VoiceErrorResponse,
+  VoiceSpeakRequest,
+} from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
-import type { ErrorType } from "../custom-fetch";
+import type { ErrorType, BodyType } from "../custom-fetch";
 
 type AwaitedInput<T> = PromiseLike<T> | T;
 
@@ -99,3 +106,94 @@ export function useHealthCheck<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * Synthesizes the given text into speech using the supplied ElevenLabs
+voice id. Responses are cached on disk by the server keyed on the
+sha256 of the (voiceId, settings, text) tuple, so identical requests
+are served from cache without re-billing.
+
+ * @summary Synthesize speech via ElevenLabs
+ */
+export const getVoiceSpeakUrl = () => {
+  return `/api/voice/speak`;
+};
+
+export const voiceSpeak = async (
+  voiceSpeakRequest: VoiceSpeakRequest,
+  options?: RequestInit,
+): Promise<Blob> => {
+  return customFetch<Blob>(getVoiceSpeakUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(voiceSpeakRequest),
+  });
+};
+
+export const getVoiceSpeakMutationOptions = <
+  TError = ErrorType<VoiceErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof voiceSpeak>>,
+    TError,
+    { data: BodyType<VoiceSpeakRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof voiceSpeak>>,
+  TError,
+  { data: BodyType<VoiceSpeakRequest> },
+  TContext
+> => {
+  const mutationKey = ["voiceSpeak"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof voiceSpeak>>,
+    { data: BodyType<VoiceSpeakRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return voiceSpeak(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type VoiceSpeakMutationResult = NonNullable<
+  Awaited<ReturnType<typeof voiceSpeak>>
+>;
+export type VoiceSpeakMutationBody = BodyType<VoiceSpeakRequest>;
+export type VoiceSpeakMutationError = ErrorType<VoiceErrorResponse>;
+
+/**
+ * @summary Synthesize speech via ElevenLabs
+ */
+export const useVoiceSpeak = <
+  TError = ErrorType<VoiceErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof voiceSpeak>>,
+    TError,
+    { data: BodyType<VoiceSpeakRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof voiceSpeak>>,
+  TError,
+  { data: BodyType<VoiceSpeakRequest> },
+  TContext
+> => {
+  return useMutation(getVoiceSpeakMutationOptions(options));
+};

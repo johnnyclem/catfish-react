@@ -8,6 +8,9 @@ out-tsc
 .expo
 .expo-shared
 
+# api-server runtime caches (TTS audio cache, etc.)
+artifacts/api-server/.cache/
+
 # dependencies
 node_modules
 

@@ -31,6 +31,33 @@ import { cfPalette } from "@/constants/colors";
 import { useGameState } from "@/core/gameStore";
 import { getScriptForCandidate } from "@/core/identities";
 import { ThreadId } from "@/core/models";
+import { useDialogueVoice } from "@/features/voice/useDialogueVoice";
+import type { Message } from "@/core/models";
+
+/**
+ * Compute the per-beat line index for a suspect message — i.e. "this
+ * is the Nth suspect line in this beat". Mirrors the pre-gen script's
+ * filename pattern so a cached clip resolves on first try.
+ *
+ * Counts only suspect-sender messages with the same beatKey, and only
+ * those that appear at-or-before `messageId` in the transcript.
+ */
+function computeLineIndex(
+  messages: Message[],
+  messageId: string,
+  beatKey: string,
+): number {
+  let n = 0;
+  for (const m of messages) {
+    if (m.sender !== "suspect") continue;
+    if ((m.beatKey ?? "unknown") !== beatKey) continue;
+    if (m.id === messageId) return n;
+    n += 1;
+  }
+  // Shouldn't happen — if it does we still return 0 so the lookup
+  // can at least try the first clip in this beat.
+  return 0;
+}
 
 interface UnmatchControlProps {
   isUnmatched: boolean;
@@ -161,6 +188,44 @@ export function ThreadView({ threadId }: ThreadViewProps) {
     }, 60);
     return () => clearTimeout(t);
   }, [thread?.messages.length]);
+
+  // Voice playback — auto-plays *new* suspect bubbles only. Tracking
+  // played message ids in a ref (instead of by length delta) keeps the
+  // mute/un-mute round-trip honest: messages added while muted aren't
+  // suddenly auto-played the moment the user un-mutes.
+  const voice = useDialogueVoice();
+  const playedIdsRef = useRef<Set<string>>(new Set());
+  const seededRef = useRef(false);
+  const candidateRef = useRef<typeof candidate>(candidate);
+  candidateRef.current = candidate;
+
+  useEffect(() => {
+    if (!hydrated || !thread || !candidate) return;
+    // First time we see this thread post-mount, mark every existing
+    // suspect message as already played — re-mounts (back nav) and
+    // cold starts must NOT replay the whole transcript.
+    if (!seededRef.current) {
+      for (const m of thread.messages) {
+        if (m.sender === "suspect") playedIdsRef.current.add(m.id);
+      }
+      seededRef.current = true;
+      return;
+    }
+    // Auto-play any suspect bubbles we haven't seen yet, in order.
+    for (const m of thread.messages) {
+      if (m.sender !== "suspect") continue;
+      if (playedIdsRef.current.has(m.id)) continue;
+      playedIdsRef.current.add(m.id);
+      // Lines without a beatKey can't resolve a pre-baked clip — the
+      // hook will silently fall back to live TTS.
+      const beatKey = m.beatKey ?? "unknown";
+      // Sequence index inside the same beat: nth suspect message in a
+      // row sharing the same beatKey. Mirrors the pre-gen filename
+      // pattern so cached clips line up.
+      const lineIndex = computeLineIndex(thread.messages, m.id, beatKey);
+      void voice.playLine(candidateRef.current!, beatKey, lineIndex, m.text);
+    }
+  }, [hydrated, thread, candidate, voice]);
 
   const replyOptions = useMemo(() => {
     if (!candidate || !thread) return [];

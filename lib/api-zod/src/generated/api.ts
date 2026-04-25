@@ -14,3 +14,60 @@ import * as zod from "zod";
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
 });
+
+/**
+ * Synthesizes the given text into speech using the supplied ElevenLabs
+voice id. Responses are cached on disk by the server keyed on the
+sha256 of the (voiceId, settings, text) tuple, so identical requests
+are served from cache without re-billing.
+
+ * @summary Synthesize speech via ElevenLabs
+ */
+export const voiceSpeakBodyTextMax = 4000;
+
+export const voiceSpeakBodySettingsStabilityMin = 0;
+export const voiceSpeakBodySettingsStabilityMax = 1;
+
+export const voiceSpeakBodySettingsSimilarityBoostMin = 0;
+export const voiceSpeakBodySettingsSimilarityBoostMax = 1;
+
+export const voiceSpeakBodySettingsStyleMin = 0;
+export const voiceSpeakBodySettingsStyleMax = 1;
+
+export const VoiceSpeakBody = zod.object({
+  text: zod
+    .string()
+    .min(1)
+    .max(voiceSpeakBodyTextMax)
+    .describe(
+      "The text to speak. Trimmed and bounded to keep the cache key sane.",
+    ),
+  voiceId: zod
+    .string()
+    .min(1)
+    .describe("ElevenLabs voice id (a stable id from voiceProfiles.ts)."),
+  modelId: zod
+    .string()
+    .optional()
+    .describe('ElevenLabs model id. Defaults to \"eleven_multilingual_v2\".'),
+  settings: zod
+    .object({
+      stability: zod
+        .number()
+        .min(voiceSpeakBodySettingsStabilityMin)
+        .max(voiceSpeakBodySettingsStabilityMax)
+        .optional(),
+      similarityBoost: zod
+        .number()
+        .min(voiceSpeakBodySettingsSimilarityBoostMin)
+        .max(voiceSpeakBodySettingsSimilarityBoostMax)
+        .optional(),
+      style: zod
+        .number()
+        .min(voiceSpeakBodySettingsStyleMin)
+        .max(voiceSpeakBodySettingsStyleMax)
+        .optional(),
+      useSpeakerBoost: zod.boolean().optional(),
+    })
+    .optional(),
+});

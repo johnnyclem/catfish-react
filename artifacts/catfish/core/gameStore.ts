@@ -15,6 +15,7 @@
  * is read on cold start.
  */
 
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect } from "react";
 import { create } from "zustand";
 
@@ -60,6 +61,14 @@ interface GameStateValue {
   hydrated: boolean;
   run: CaseRun | null;
   /**
+   * Persistent voice-mute preference. Lives at the top of the store
+   * (not on CaseRun) because it must survive `resetRun()` and span
+   * runs — the player should not have to re-mute every cold start.
+   * Backed by its own AsyncStorage key so the larger CaseRun blob
+   * isn't rewritten on every toggle.
+   */
+  voiceMuted: boolean;
+  /**
    * In-memory only — the most recent Fact removed via `removeFact`,
    * stashed so the Journal tab can offer a brief undo affordance.
    * Cleared when the player either undoes the discard, discards
@@ -69,6 +78,8 @@ interface GameStateValue {
    */
   recentlyDiscarded: Fact | null;
   hydrate: () => Promise<void>;
+  /** Toggle voice playback. Persists to AsyncStorage immediately. */
+  setVoiceMuted: (muted: boolean) => Promise<void>;
   startNewRun: (forced?: KillerIdentity) => Promise<CaseRun>;
   advanceDay: () => Promise<void>;
   swipe: (
@@ -175,6 +186,31 @@ function migrateRun(run: CaseRun | null): CaseRun | null {
 let hydrationPromise: Promise<void> | null = null;
 
 /**
+ * AsyncStorage key for the voice-mute preference. Versioned so a
+ * future "v2" with a richer audio prefs object can migrate from
+ * the boolean shape without losing the player's choice.
+ */
+const VOICE_MUTED_KEY = "catfish/prefs/voice_muted/v1";
+
+async function loadVoiceMuted(): Promise<boolean> {
+  try {
+    const raw = await AsyncStorage.getItem(VOICE_MUTED_KEY);
+    return raw === "1";
+  } catch {
+    return false;
+  }
+}
+
+async function saveVoiceMuted(muted: boolean): Promise<void> {
+  try {
+    await AsyncStorage.setItem(VOICE_MUTED_KEY, muted ? "1" : "0");
+  } catch {
+    // Persistence failure is non-fatal — the in-memory toggle still
+    // works for the rest of the session.
+  }
+}
+
+/**
  * Window for the Journal's "fact discarded" undo affordance. Owned by
  * the store (not the banner component) so expiry is enforced even if
  * the player navigates away from the Journal tab before tapping undo.
@@ -199,19 +235,37 @@ function cancelDiscardTimer(): void {
 export const useGameState = create<GameStateValue>((set, get) => ({
   hydrated: false,
   run: null,
+  voiceMuted: false,
   recentlyDiscarded: null,
 
   hydrate: async () => {
     if (hydrationPromise) return hydrationPromise;
     hydrationPromise = (async () => {
-      const existing = migrateRun(await loadActiveRun());
+      // Load run + voice prefs in parallel — they live in different
+      // AsyncStorage rows and have no ordering dependency.
+      const [existing, muted] = await Promise.all([
+        loadActiveRun().then(migrateRun),
+        loadVoiceMuted(),
+      ]);
       // Cold-start invariant: undo state is in-memory only, so a
       // dangling stash from a prior process is impossible. Still,
       // explicitly clearing here documents the contract.
       cancelDiscardTimer();
-      set({ run: existing, hydrated: true, recentlyDiscarded: null });
+      set({
+        run: existing,
+        hydrated: true,
+        voiceMuted: muted,
+        recentlyDiscarded: null,
+      });
     })();
     return hydrationPromise;
+  },
+
+  setVoiceMuted: async (muted) => {
+    // Update local state synchronously so the toggle UI flips
+    // instantly; persist asynchronously in the background.
+    set({ voiceMuted: muted });
+    await saveVoiceMuted(muted);
   },
 
   startNewRun: async (forced) => {

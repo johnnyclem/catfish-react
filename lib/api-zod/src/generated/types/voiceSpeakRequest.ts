@@ -5,28 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-export interface HealthStatus {
-  status: string;
-}
-
-export interface VoiceSettings {
-  /**
-   * @minimum 0
-   * @maximum 1
-   */
-  stability?: number;
-  /**
-   * @minimum 0
-   * @maximum 1
-   */
-  similarityBoost?: number;
-  /**
-   * @minimum 0
-   * @maximum 1
-   */
-  style?: number;
-  useSpeakerBoost?: boolean;
-}
+import type { VoiceSettings } from "./voiceSettings";
 
 export interface VoiceSpeakRequest {
   /**
@@ -43,9 +22,4 @@ export interface VoiceSpeakRequest {
   /** ElevenLabs model id. Defaults to "eleven_multilingual_v2". */
   modelId?: string;
   settings?: VoiceSettings;
-}
-
-export interface VoiceErrorResponse {
-  error: string;
-  detail?: string;
 }

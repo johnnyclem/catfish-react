@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: voice
+    description: Text-to-speech voice synthesis
 paths:
   /healthz:
     get:
@@ -24,6 +26,42 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /voice/speak:
+    post:
+      operationId: voiceSpeak
+      tags: [voice]
+      summary: Synthesize speech via ElevenLabs
+      description: |
+        Synthesizes the given text into speech using the supplied ElevenLabs
+        voice id. Responses are cached on disk by the server keyed on the
+        sha256 of the (voiceId, settings, text) tuple, so identical requests
+        are served from cache without re-billing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VoiceSpeakRequest"
+      responses:
+        "200":
+          description: MP3 audio bytes
+          content:
+            audio/mpeg:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoiceErrorResponse"
+        "502":
+          description: Upstream ElevenLabs failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoiceErrorResponse"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +71,49 @@ components:
           type: string
       required:
         - status
-
+    VoiceSpeakRequest:
+      type: object
+      required:
+        - text
+        - voiceId
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 4000
+          description: The text to speak. Trimmed and bounded to keep the cache key sane.
+        voiceId:
+          type: string
+          minLength: 1
+          description: ElevenLabs voice id (a stable id from voiceProfiles.ts).
+        modelId:
+          type: string
+          description: ElevenLabs model id. Defaults to "eleven_multilingual_v2".
+        settings:
+          $ref: "#/components/schemas/VoiceSettings"
+    VoiceSettings:
+      type: object
+      properties:
+        stability:
+          type: number
+          minimum: 0
+          maximum: 1
+        similarityBoost:
+          type: number
+          minimum: 0
+          maximum: 1
+        style:
+          type: number
+          minimum: 0
+          maximum: 1
+        useSpeakerBoost:
+          type: boolean
+    VoiceErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+        detail:
+          type: string

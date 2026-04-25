@@ -13,7 +13,7 @@
 
 import { router } from "expo-router";
 import { useState } from "react";
-import { Platform, ScrollView, StyleSheet, View } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AssetImage } from "@/components/AssetImage";
@@ -33,6 +33,8 @@ export default function ProfileTab() {
   const run = useGameState((s) => s.run);
   const startNewRun = useGameState((s) => s.startNewRun);
   const resetRun = useGameState((s) => s.resetRun);
+  const voiceMuted = useGameState((s) => s.voiceMuted);
+  const setVoiceMuted = useGameState((s) => s.setVoiceMuted);
   const [debugMessage, setDebugMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -100,6 +102,48 @@ export default function ProfileTab() {
             Bio editing arrives in a later pass.
           </PixelText>
         </View>
+      </PixelPanel>
+
+      <PixelPanel style={styles.audioCard}>
+        <PixelText size={9} color={cfPalette.cyan} uppercase>
+          audio
+        </PixelText>
+        <PixelText size={7} color={cfPalette.ash} style={{ marginTop: 6, lineHeight: 11 }}>
+          Voices for suspect messages. Choice survives across runs.
+        </PixelText>
+        <Pressable
+          onPress={() => {
+            void setVoiceMuted(!voiceMuted);
+          }}
+          style={({ pressed }) => [
+            styles.voiceToggle,
+            {
+              opacity: pressed ? 0.6 : 1,
+              borderColor: voiceMuted ? cfPalette.fog : cfPalette.cyan,
+            },
+          ]}
+          testID="voice-mute-toggle"
+          accessibilityRole="switch"
+          accessibilityState={{ checked: !voiceMuted }}
+          accessibilityLabel={voiceMuted ? "Voices muted" : "Voices on"}
+        >
+          <PixelText
+            size={9}
+            color={voiceMuted ? cfPalette.fog : cfPalette.cyan}
+            uppercase
+            glow={!voiceMuted}
+          >
+            {voiceMuted ? "voices: off" : "voices: on"}
+          </PixelText>
+          <PixelText
+            size={6}
+            color={cfPalette.ash}
+            style={{ marginTop: 4 }}
+            uppercase
+          >
+            tap to toggle
+          </PixelText>
+        </Pressable>
       </PixelPanel>
 
       {run && (
@@ -209,6 +253,17 @@ const styles = StyleSheet.create({
   statsCard: {
     marginTop: 14,
     padding: 14,
+  },
+  audioCard: {
+    marginTop: 14,
+    padding: 14,
+  },
+  voiceToggle: {
+    marginTop: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderWidth: 2,
+    alignItems: "center",
   },
   statsGrid: {
     flexDirection: "row",

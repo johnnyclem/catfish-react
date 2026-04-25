@@ -24,12 +24,22 @@
  * scene that matches their bio) and for journal location markers in
  * Pass 3. They are intentionally not wired into any screen yet.
  *
- * Brand foundation (A001-A005, A201, A303, A503-A504) bundled in this
- * pass. A001 (title card) and A200 (MATCH! stamp) are upgraded art that
- * auto-appear on the title screen and match overlay. The remaining
- * pieces — app icons (A002-A004), wordmark (A005), NOPE stamp (A201),
- * ornate portrait frame (A303), and the two-sided chat bubbles
- * (A503/A504) — await screen-level wiring in later passes.
+ * Brand foundation (A001-A005, A201, A303, A503-A504) bundled in an
+ * earlier pass. A001 (title card) and A200 (MATCH! stamp) are upgraded
+ * art that auto-appear on the title screen and match overlay. The
+ * remaining brand pieces — app icons (A002-A004), wordmark (A005),
+ * NOPE stamp (A201), ornate portrait frame (A303), and the two-sided
+ * chat bubbles (A503/A504) — await screen-level wiring in later passes.
+ *
+ * UI library expansion (A021, A103-A109, A202-A204, A304, A401, A505)
+ * bundled this pass. A300 (case journal book) and A501 (charm fire)
+ * were upgraded in place. A021 (gothic accuse-modal background with
+ * scales-of-justice motif) finally fills its long-reserved slot. The
+ * rest are FX sheets (exclamation, hearts, search flash-bang, glitch
+ * frames, scanline strips), banner overlays (purple/pink lower-thirds,
+ * silhouette flash), the square profile frame (A304), the accuse seal
+ * badge (A401), and the chat-tab icon (A505) — all sitting in the
+ * catalog awaiting Pass 2/3 screen-level wiring.
  */
 
 import { ImageSourcePropType } from "react-native";
@@ -86,18 +96,30 @@ export type AssetId =
   | "A101_fx_glitch_overlay"
   | "A102_fx_message_pop"
   | "A103_fx_unmatch_shatter"
+  | "A104_fx_exclamation_sheet"
+  | "A105_fx_heart_animation_alt"
+  | "A106_fx_hearts_three_stage"
+  | "A107_fx_search_flashbang"
+  | "A108_fx_scanline_strips"
+  | "A109_fx_glitch_frame_sheet"
   | "A200_match_overlay"
   | "A201_nope_stamp"
+  | "A202_overlay_alert_lower_third"
+  | "A203_overlay_silhouette_flash"
+  | "A204_overlay_title_lower_third"
   | "A300_journal_book"
   | "A301_search_sparkle"
   | "A302_heart_ring"
   | "A303_portrait_frame"
+  | "A304_profile_pic_frame"
   | "A400_button_red"
+  | "A401_badge_accuse_red"
   | "A500_avatar_placeholder"
   | "A501_charm_fire"
   | "A502_speech_bubble"
   | "A503_speech_bubble_outgoing"
   | "A504_speech_bubble_incoming"
+  | "A505_chat_icon"
   | "A600_bg_parking_garage_b2"
   | "A601_bg_bedroom_night"
   | "A602_bg_lounge_skyline"
@@ -113,6 +135,7 @@ const REGISTRY: Partial<Record<AssetId, ImageSourcePropType>> = {
   A003_app_icon_alt_anchor: require("./images/A003_app_icon_alt_anchor.png"),
   A004_app_icon_alt_hook: require("./images/A004_app_icon_alt_hook.png"),
   A005_wordmark_catfish: require("./images/A005_wordmark_catfish.png"),
+  A021_accuse_modal_bg: require("./images/A021_accuse_modal_bg.png"),
   A034_miles_portrait_neutral: require("./images/A034_miles_portrait_neutral.png"),
   A035_miles_portrait_smile: require("./images/A035_miles_portrait_smile.png"),
   A036_miles_portrait_flirty: require("./images/A036_miles_portrait_flirty.png"),
@@ -153,18 +176,31 @@ const REGISTRY: Partial<Record<AssetId, ImageSourcePropType>> = {
   A071_jules_fullbody_dressed_up: require("./images/A071_jules_fullbody_dressed_up.png"),
   A073_sam_fullbody_casual: require("./images/A073_sam_fullbody_casual.png"),
   A074_sam_fullbody_formal: require("./images/A074_sam_fullbody_formal.png"),
+  A103_fx_unmatch_shatter: require("./images/A103_fx_unmatch_shatter.png"),
+  A104_fx_exclamation_sheet: require("./images/A104_fx_exclamation_sheet.png"),
+  A105_fx_heart_animation_alt: require("./images/A105_fx_heart_animation_alt.png"),
+  A106_fx_hearts_three_stage: require("./images/A106_fx_hearts_three_stage.png"),
+  A107_fx_search_flashbang: require("./images/A107_fx_search_flashbang.png"),
+  A108_fx_scanline_strips: require("./images/A108_fx_scanline_strips.png"),
+  A109_fx_glitch_frame_sheet: require("./images/A109_fx_glitch_frame_sheet.png"),
   A200_match_overlay: require("./images/A200_match_overlay.png"),
   A201_nope_stamp: require("./images/A201_nope_stamp.png"),
+  A202_overlay_alert_lower_third: require("./images/A202_overlay_alert_lower_third.png"),
+  A203_overlay_silhouette_flash: require("./images/A203_overlay_silhouette_flash.png"),
+  A204_overlay_title_lower_third: require("./images/A204_overlay_title_lower_third.png"),
   A300_journal_book: require("./images/A300_journal_book.png"),
   A301_search_sparkle: require("./images/A301_search_sparkle.png"),
   A302_heart_ring: require("./images/A302_heart_ring.png"),
   A303_portrait_frame: require("./images/A303_portrait_frame.png"),
+  A304_profile_pic_frame: require("./images/A304_profile_pic_frame.png"),
   A400_button_red: require("./images/A400_button_red.png"),
+  A401_badge_accuse_red: require("./images/A401_badge_accuse_red.png"),
   A500_avatar_placeholder: require("./images/A500_avatar_placeholder.png"),
   A501_charm_fire: require("./images/A501_charm_fire.png"),
   A502_speech_bubble: require("./images/A502_speech_bubble.png"),
   A503_speech_bubble_outgoing: require("./images/A503_speech_bubble_outgoing.png"),
   A504_speech_bubble_incoming: require("./images/A504_speech_bubble_incoming.png"),
+  A505_chat_icon: require("./images/A505_chat_icon.png"),
   A600_bg_parking_garage_b2: require("./images/A600_bg_parking_garage_b2.png"),
   A601_bg_bedroom_night: require("./images/A601_bg_bedroom_night.png"),
   A602_bg_lounge_skyline: require("./images/A602_bg_lounge_skyline.png"),

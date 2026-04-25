@@ -17,6 +17,14 @@
  *   A5xx — avatar placeholders / charms / speech bubbles
  *          (A503 = outgoing/sender pink, A504 = incoming/received gray)
  *   A6xx — background scene art (rooms, locations, exteriors)
+ *   A7xx — character social/lifestyle posts (in-scene profile-gallery
+ *          square pics — what a character would post on a dating app
+ *          beyond their primary portrait). Per-character sub-ranges:
+ *          A700-A719 Kai, A720-A739 River, A740-A759 Miles, etc.
+ *          Group-photo posts are filed under whichever character is
+ *          most prominent / posted them; they may be cross-referenced
+ *          from other characters' galleries since the same shot can
+ *          live on multiple profiles.
  *   A9xx — spritesheet / reference art
  *
  * Background scenes (A6xx) are bundled now and earmarked for use as
@@ -144,6 +152,16 @@ export type AssetId =
   | "A604_bg_park_sunset"
   | "A605_bg_cafe_day"
   | "A606_bg_cafe_night"
+  | "A700_kai_social_cafe_window"
+  | "A701_kai_social_studio_painting"
+  | "A702_kai_social_bridge_overlook"
+  | "A703_kai_social_bridge_pier"
+  | "A704_kai_social_group_bar_five"
+  | "A705_kai_social_group_bar_four"
+  | "A706_kai_social_group_burgers"
+  | "A720_river_social_mountain_overlook"
+  | "A721_river_social_cozy_window"
+  | "A740_miles_social_office_skyline"
   | "A999_spritesheet_reference";
 
 const REGISTRY: Partial<Record<AssetId, ImageSourcePropType>> = {
@@ -235,6 +253,16 @@ const REGISTRY: Partial<Record<AssetId, ImageSourcePropType>> = {
   A604_bg_park_sunset: require("./images/A604_bg_park_sunset.png"),
   A605_bg_cafe_day: require("./images/A605_bg_cafe_day.png"),
   A606_bg_cafe_night: require("./images/A606_bg_cafe_night.png"),
+  A700_kai_social_cafe_window: require("./images/A700_kai_social_cafe_window.png"),
+  A701_kai_social_studio_painting: require("./images/A701_kai_social_studio_painting.png"),
+  A702_kai_social_bridge_overlook: require("./images/A702_kai_social_bridge_overlook.png"),
+  A703_kai_social_bridge_pier: require("./images/A703_kai_social_bridge_pier.png"),
+  A704_kai_social_group_bar_five: require("./images/A704_kai_social_group_bar_five.png"),
+  A705_kai_social_group_bar_four: require("./images/A705_kai_social_group_bar_four.png"),
+  A706_kai_social_group_burgers: require("./images/A706_kai_social_group_burgers.png"),
+  A720_river_social_mountain_overlook: require("./images/A720_river_social_mountain_overlook.png"),
+  A721_river_social_cozy_window: require("./images/A721_river_social_cozy_window.png"),
+  A740_miles_social_office_skyline: require("./images/A740_miles_social_office_skyline.png"),
   A999_spritesheet_reference: require("./images/A999_spritesheet_reference.png"),
 };
 

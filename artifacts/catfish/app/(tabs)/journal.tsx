@@ -10,10 +10,15 @@
  * which Pass 2's chat UI wraps around each message bubble. The gesture
  * calls into `useGameState().commitFact`, which persists Facts to
  * AsyncStorage so the case file survives a cold start.
+ *
+ * Once a player has captured a lot of Facts the raw stack becomes
+ * hard to scan, so the tab also exposes a per-suspect chip filter and
+ * a sort toggle (newest first vs by day captured). These are purely
+ * view-side — no schema changes.
  */
 
-import { useMemo } from "react";
-import { Platform, ScrollView, StyleSheet, View } from "react-native";
+import { useMemo, useState } from "react";
+import { Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -25,6 +30,10 @@ import { cfPalette } from "@/constants/colors";
 import { useGameState } from "@/core/gameStore";
 import { Candidate, CandidateId, Fact } from "@/core/models";
 import { EmptyState } from "@/features/journal/EmptyState";
+import {
+  JournalControls,
+  JournalSortMode,
+} from "@/features/journal/JournalControls";
 import { SuspectGroup } from "@/features/journal/SuspectGroup";
 
 interface CandidateGroup {
@@ -38,6 +47,10 @@ export default function JournalTab() {
   const removeFact = useGameState((s) => s.removeFact);
   const topPad = Math.max(insets.top, Platform.OS === "web" ? 24 : 12);
 
+  const [selectedSuspectId, setSelectedSuspectId] =
+    useState<CandidateId | null>(null);
+  const [sortMode, setSortMode] = useState<JournalSortMode>("newest");
+
   const committed = useMemo<Fact[]>(
     () =>
       (run?.facts ?? []).filter(
@@ -46,7 +59,9 @@ export default function JournalTab() {
     [run?.facts],
   );
 
-  const groups = useMemo<CandidateGroup[]>(() => {
+  // All groups *before* the suspect filter is applied — used both to
+  // power the chip row and to detect when filtering hid everything.
+  const allGroups = useMemo<CandidateGroup[]>(() => {
     if (!run) return [];
     const byCandidate = new Map<CandidateId, Fact[]>();
     for (const fact of committed) {
@@ -61,27 +76,69 @@ export default function JournalTab() {
     for (const [cid, facts] of byCandidate.entries()) {
       const candidate = run.deck.find((c) => c.id === cid);
       if (!candidate) continue; // Stale capture — skip silently.
-      // Sort facts newest-first within a suspect block.
-      const sorted = [...facts].sort((a, b) =>
-        (b.capturedAt ?? "").localeCompare(a.capturedAt ?? ""),
-      );
-      out.push({ candidate, facts: sorted });
+      out.push({ candidate, facts });
     }
-
-    // Stable ordering: most recent capture activity first so the
-    // suspect the player just filed against bubbles to the top.
-    out.sort((a, b) => {
-      const ta = a.facts[0]?.capturedAt ?? "";
-      const tb = b.facts[0]?.capturedAt ?? "";
-      return tb.localeCompare(ta);
-    });
     return out;
   }, [run, committed]);
+
+  // Apply the active sort + suspect filter on top of the raw groups.
+  const groups = useMemo<CandidateGroup[]>(() => {
+    const filtered =
+      selectedSuspectId == null
+        ? allGroups
+        : allGroups.filter((g) => g.candidate.id === selectedSuspectId);
+
+    const sorted = filtered.map((g) => {
+      const facts = [...g.facts];
+      if (sortMode === "newest") {
+        facts.sort((a, b) =>
+          (b.capturedAt ?? "").localeCompare(a.capturedAt ?? ""),
+        );
+      } else {
+        // "By day captured" — chronological: earliest day first, and
+        // within a single day fall back to capturedAt ascending so the
+        // order inside a day stays stable.
+        facts.sort((a, b) => {
+          const da = a.capturedOnDay ?? 0;
+          const db = b.capturedOnDay ?? 0;
+          if (da !== db) return da - db;
+          return (a.capturedAt ?? "").localeCompare(b.capturedAt ?? "");
+        });
+      }
+      return { candidate: g.candidate, facts };
+    });
+
+    if (sortMode === "newest") {
+      // Suspect with the most recent capture floats to the top.
+      sorted.sort((a, b) => {
+        const ta = a.facts[0]?.capturedAt ?? "";
+        const tb = b.facts[0]?.capturedAt ?? "";
+        return tb.localeCompare(ta);
+      });
+    } else {
+      // Suspect whose earliest captured fact lands first chronologically.
+      sorted.sort((a, b) => {
+        const da = a.facts[0]?.capturedOnDay ?? 0;
+        const db = b.facts[0]?.capturedOnDay ?? 0;
+        if (da !== db) return da - db;
+        return (a.facts[0]?.capturedAt ?? "").localeCompare(
+          b.facts[0]?.capturedAt ?? "",
+        );
+      });
+    }
+    return sorted;
+  }, [allGroups, selectedSuspectId, sortMode]);
 
   const hasFacts = committed.length > 0;
   const matches = run?.matches ?? [];
   const factsCount = committed.length;
-  const suspectsCount = groups.length;
+  const suspectsCount = allGroups.length;
+  const filterIsActive = selectedSuspectId !== null;
+  const filterHidEverything = hasFacts && groups.length === 0;
+  const clearFilters = () => {
+    setSelectedSuspectId(null);
+    setSortMode("newest");
+  };
 
   return (
     <View style={[styles.root, { paddingTop: topPad }]}>
@@ -108,11 +165,28 @@ export default function JournalTab() {
         </PixelPanel>
       )}
 
+      {hasFacts && (
+        <JournalControls
+          suspects={allGroups.map((g) => g.candidate)}
+          selectedSuspectId={selectedSuspectId}
+          onSelectSuspect={setSelectedSuspectId}
+          sortMode={sortMode}
+          onChangeSort={setSortMode}
+        />
+      )}
+
       <ScrollView
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
       >
-        {hasFacts ? (
+        {!hasFacts ? (
+          <EmptyState hasMatches={matches.length > 0} />
+        ) : filterHidEverything ? (
+          <FilterEmptyState
+            filterIsActive={filterIsActive}
+            onClear={clearFilters}
+          />
+        ) : (
           groups.map((g) => (
             <SuspectGroup
               key={g.candidate.id}
@@ -123,8 +197,6 @@ export default function JournalTab() {
               }}
             />
           ))
-        ) : (
-          <EmptyState hasMatches={matches.length > 0} />
         )}
       </ScrollView>
     </View>
@@ -141,6 +213,44 @@ function SummaryStat({ label, value }: { label: string; value: string }) {
         {label}
       </PixelText>
     </View>
+  );
+}
+
+interface FilterEmptyStateProps {
+  filterIsActive: boolean;
+  onClear: () => void;
+}
+
+function FilterEmptyState({ filterIsActive, onClear }: FilterEmptyStateProps) {
+  return (
+    <PixelPanel variant="raised" style={styles.filterEmpty}>
+      <PixelText size={9} color={cfPalette.cyan} uppercase glow align="center">
+        no facts in view
+      </PixelText>
+      <PixelText
+        size={7}
+        color={cfPalette.bone}
+        align="center"
+        style={styles.filterEmptyBody}
+      >
+        {filterIsActive
+          ? "The suspect chip at the top is filtering this view. Tap “All” — or tap the active chip again — to see every captured Fact."
+          : "Adjust the filter chips above to bring captured Facts back into view."}
+      </PixelText>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Clear journal filters"
+        onPress={onClear}
+        style={({ pressed }) => [
+          styles.clearBtn,
+          pressed && { opacity: 0.7 },
+        ]}
+      >
+        <PixelText size={7} color={cfPalette.void} uppercase>
+          clear filters
+        </PixelText>
+      </Pressable>
+    </PixelPanel>
   );
 }
 
@@ -172,5 +282,23 @@ const styles = StyleSheet.create({
   statLabel: { marginTop: 4 },
   list: {
     paddingBottom: Platform.OS === "web" ? 100 : 24,
+  },
+  filterEmpty: {
+    paddingVertical: 18,
+    paddingHorizontal: 18,
+    alignItems: "center",
+    marginTop: 12,
+  },
+  filterEmptyBody: {
+    marginTop: 12,
+    lineHeight: 13,
+  },
+  clearBtn: {
+    marginTop: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: cfPalette.cyan,
+    borderWidth: 2,
+    borderColor: cfPalette.cyanHot,
   },
 });

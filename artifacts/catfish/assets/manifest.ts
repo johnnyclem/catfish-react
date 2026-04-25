@@ -21,14 +21,19 @@
  *          square pics — what a character would post on a dating app
  *          beyond their primary portrait). Per-character sub-ranges:
  *          A700-A719 Kai, A720-A739 River, A740-A759 Miles,
- *          A760-A779 Sam, A780-A799 Jules,
- *          A800-A819 Tessa, A820-A839 Ren, A840-A859 Delphine
- *          (last three reserved for future drops).
+ *          A760-A779 Sam, A780-A799 Jules.
  *          Group-photo posts are filed under whichever character is
  *          most prominent / posted them; they may be cross-referenced
  *          from other characters' galleries since the same shot can
  *          live on multiple profiles.
- *   A9xx — spritesheet / reference art
+ *   A8xx — narrative cut-scenes / endings (16:9 widescreen story
+ *          beats shown between or after gameplay — arrest endings,
+ *          escape hooks, fail states, etc.). A800-A803 are the four
+ *          run-end cut-scenes today; future story beats keep the
+ *          A8xx range.
+ *   A9xx — spritesheet / reference art, plus reserved sub-ranges
+ *          for the remaining killers' future social-post drops:
+ *          A900-A919 Tessa, A920-A939 Ren, A940-A959 Delphine.
  *
  * Background scenes (A6xx) are bundled now and earmarked for use as
  * chat-thread backdrops in Pass 2 (each candidate-thread can pin a
@@ -175,6 +180,10 @@ export type AssetId =
   | "A781_jules_social_record_store"
   | "A782_jules_social_group_divebar"
   | "A783_jules_social_guitar_studio"
+  | "A800_ending_arrest"
+  | "A801_ending_escaped"
+  | "A802_ending_player_killed"
+  | "A803_ending_wrong_accusation"
   | "A999_spritesheet_reference";
 
 const REGISTRY: Partial<Record<AssetId, ImageSourcePropType>> = {
@@ -286,6 +295,10 @@ const REGISTRY: Partial<Record<AssetId, ImageSourcePropType>> = {
   A781_jules_social_record_store: require("./images/A781_jules_social_record_store.png"),
   A782_jules_social_group_divebar: require("./images/A782_jules_social_group_divebar.png"),
   A783_jules_social_guitar_studio: require("./images/A783_jules_social_guitar_studio.png"),
+  A800_ending_arrest: require("./images/A800_ending_arrest.png"),
+  A801_ending_escaped: require("./images/A801_ending_escaped.png"),
+  A802_ending_player_killed: require("./images/A802_ending_player_killed.png"),
+  A803_ending_wrong_accusation: require("./images/A803_ending_wrong_accusation.png"),
   A999_spritesheet_reference: require("./images/A999_spritesheet_reference.png"),
 };
 

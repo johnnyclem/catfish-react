@@ -20,7 +20,10 @@
  *   A7xx — character social/lifestyle posts (in-scene profile-gallery
  *          square pics — what a character would post on a dating app
  *          beyond their primary portrait). Per-character sub-ranges:
- *          A700-A719 Kai, A720-A739 River, A740-A759 Miles, etc.
+ *          A700-A719 Kai, A720-A739 River, A740-A759 Miles,
+ *          A760-A779 Sam, A780-A799 Jules,
+ *          A800-A819 Tessa, A820-A839 Ren, A840-A859 Delphine
+ *          (last three reserved for future drops).
  *          Group-photo posts are filed under whichever character is
  *          most prominent / posted them; they may be cross-referenced
  *          from other characters' galleries since the same shot can
@@ -162,6 +165,16 @@ export type AssetId =
   | "A720_river_social_mountain_overlook"
   | "A721_river_social_cozy_window"
   | "A740_miles_social_office_skyline"
+  | "A741_miles_social_bridge_selfie"
+  | "A742_miles_social_cafe_thinking"
+  | "A760_sam_social_group_bar"
+  | "A761_sam_social_garden_volunteer"
+  | "A762_sam_social_chicago_bean"
+  | "A763_sam_social_cafe_window"
+  | "A780_jules_social_london_bigben"
+  | "A781_jules_social_record_store"
+  | "A782_jules_social_group_divebar"
+  | "A783_jules_social_guitar_studio"
   | "A999_spritesheet_reference";
 
 const REGISTRY: Partial<Record<AssetId, ImageSourcePropType>> = {
@@ -263,6 +276,16 @@ const REGISTRY: Partial<Record<AssetId, ImageSourcePropType>> = {
   A720_river_social_mountain_overlook: require("./images/A720_river_social_mountain_overlook.png"),
   A721_river_social_cozy_window: require("./images/A721_river_social_cozy_window.png"),
   A740_miles_social_office_skyline: require("./images/A740_miles_social_office_skyline.png"),
+  A741_miles_social_bridge_selfie: require("./images/A741_miles_social_bridge_selfie.png"),
+  A742_miles_social_cafe_thinking: require("./images/A742_miles_social_cafe_thinking.png"),
+  A760_sam_social_group_bar: require("./images/A760_sam_social_group_bar.png"),
+  A761_sam_social_garden_volunteer: require("./images/A761_sam_social_garden_volunteer.png"),
+  A762_sam_social_chicago_bean: require("./images/A762_sam_social_chicago_bean.png"),
+  A763_sam_social_cafe_window: require("./images/A763_sam_social_cafe_window.png"),
+  A780_jules_social_london_bigben: require("./images/A780_jules_social_london_bigben.png"),
+  A781_jules_social_record_store: require("./images/A781_jules_social_record_store.png"),
+  A782_jules_social_group_divebar: require("./images/A782_jules_social_group_divebar.png"),
+  A783_jules_social_guitar_studio: require("./images/A783_jules_social_guitar_studio.png"),
   A999_spritesheet_reference: require("./images/A999_spritesheet_reference.png"),
 };
 

@@ -28,11 +28,19 @@ import { ImageSourcePropType } from "react-native";
 export type AssetId =
   | "A001_title_logo"
   | "A021_accuse_modal_bg"
+  | "A040_kai_portrait_flirty"
+  | "A041_kai_portrait_sinister"
+  | "A042_kai_portrait_uneasy"
+  | "A043_kai_portrait_smile"
+  | "A044_kai_portrait_curious"
+  | "A045_kai_portrait_neutral"
   | "A047_jules_portrait_smile"
   | "A048_jules_portrait_flirty"
   | "A049_jules_portrait_curious"
   | "A050_jules_portrait_uneasy"
   | "A051_jules_portrait_sinister"
+  | "A064_kai_fullbody_casual"
+  | "A065_kai_fullbody_formal"
   | "A070_jules_fullbody_casual"
   | "A071_jules_fullbody_dressed_up"
   | "A072_player_fullbody_default"
@@ -59,11 +67,19 @@ export type AssetId =
 
 const REGISTRY: Partial<Record<AssetId, ImageSourcePropType>> = {
   A001_title_logo: require("./images/A001_title_logo.png"),
+  A040_kai_portrait_flirty: require("./images/A040_kai_portrait_flirty.png"),
+  A041_kai_portrait_sinister: require("./images/A041_kai_portrait_sinister.png"),
+  A042_kai_portrait_uneasy: require("./images/A042_kai_portrait_uneasy.png"),
+  A043_kai_portrait_smile: require("./images/A043_kai_portrait_smile.png"),
+  A044_kai_portrait_curious: require("./images/A044_kai_portrait_curious.png"),
+  A045_kai_portrait_neutral: require("./images/A045_kai_portrait_neutral.png"),
   A047_jules_portrait_smile: require("./images/A047_jules_portrait_smile.png"),
   A048_jules_portrait_flirty: require("./images/A048_jules_portrait_flirty.png"),
   A049_jules_portrait_curious: require("./images/A049_jules_portrait_curious.png"),
   A050_jules_portrait_uneasy: require("./images/A050_jules_portrait_uneasy.png"),
   A051_jules_portrait_sinister: require("./images/A051_jules_portrait_sinister.png"),
+  A064_kai_fullbody_casual: require("./images/A064_kai_fullbody_casual.png"),
+  A065_kai_fullbody_formal: require("./images/A065_kai_fullbody_formal.png"),
   A070_jules_fullbody_casual: require("./images/A070_jules_fullbody_casual.png"),
   A071_jules_fullbody_dressed_up: require("./images/A071_jules_fullbody_dressed_up.png"),
   A200_match_overlay: require("./images/A200_match_overlay.png"),

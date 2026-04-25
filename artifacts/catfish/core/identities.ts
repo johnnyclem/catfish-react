@@ -1,18 +1,20 @@
 /**
  * KillerIdentity protocol + 6 identity modules.
  *
- * Pass 1: Miles and Jules are fully authored (seed candidates + narrative
- * beats); the other four (Tessa, Ren, Kai, Delphine) are typed stubs with
- * TODO markers — they still produce a valid five-candidate roster so the
- * swipe deck never crashes.
+ * Pass 1: Miles, Jules and Kai are fully authored (seed candidates +
+ * narrative beats); the other three (Tessa, Ren, Delphine) are typed
+ * stubs with TODO markers — they still produce a valid five-candidate
+ * roster so the swipe deck never crashes.
  *
- * Jules-specific asset notes:
- *   - A047 (smile) is wired into Jules's swipe-deck portrait below.
- *   - A048 (flirty), A049 (curious), A050 (uneasy), A051 (sinister) are
- *     bundled and registered for Pass 2 — they will drive expression
- *     swaps in chat threads (see beat-keyed mood transitions).
- *   - A070 (casual) and A071 (dressed_up) are bundled for Pass 3 —
- *     fullbody renders for the Profile / Journal accusation modal.
+ * Authored-character asset notes:
+ *   Jules — A047 (smile) is wired into his swipe-deck portrait below.
+ *     A048-A051 (flirty/curious/uneasy/sinister) and A070-A071 (casual
+ *     and dressed_up fullbody) are bundled for Pass 2 chat expression
+ *     swaps and Pass 3 Profile/Journal fullbody renders.
+ *   Kai — A043 (smile) is wired into his swipe-deck portrait below.
+ *     A040-A042, A044-A045 (flirty/sinister/uneasy/curious/neutral)
+ *     and A064-A065 (casual and formal fullbody) are bundled for the
+ *     same Pass 2 / Pass 3 consumption points.
  *
  * Pass 4 (Content/Bootstrapper) will replace these in-line rosters with
  * authored JSON fact universes resolved at run start.
@@ -220,13 +222,104 @@ const ren: IdentityModule = {
   beats: { 1: ["TODO Pass 4 — Ren day-1 beats."] },
 };
 
+/* ────────────────────────── Kai — fully authored ─────────────────────── */
+
 const kai: IdentityModule = {
   identity: "kai",
   displayName: "Kai Brennan",
   concept:
-    "TODO Pass 4 — bartender with a photographic memory and a fondness for liars.",
-  buildDeck: () => stubDeck("kai", "Kai", "Bartender. Will remember your order."),
-  beats: { 1: ["TODO Pass 4 — Kai day-1 beats."] },
+    "Street muralist with paint-splattered denim and a photographic memory for faces. Charming, easily distracted, never as scattered as he looks.",
+  buildDeck: () => [
+    {
+      id: newCandidateId(),
+      identity: "kai",
+      displayName: "Kai",
+      age: 25,
+      tagline: "Painter. I do walls. Mostly legal ones.",
+      bio:
+        "Spends his days on a scissor lift painting murals on the sides of buildings and his nights at gallery openings drinking the free wine. Remembers every face he's ever drawn, which is a lot of faces.",
+      portraitAssetId: "A043_kai_portrait_smile",
+      prompts: [
+        "First date energy: a long walk past every wall I've ever painted.",
+        "I'll know we're vibing when: you stop apologizing for being early.",
+        "Hot take: most people never actually look at anything.",
+      ],
+      isKillerCandidate: true,
+    },
+    {
+      id: newCandidateId(),
+      identity: "kai",
+      displayName: "Imani",
+      age: 29,
+      tagline: "Gallery curator. Soft hands, sharp opinions.",
+      bio:
+        "Runs a small project space on the east side. Hates the word 'edgy'. Will absolutely tell you what your apartment needs.",
+      portraitAssetId: "A500_avatar_placeholder",
+      prompts: [
+        "What I'm reading: an essay collection I'll quote at you uninvited.",
+        "Date plan: openings on Friday, dim sum after, no plans Saturday.",
+      ],
+      isKillerCandidate: false,
+    },
+    {
+      id: newCandidateId(),
+      identity: "kai",
+      displayName: "Dev",
+      age: 27,
+      tagline: "Ceramicist. Hands always a little dusty.",
+      bio:
+        "Throws pots in a shared studio behind a laundromat. Sells at one weekend market. Says he's bad at texting and means it.",
+      portraitAssetId: "A500_avatar_placeholder",
+      prompts: [
+        "I'd cook for you: something with too much garlic.",
+        "Studio rule: no shoes, no podcasts, only records.",
+      ],
+      isKillerCandidate: false,
+    },
+    {
+      id: newCandidateId(),
+      identity: "kai",
+      displayName: "Noor",
+      age: 31,
+      tagline: "Documentary photographer. Quiet in crowds.",
+      bio:
+        "Shoots for a small magazine that mostly survives on grants. Has been to a lot of places and doesn't lead with that.",
+      portraitAssetId: "A500_avatar_placeholder",
+      prompts: [
+        "Camera I actually use: a beat-up point-and-shoot from 2003.",
+        "Worst assignment: a cat show. (I loved it.)",
+      ],
+      isKillerCandidate: false,
+    },
+    {
+      id: newCandidateId(),
+      identity: "kai",
+      displayName: "Marco",
+      age: 28,
+      tagline: "Music producer. Lives at 110 BPM.",
+      bio:
+        "Mixes for local bands out of his bedroom. Will play you something he's working on within twenty minutes of meeting you.",
+      portraitAssetId: "A500_avatar_placeholder",
+      prompts: [
+        "Reference track for a first date: bossa nova, low volume.",
+        "I trust people who: clap on two and four.",
+      ],
+      isKillerCandidate: false,
+    },
+  ],
+  beats: {
+    1: [
+      "Kai opens with an offhand compliment about a detail in your photo most people miss — the necklace, a building behind you. Calls it 'painter brain'.",
+      "Mentions the wall he's finishing 'down by the old transit lot' — invites you to swing by while there's still afternoon light.",
+    ],
+    2: [
+      "Brings up a face from your photos he 'definitely recognizes from somewhere'. Names a venue. Doesn't elaborate.",
+      "Casually drops that he was 'painting late' the night something happened nearby (TODO Pass 4 — anchor fact).",
+    ],
+    3: [
+      "TODO Pass 4 — first contradiction beat (alleged paint-late alibi vs. an inconsistency in a photo's timestamp / weather / lighting).",
+    ],
+  },
 };
 
 const delphine: IdentityModule = {

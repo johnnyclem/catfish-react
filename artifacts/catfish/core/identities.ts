@@ -44,6 +44,9 @@
 import { decoysForKiller } from "./decoyPool";
 import {
   Candidate,
+  Deduction,
+  FactId,
+  FactPayload,
   KillerIdentity,
   newCandidateId,
 } from "./models";
@@ -76,6 +79,39 @@ export interface IdentityModule {
    * thread. Non-killer candidates fall back to INNOCENT_SCRIPT.
    */
   killerScript: DialogueTurn[];
+
+  /* ───────── Pass 4 — Clue Graph wiring ─────────────────────────────
+   *
+   * Each module declares which authored facts the bootstrapper should
+   * surface when this identity is the active killer, plus the
+   * solving deduction the accusation resolver scores against. See
+   * `core/factBootstrap.ts` and `core/accusation.ts` for the reader.
+   *
+   * Today: Miles is fully authored to mirror the doc's worked example.
+   * The other seven ship with minimal-but-valid stubs (one conditional
+   * fact, one solving deduction, no red herrings) — same staging
+   * convention as the existing `stubDeck` placeholders.
+   */
+
+  /** Authored fact ids only included when this identity is the killer. */
+  conditionalFactIDs: FactId[];
+  /**
+   * Per-killer payload swaps for `kind: "variable"` rows in the
+   * universe. The bootstrapper substitutes these in over the row's
+   * default payload before the Fact lands on the run.
+   */
+  variableOverrides: Record<FactId, FactPayload>;
+  /**
+   * The deduction the accusation resolver scores the player's
+   * discovered fact set against. Required, even for the stub
+   * identities — the resolver needs *something* to subset-check.
+   */
+  solvingDeduction: Deduction;
+  /**
+   * Fact ids that look damning but aren't part of the solving
+   * deduction. Empty by default for the stub identities.
+   */
+  redHerrings: FactId[];
 }
 
 /**
@@ -223,6 +259,40 @@ const miles: IdentityModule = {
       ],
     },
   ],
+
+  // Conditional facts only the player sees if Miles is the killer.
+  // Mirrors the doc's "double-blind tell" worked example.
+  conditionalFactIDs: [
+    "miles_portrait_uneasy_day5",
+    "dev_text_day4_miles_sus",
+  ],
+  // Variable payload swaps — same authored fact id, different content
+  // depending on who's actually guilty this run.
+  variableOverrides: {
+    miles_bio_downtown_view: {
+      text:
+        "Miles's bio: 'morning light over the canal'. The window faces the warehouse strip the news mentioned — directly across the water.",
+    },
+    miles_ig_window_reflection: {
+      text:
+        "Recent IG post — coffee on a windowsill. The reflection in the glass shows the bridge nearest the warehouse, on a morning the news called overcast — but the photo is bright.",
+    },
+  },
+  // The chain of evidence that clinches the case if Miles is the
+  // killer. The accusation resolver subset-checks discovered facts
+  // against this list.
+  solvingDeduction: {
+    id: "miles_solve_canal_warehouse",
+    requiredFactIDs: [
+      "miles_bio_downtown_view",
+      "miles_ig_window_reflection",
+      "miles_portrait_uneasy_day5",
+      "dev_text_day4_miles_sus",
+    ],
+    narrativeBeat:
+      "His own window gave him away. The bio said 'morning light over the canal'. The IG photo's reflection put him at the bridge by the warehouse on a day the weather report said it was raining. Dev's text put him there at night. The day-5 portrait was the face of someone who'd realized you'd noticed.",
+  },
+  redHerrings: [],
 };
 
 /* ───────────────────────── Tessa — STUB ──────────────────────────────── */
@@ -251,6 +321,34 @@ function stubDeck(
   ];
 }
 
+/**
+ * Stub Clue Graph wiring shared by the seven non-Miles identities.
+ * Each gets one conditional fact id (already authored in
+ * `factUniverse.json`) and a one-fact solving deduction so the
+ * resolver has something to subset-check, with TODO markers calling
+ * out where the next authoring pass should expand the chain.
+ */
+function stubGraph(
+  conditionalId: FactId,
+  killerName: string,
+): {
+  conditionalFactIDs: FactId[];
+  variableOverrides: Record<FactId, FactPayload>;
+  solvingDeduction: Deduction;
+  redHerrings: FactId[];
+} {
+  return {
+    conditionalFactIDs: [conditionalId],
+    variableOverrides: {},
+    solvingDeduction: {
+      id: `${conditionalId}_solve_stub`,
+      requiredFactIDs: [conditionalId],
+      narrativeBeat: `TODO Pass 4 — author ${killerName}'s solving narrative beat.`,
+    },
+    redHerrings: [],
+  };
+}
+
 const tessa: IdentityModule = {
   identity: "tessa",
   displayName: "Tessa Lin",
@@ -258,6 +356,7 @@ const tessa: IdentityModule = {
     "TODO Pass 4 — late-night radio host with too many keys on her keychain.",
   buildDeck: () => stubDeck("tessa", "Tessa", "Voice you'd recognize on the radio."),
   beats: { 1: ["TODO Pass 4 — Tessa day-1 beats."] },
+  ...stubGraph("tessa_conditional_lateshift", "Tessa"),
   killerScript: [
     {
       beatKey: "tessa_open",
@@ -304,6 +403,7 @@ const ren: IdentityModule = {
   concept: "TODO Pass 4 — competitive sailor with a temper he calls 'focus'.",
   buildDeck: () => stubDeck("ren", "Ren", "Sailor. Up at five. Don't ask why."),
   beats: { 1: ["TODO Pass 4 — Ren day-1 beats."] },
+  ...stubGraph("ren_conditional_dawn_alibi", "Ren"),
   killerScript: [
     {
       beatKey: "ren_open",
@@ -383,6 +483,7 @@ const kai: IdentityModule = {
       "TODO Pass 4 — first contradiction beat (alleged paint-late alibi vs. an inconsistency in a photo's timestamp / weather / lighting).",
     ],
   },
+  ...stubGraph("kai_conditional_paint_late", "Kai"),
   killerScript: [
     {
       beatKey: "kai_open",
@@ -430,6 +531,7 @@ const delphine: IdentityModule = {
   buildDeck: () =>
     stubDeck("delphine", "Delphine", "Makes scents. Also reads palms, maybe."),
   beats: { 1: ["TODO Pass 4 — Delphine day-1 beats."] },
+  ...stubGraph("delphine_conditional_smell_secret", "Delphine"),
   killerScript: [
     {
       beatKey: "delphine_open",
@@ -509,6 +611,41 @@ const jules: IdentityModule = {
       "TODO Pass 4 — first contradiction beat (closing-time alibi vs. the bar's posted hours).",
     ],
   },
+  // Jules is the doc's worked-example "other side" of the
+  // double-blind tell. When Jules is the killer, the same
+  // Miles-about variable facts read with a different subtext, and
+  // the conditional `dev_text_day4_jules_sus` plus
+  // `jules_portrait_sinister_day5` pin him down instead of Miles.
+  conditionalFactIDs: [
+    "jules_portrait_sinister_day5",
+    "dev_text_day4_jules_sus",
+  ],
+  variableOverrides: {
+    miles_bio_downtown_view: {
+      text:
+        "Miles's bio mentions the canal view — the same canal Jules's bar overlooks from the other side. Miles isn't the one with the late nights there.",
+    },
+    jules_bio_night_walks: {
+      text:
+        "Jules's bio: 'i close most weeknights. it's mine after eleven' — the route he 'walks off' passes the warehouse strip the news mentioned.",
+    },
+    jules_ig_canal_late: {
+      text:
+        "Jules's IG story: a quiet street at 2am — geotag puts it three blocks from the warehouse, the night the news report timestamps.",
+    },
+  },
+  solvingDeduction: {
+    id: "jules_solve_closing_walk",
+    requiredFactIDs: [
+      "jules_bio_night_walks",
+      "jules_ig_canal_late",
+      "jules_portrait_sinister_day5",
+      "dev_text_day4_jules_sus",
+    ],
+    narrativeBeat:
+      "He told you he closed alone after eleven. The IG story put him three blocks from the warehouse at two. Sasha said the bar was dark by ten — so where was he between? The day-5 portrait answered it before he did.",
+  },
+  redHerrings: [],
   killerScript: [
     {
       beatKey: "jules_open",
@@ -600,6 +737,7 @@ const river: IdentityModule = {
       "TODO Pass 4 — first contradiction beat (claimed solo scout vs. a witness placing him at the trailhead with someone else).",
     ],
   },
+  ...stubGraph("river_conditional_solo_scout", "River"),
   killerScript: [
     {
       beatKey: "river_open",
@@ -679,6 +817,7 @@ const sam: IdentityModule = {
       "TODO Pass 4 — first contradiction beat (claimed double shift vs. badge swipe records placing her offsite for two hours).",
     ],
   },
+  ...stubGraph("sam_conditional_double_shift", "Sam"),
   killerScript: [
     {
       beatKey: "sam_open",

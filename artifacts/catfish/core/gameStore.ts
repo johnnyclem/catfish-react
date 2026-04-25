@@ -19,6 +19,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect } from "react";
 import { create } from "zustand";
 
+import { buildAuthoredFacts } from "./factBootstrap";
 import { getIdentityModule, getScriptForCandidate } from "./identities";
 import {
   ALL_KILLERS,
@@ -27,6 +28,8 @@ import {
   ChatThread,
   Fact,
   FactId,
+  FactPayload,
+  FactSource,
   KillerIdentity,
   MatchId,
   MatchRelationship,
@@ -151,8 +154,14 @@ function pickRandomKiller(): KillerIdentity {
 function buildRun(forced?: KillerIdentity): CaseRun {
   const killer = forced ?? pickRandomKiller();
   const identity = getIdentityModule(killer);
+  const runId = newRunId();
+  // Pass 4 — materialize the authored fact universe up front so the
+  // rest of the store sees a single homogeneous `facts` array.
+  // Captured Facts (Pass 3 long-press extracts) are appended later
+  // via `commitFact` and coexist with these by `kind`.
+  const authoredFacts = buildAuthoredFacts(runId, killer);
   return {
-    id: newRunId(),
+    id: runId,
     killer,
     startedAt: nowIso(),
     day: 1,
@@ -161,7 +170,7 @@ function buildRun(forced?: KillerIdentity): CaseRun {
     swipes: [],
     matches: [],
     threads: [],
-    facts: [],
+    facts: authoredFacts,
     closed: false,
   };
 }
@@ -172,7 +181,7 @@ function buildRun(forced?: KillerIdentity): CaseRun {
  * and had no `turnIndex`. We patch them in-place on load so the rest of
  * the store can assume the new shape.
  */
-function migrateRun(run: CaseRun | null): CaseRun | null {
+export function migrateRun(run: CaseRun | null): CaseRun | null {
   if (!run) return null;
   const threads = run.threads.map((t) => {
     const rawMessages = Array.isArray(t.messages) ? t.messages : [];
@@ -203,7 +212,113 @@ function migrateRun(run: CaseRun | null): CaseRun | null {
       unreadCount,
     } satisfies ChatThread;
   });
-  return { ...run, threads };
+
+  // Pass 4 — backfill the new Clue Graph fields onto pre-schema Fact
+  // rows so cold start of an in-flight run can't crash on a missing
+  // `kind`/`source`/`day`/`aboutCharacter`/`payload`. We do *not*
+  // retroactively inject authored facts here — those only land via
+  // `startNewRun`, per the task spec, so an in-flight run keeps the
+  // exact captured-facts list it had before the upgrade.
+  const facts: Fact[] = run.facts.map((f) => migrateFact(f, run));
+
+  return { ...run, threads, facts };
+}
+
+/**
+ * Backfill missing Clue Graph fields on a single Fact row. Pre-schema
+ * captured Facts only carried `payloadJson` plus the `captured*`
+ * fields; this fills in `kind`, `source`, `day`, `aboutCharacter`,
+ * and `payload` so the rest of the store can assume the new shape.
+ */
+function migrateFact(raw: Fact, run: CaseRun): Fact {
+  const f = raw as Partial<Fact> & Fact;
+
+  // `kind` — old rows had no kind at all. They were always captured
+  // facts (the only ones the Pass 3 store could produce), so default
+  // to "captured" for anything missing.
+  const kind: Fact["kind"] =
+    f.kind === "static" ||
+    f.kind === "variable" ||
+    f.kind === "conditional" ||
+    f.kind === "captured"
+      ? f.kind
+      : "captured";
+
+  // `source` — reconstruct from the `captured*` breadcrumbs when
+  // possible, fall back to a chatMessage row with no ids.
+  let source: FactSource;
+  if (
+    f.source &&
+    typeof f.source === "object" &&
+    typeof (f.source as { kind?: unknown }).kind === "string"
+  ) {
+    source = f.source;
+  } else if (kind === "captured") {
+    source = {
+      kind: "chatMessage",
+      messageId: f.capturedFromMessageId,
+    };
+  } else {
+    // Authored row without a source — degrade to a narrator beat so
+    // we don't drop the row, but log via the comment so a future
+    // pass can investigate.
+    source = { kind: "narratorBeat" };
+  }
+
+  const day: number =
+    typeof f.day === "number"
+      ? f.day
+      : typeof f.capturedOnDay === "number"
+        ? f.capturedOnDay
+        : run.day;
+
+  // `aboutCharacter` — for a captured fact, derive from the
+  // candidate the quote came from (so the Journal still groups
+  // correctly). Falls back to the run's killer identity if the
+  // candidate has been removed from the deck since capture.
+  let aboutCharacter: Fact["aboutCharacter"];
+  if (f.aboutCharacter) {
+    aboutCharacter = f.aboutCharacter;
+  } else if (f.capturedFromCandidateId) {
+    const cand = run.deck.find((c) => c.id === f.capturedFromCandidateId);
+    aboutCharacter = cand?.identity ?? run.killer;
+  } else {
+    aboutCharacter = run.killer;
+  }
+
+  // `payload` — prefer the typed field, else lift the captured
+  // quote, else parse the legacy JSON. Always end up with at least
+  // `text: ""` so callers never have to null-check.
+  let payload: FactPayload;
+  if (f.payload && typeof f.payload === "object" && "text" in f.payload) {
+    payload = f.payload;
+  } else if (typeof f.capturedQuote === "string") {
+    payload = { text: f.capturedQuote };
+  } else if (typeof f.payloadJson === "string") {
+    try {
+      const parsed = JSON.parse(f.payloadJson) as { quote?: string };
+      payload = { text: typeof parsed?.quote === "string" ? parsed.quote : "" };
+    } catch {
+      payload = { text: "" };
+    }
+  } else {
+    payload = { text: "" };
+  }
+
+  const payloadJson =
+    typeof f.payloadJson === "string"
+      ? f.payloadJson
+      : JSON.stringify(payload);
+
+  return {
+    ...f,
+    kind,
+    source,
+    day,
+    aboutCharacter,
+    payload,
+    payloadJson,
+  };
 }
 
 let hydrationPromise: Promise<void> | null = null;
@@ -411,10 +526,23 @@ export const useGameState = create<GameStateValue>((set, get) => ({
     }
 
     const at = nowIso();
+    const payload: FactPayload = { text: trimmed };
     const fact: Fact = {
       id: newFactId(),
       runId: prev.id,
+      kind: "captured",
       authoringKey: messageId ? `captured_${messageId}` : `captured_${at}`,
+      source: {
+        kind: "chatMessage",
+        threadId,
+        messageId,
+      },
+      day: prev.day,
+      aboutCharacter: candidate.identity,
+      payload,
+      // Legacy field kept on the row so a downgrade to a Pass-3-only
+      // build (or a JSON inspection tool that reads it directly) sees
+      // a parsable shape. New consumers should prefer `payload`.
       payloadJson: JSON.stringify({
         kind: "captured",
         quote: trimmed,

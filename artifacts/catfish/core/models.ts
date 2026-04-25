@@ -119,26 +119,156 @@ export interface ChatMessage {
   day: number;
 }
 
+/* ───────── Pass 4 — Clue Graph schema (v0.1) ────────────────────────────
+ *
+ * Ports the "Clue Graph Schema" from the SwiftUI design doc. Three
+ * layers of authored content live alongside the player-captured Facts
+ * already in flight:
+ *
+ *   - static     — the same payload regardless of which killer is active
+ *                  (e.g. a public bio line everyone sees).
+ *   - variable   — present every run, but the payload is swapped when
+ *                  the active killer's `variableOverrides` carries an
+ *                  override for the fact id (the "double-blind tell").
+ *   - conditional — only present at all when the active killer's
+ *                  `conditionalFactIDs` contains its id.
+ *
+ * Captured Facts (player-authored long-press extracts) keep working
+ * untouched: they pass through as `kind: "captured"` so authored and
+ * captured rows coexist on `CaseRun.facts` without a schema swap.
+ */
+
 /**
- * Per-run authored Fact rows. RunBootstrapper (Pass 4) materializes these
- * with payloads resolved against the chosen KillerIdentity. Pass 1 leaves
- * the array empty and the `payloadJson` opaque so the schema is stable
- * once we wire up the content authoring pass.
+ * Friend NPC ids reserved for forward compatibility with the
+ * `friendText` source variant — no friend characters are authored in
+ * this pass, but the enum exists so a later pass can fill them in
+ * without re-shaping the schema.
+ */
+export type FriendID = "alex" | "morgan" | "dev";
+
+/**
+ * Where an authored or captured Fact comes from. Discriminated union
+ * so each variant can carry its own surface metadata (e.g. the
+ * portrait expression that revealed the fact).
+ */
+export type FactSource =
+  | { kind: "bio" }
+  | { kind: "instagram" }
+  | { kind: "portrait"; expression: string }
+  | { kind: "devText" }
+  | { kind: "friendText"; friend: FriendID }
+  | {
+      kind: "chatMessage";
+      threadId?: ThreadId;
+      messageId?: MessageId;
+    }
+  | { kind: "narratorBeat" };
+
+/**
+ * Three authored layers from the doc, plus a fourth `captured` variant
+ * for the player-extracted Facts the Pass 3 Journal already produces.
+ */
+export type FactKind = "static" | "variable" | "conditional" | "captured";
+
+/**
+ * Resolved payload content for a single Fact row. `voiceLineID` is
+ * reserved for Task #16 — Pass 4 just carries the field through so
+ * voice generation has a stable place to write ids when it lands.
+ */
+export interface FactPayload {
+  /** Player-facing prose (one or two sentences). */
+  text: string;
+  /** Optional ElevenLabs line id. Reserved for Task #16. */
+  voiceLineID?: string;
+  /** Optional subject character (e.g. red herring "looks bad on Jules"). */
+  subject?: KillerIdentity | "player" | FriendID;
+}
+
+/**
+ * "If the player has discovered all of `requiredFactIDs`, surface
+ * `narrativeBeat` when they accuse." Used by the accusation resolver
+ * to tell the player *how* they cracked the case.
+ */
+export interface Deduction {
+  id: string;
+  requiredFactIDs: FactId[];
+  narrativeBeat: string;
+}
+
+/**
+ * Four run-end states. `caughtThem`/`wrongfulAccusation` are produced
+ * by `resolveAccusation` for player accusations; the two stub endings
+ * exist so adjacent flows (Day 7 face-to-face, ran-out-of-time) can
+ * stamp the same enum without a schema split.
+ */
+export type CaseEnding =
+  | "caughtThem"
+  | "wrongfulAccusation"
+  | "metKillerStub"
+  | "escapedStub";
+
+/**
+ * Pure-function output of `resolveAccusation`. The screen that calls
+ * the resolver is responsible for applying the result to `CaseRun`
+ * (e.g. flipping `closed` true) — this struct just describes the
+ * outcome.
+ */
+export interface AccusationResult {
+  /** True iff the accused was the run's killer. */
+  correct: boolean;
+  /** The deduction whose required fact set was fully discovered, if any. */
+  matchedDeduction: Deduction | null;
+  ending: CaseEnding;
+  /**
+   * Player-facing prose for the run-end card. Pulled from
+   * `matchedDeduction.narrativeBeat` when one matched, otherwise a
+   * stock line per ending so the UI always has something to show.
+   */
+  narrativeBeat: string;
+}
+
+/**
+ * Per-run Fact row — authored or captured. RunBootstrapper materializes
+ * the authored rows at `startNewRun` with payloads resolved against
+ * the chosen killer; `commitFact` adds captured rows as the player
+ * long-presses chat messages.
  */
 export interface Fact {
   id: FactId;
   runId: RunId;
+  /**
+   * Layer this Fact belongs to. Captured Facts use `"captured"`; the
+   * three authored layers from the doc use `"static" | "variable" |
+   * "conditional"`.
+   */
+  kind: FactKind;
   /** Authoring key (e.g. "miles_apartment_view"). */
   authoringKey: string;
-  /** JSON-encoded payload. Mirrors SwiftData's `Data` property approach. */
+  /**
+   * Where this Fact came from in-fiction (bio, IG post, a friend's
+   * text, a long-pressed chat message, etc).
+   */
+  source: FactSource;
+  /** Day-clock value the Fact is "stamped" with. */
+  day: number;
+  /** Character the Fact is *about* — usually a candidate identity. */
+  aboutCharacter: KillerIdentity | "player" | FriendID;
+  /** Resolved payload for this run/killer. */
+  payload: FactPayload;
+  /**
+   * Legacy JSON-encoded payload kept on the row for back-compat with
+   * runs persisted before Pass 4. New writers populate it from
+   * `payload`; the migration backfills it for old captured rows so
+   * cold start of an in-flight run can't crash on a missing field.
+   */
   payloadJson: string;
-  /** Has the player committed this to the journal? Always false in Pass 1. */
+  /** Has the player committed this to the journal? Authored facts default true. */
   committed: boolean;
 
   /* ──────── Pass 3 — player-captured fact metadata ──────────────────
    * Set when the player extracts a Fact from a chat message via the
    * long-press gesture in the Journal feature. Authored facts (Pass 4)
-   * leave these undefined and rely on `payloadJson` instead.
+   * leave these undefined and rely on `payload` / `source` instead.
    */
   capturedFromCandidateId?: CandidateId;
   capturedFromMessageId?: MessageId;

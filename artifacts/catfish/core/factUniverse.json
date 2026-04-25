@@ -1,0 +1,155 @@
+{
+  "version": 1,
+  "facts": [
+    {
+      "id": "miles_bio_downtown_view",
+      "kind": "variable",
+      "source": { "kind": "bio" },
+      "day": 1,
+      "aboutCharacter": "miles",
+      "payload": {
+        "text": "Miles's bio mentions the view from his apartment — 'morning light over the canal, looks like it was filtered'."
+      }
+    },
+    {
+      "id": "miles_ig_window_reflection",
+      "kind": "variable",
+      "source": { "kind": "instagram" },
+      "day": 2,
+      "aboutCharacter": "miles",
+      "payload": {
+        "text": "Recent Instagram post — a coffee cup on a windowsill. The reflection in the glass shows a familiar bridge."
+      }
+    },
+    {
+      "id": "miles_bio_film_camera",
+      "kind": "static",
+      "source": { "kind": "bio" },
+      "day": 1,
+      "aboutCharacter": "miles",
+      "payload": {
+        "text": "Bio: 'Backend engineer turned hobbyist photographer. Shoots Portra 400.'"
+      }
+    },
+    {
+      "id": "miles_portrait_uneasy_day5",
+      "kind": "conditional",
+      "source": { "kind": "portrait", "expression": "uneasy" },
+      "day": 5,
+      "aboutCharacter": "miles",
+      "payload": {
+        "text": "His latest profile photo is different — same background, but the smile is gone. He looks like someone caught off guard."
+      }
+    },
+    {
+      "id": "dev_text_day4_miles_sus",
+      "kind": "conditional",
+      "source": { "kind": "devText" },
+      "day": 4,
+      "aboutCharacter": "miles",
+      "payload": {
+        "text": "Dev's text from day 4: 'that guy you matched with — Miles? saw him out by the canal warehouse late on Tuesday. that's the one the news mentioned, right?'"
+      }
+    },
+    {
+      "id": "jules_bio_night_walks",
+      "kind": "variable",
+      "source": { "kind": "bio" },
+      "day": 1,
+      "aboutCharacter": "jules",
+      "payload": {
+        "text": "Jules's bio: 'I close most weeknights. it's mine after eleven.'"
+      }
+    },
+    {
+      "id": "jules_ig_canal_late",
+      "kind": "variable",
+      "source": { "kind": "instagram" },
+      "day": 3,
+      "aboutCharacter": "jules",
+      "payload": {
+        "text": "Recent Jules IG story: a quiet street at 2am, captioned 'just walked it off'."
+      }
+    },
+    {
+      "id": "jules_portrait_sinister_day5",
+      "kind": "conditional",
+      "source": { "kind": "portrait", "expression": "sinister" },
+      "day": 5,
+      "aboutCharacter": "jules",
+      "payload": {
+        "text": "Jules updated his profile pic. Same low light. Different smile — the kind that doesn't reach his eyes."
+      }
+    },
+    {
+      "id": "dev_text_day4_jules_sus",
+      "kind": "conditional",
+      "source": { "kind": "devText" },
+      "day": 4,
+      "aboutCharacter": "jules",
+      "payload": {
+        "text": "Dev's text from day 4: 'so that bartender Jules — Sasha says he 'closed alone' tuesday but the bar was dark by ten. weird.'"
+      }
+    },
+    {
+      "id": "tessa_conditional_lateshift",
+      "kind": "conditional",
+      "source": { "kind": "devText" },
+      "day": 4,
+      "aboutCharacter": "tessa",
+      "payload": {
+        "text": "Dev's text: 'Tessa wasn't on air Tuesday — station ran a rerun. she told me she was working.'"
+      }
+    },
+    {
+      "id": "ren_conditional_dawn_alibi",
+      "kind": "conditional",
+      "source": { "kind": "devText" },
+      "day": 4,
+      "aboutCharacter": "ren",
+      "payload": {
+        "text": "Dev's text: 'marina logs say Ren signed out at 2am, not 4:30 like he claimed.'"
+      }
+    },
+    {
+      "id": "kai_conditional_paint_late",
+      "kind": "conditional",
+      "source": { "kind": "devText" },
+      "day": 4,
+      "aboutCharacter": "kai",
+      "payload": {
+        "text": "Dev's text: 'Kai said he was painting late by the transit lot — but the lot's been fenced off all month.'"
+      }
+    },
+    {
+      "id": "delphine_conditional_smell_secret",
+      "kind": "conditional",
+      "source": { "kind": "devText" },
+      "day": 4,
+      "aboutCharacter": "delphine",
+      "payload": {
+        "text": "Dev's text: 'Delphine's shop receipts have her opening at 7am the morning after — but she told you she was 'home all night'.'"
+      }
+    },
+    {
+      "id": "river_conditional_solo_scout",
+      "kind": "conditional",
+      "source": { "kind": "devText" },
+      "day": 4,
+      "aboutCharacter": "river",
+      "payload": {
+        "text": "Dev's text: 'a hiker placed River at the gorge trailhead with someone else last sunday — not solo like he said.'"
+      }
+    },
+    {
+      "id": "sam_conditional_double_shift",
+      "kind": "conditional",
+      "source": { "kind": "devText" },
+      "day": 4,
+      "aboutCharacter": "sam",
+      "payload": {
+        "text": "Dev's text: 'badge swipes show Sam was offsite for two hours during her supposed double shift.'"
+      }
+    }
+  ]
+}

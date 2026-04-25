@@ -82,7 +82,12 @@ const f3 = await state().commitFact({
   quote: "charlie quote",
 });
 assert(f1 && f2 && f3, "three facts captured");
-assert(state().run!.facts.length === 3, "run has 3 facts before discards");
+// Pass 4 — `run.facts` now also carries authored rows materialized
+// at `startNewRun`. Filter to captured rows so this test still
+// reasons about the player-driven discard queue in isolation.
+const capturedCount = () =>
+  state().run!.facts.filter((f) => f.kind === "captured").length;
+assert(capturedCount() === 3, "run has 3 captured facts before discards");
 
 // --- Test 1: queue two discards.
 await state().removeFact(f1.id);
@@ -96,7 +101,7 @@ assert(
     state().recentlyDiscarded[1]!.id === f2.id,
   "queue order is oldest -> newest",
 );
-assert(state().run!.facts.length === 1, "facts list has only the survivor");
+assert(capturedCount() === 1, "captured-fact list has only the survivor");
 console.log("PASS  test 1: two discards both queued");
 
 // --- Test 2: restore the OLDER one only.

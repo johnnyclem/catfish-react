@@ -41,6 +41,16 @@ Pixel-art dating-detective game. Pass 1 of 7 implemented:
 - 10 PNGs in `assets/images/` wired through `AssetImage` with labeled placeholder fallback
 - UUIDs via `Date.now() + Math.random()` (no `uuid` package — that crashes on RN)
 
+### Clue Graph (Pass 4)
+
+Three-layer fact model — `static | variable | conditional` authored facts (in `core/factUniverse.json`) plus `captured` facts surfaced by the player long-pressing chat messages:
+
+- `core/factBootstrap.ts` — `buildAuthoredFacts(runId, killer)` materializes the per-run authored set on `startNewRun`. Conditional facts are gated by the killer's `conditionalFactIDs`; variable facts swap payloads via `variableOverrides` (the doc's "double-blind tell").
+- `core/identities.ts` — every `IdentityModule` carries `conditionalFactIDs / variableOverrides / solvingDeduction / redHerrings`. Miles is the fully-authored worked example with a 4-fact deduction; Jules has the matching 4-fact deduction and overrides for the worked example's mirror; the other 6 killers use the `stubGraph()` helper for a single-fact placeholder deduction.
+- `core/accusation.ts` — pure `resolveAccusation({accused, run, discoveredFactIds, outcome?})` covers all four `CaseEnding`s (`caughtThem` / `wrongfulAccusation` / `metKillerStub` / `escapedStub`). `discoveredFactIds` is a set of authoring keys (e.g. `"miles_bio_downtown_view"`), not the random per-row `Fact.id`.
+- `core/gameStore.ts` — `commitFact` populates the new typed fields (`kind: "captured"`, `source`, `day`, `aboutCharacter`, `payload`) alongside the legacy `payloadJson` / `captured*` breadcrumbs. `migrateRun` backfills these for pre-Pass-4 persisted runs without retroactively injecting authored facts.
+- `pnpm --filter @workspace/catfish test:clue-graph` — verifies bootstrapper inclusion rules, double-blind variable swap, `commitFact` shape, all four endings, and the legacy migration round-trip.
+
 ### Replit preview iframe
 
 The `artifacts/catfish: expo` workflow runs Metro on local port `8000`, which

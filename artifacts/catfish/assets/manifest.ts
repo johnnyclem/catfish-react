@@ -28,6 +28,12 @@ import { ImageSourcePropType } from "react-native";
 export type AssetId =
   | "A001_title_logo"
   | "A021_accuse_modal_bg"
+  | "A034_miles_portrait_neutral"
+  | "A035_miles_portrait_smile"
+  | "A036_miles_portrait_flirty"
+  | "A037_miles_portrait_curious"
+  | "A038_miles_portrait_uneasy"
+  | "A039_miles_portrait_sinister"
   | "A040_kai_portrait_flirty"
   | "A041_kai_portrait_sinister"
   | "A042_kai_portrait_uneasy"
@@ -41,6 +47,8 @@ export type AssetId =
   | "A051_jules_portrait_sinister"
   | "A064_kai_fullbody_casual"
   | "A065_kai_fullbody_formal"
+  | "A066_miles_fullbody_casual"
+  | "A067_miles_fullbody_dressed_up"
   | "A070_jules_fullbody_casual"
   | "A071_jules_fullbody_dressed_up"
   | "A072_player_fullbody_default"
@@ -67,6 +75,12 @@ export type AssetId =
 
 const REGISTRY: Partial<Record<AssetId, ImageSourcePropType>> = {
   A001_title_logo: require("./images/A001_title_logo.png"),
+  A034_miles_portrait_neutral: require("./images/A034_miles_portrait_neutral.png"),
+  A035_miles_portrait_smile: require("./images/A035_miles_portrait_smile.png"),
+  A036_miles_portrait_flirty: require("./images/A036_miles_portrait_flirty.png"),
+  A037_miles_portrait_curious: require("./images/A037_miles_portrait_curious.png"),
+  A038_miles_portrait_uneasy: require("./images/A038_miles_portrait_uneasy.png"),
+  A039_miles_portrait_sinister: require("./images/A039_miles_portrait_sinister.png"),
   A040_kai_portrait_flirty: require("./images/A040_kai_portrait_flirty.png"),
   A041_kai_portrait_sinister: require("./images/A041_kai_portrait_sinister.png"),
   A042_kai_portrait_uneasy: require("./images/A042_kai_portrait_uneasy.png"),
@@ -80,6 +94,8 @@ const REGISTRY: Partial<Record<AssetId, ImageSourcePropType>> = {
   A051_jules_portrait_sinister: require("./images/A051_jules_portrait_sinister.png"),
   A064_kai_fullbody_casual: require("./images/A064_kai_fullbody_casual.png"),
   A065_kai_fullbody_formal: require("./images/A065_kai_fullbody_formal.png"),
+  A066_miles_fullbody_casual: require("./images/A066_miles_fullbody_casual.png"),
+  A067_miles_fullbody_dressed_up: require("./images/A067_miles_fullbody_dressed_up.png"),
   A070_jules_fullbody_casual: require("./images/A070_jules_fullbody_casual.png"),
   A071_jules_fullbody_dressed_up: require("./images/A071_jules_fullbody_dressed_up.png"),
   A200_match_overlay: require("./images/A200_match_overlay.png"),

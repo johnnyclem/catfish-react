@@ -7,6 +7,11 @@
  * roster so the swipe deck never crashes.
  *
  * Authored-character asset notes:
+ *   Miles — A035 (smile) is wired into his swipe-deck portrait below.
+ *     A034, A036-A039 (neutral/flirty/curious/uneasy/sinister) and
+ *     A066-A067 (casual and dressed_up fullbody) are bundled for the
+ *     same Pass 2 chat expression swaps and Pass 3 Profile / Journal
+ *     fullbody renders.
  *   Jules — A047 (smile) is wired into his swipe-deck portrait below.
  *     A048-A051 (flirty/curious/uneasy/sinister) and A070-A071 (casual
  *     and dressed_up fullbody) are bundled for Pass 2 chat expression
@@ -54,7 +59,7 @@ const miles: IdentityModule = {
       tagline: "Shoots on film. Listens before he answers.",
       bio:
         "Backend engineer turned hobbyist photographer. Lives near the canal. Says he's looking for someone who's read at least one Murakami book and knows when to stop talking.",
-      portraitAssetId: "A500_avatar_placeholder",
+      portraitAssetId: "A035_miles_portrait_smile",
       prompts: [
         "Coffee order: black, sometimes with one sugar when nobody's watching.",
         "Last great photo: a stranger laughing at a bus stop in the rain.",

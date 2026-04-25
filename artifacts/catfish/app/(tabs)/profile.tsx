@@ -108,7 +108,10 @@ export default function ProfileTab() {
         <PixelText size={9} color={cfPalette.cyan} uppercase>
           audio
         </PixelText>
-        <PixelText size={7} color={cfPalette.ash} style={{ marginTop: 6, lineHeight: 11 }}>
+        <PixelText size={9} color={cfPalette.bone} style={{ marginTop: 6 }}>
+          Mute suspect voices
+        </PixelText>
+        <PixelText size={7} color={cfPalette.ash} style={{ marginTop: 4, lineHeight: 11 }}>
           Voices for suspect messages. Choice survives across runs.
         </PixelText>
         <Pressable
@@ -124,8 +127,8 @@ export default function ProfileTab() {
           ]}
           testID="voice-mute-toggle"
           accessibilityRole="switch"
-          accessibilityState={{ checked: !voiceMuted }}
-          accessibilityLabel={voiceMuted ? "Voices muted" : "Voices on"}
+          accessibilityState={{ checked: voiceMuted }}
+          accessibilityLabel="Mute suspect voices"
         >
           <PixelText
             size={9}

@@ -56,6 +56,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/VoiceErrorResponse"
+        "429":
+          description: |
+            Per-IP rate limit exceeded. The token-bucket budget is
+            sized for normal in-game playback; well-behaved clients
+            should honour the Retry-After header before retrying.
+          headers:
+            Retry-After:
+              description: Suggested wait (in seconds) before the next request.
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoiceErrorResponse"
         "502":
           description: Upstream ElevenLabs failure
           content:

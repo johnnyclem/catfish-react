@@ -18,18 +18,21 @@
 import { useEffect } from "react";
 import { create } from "zustand";
 
-import { getIdentityModule } from "./identities";
+import { getIdentityModule, getScriptForCandidate } from "./identities";
 import {
   ALL_KILLERS,
   CandidateId,
   CaseRun,
+  ChatThread,
   Fact,
   FactId,
   KillerIdentity,
   MatchRelationship,
+  Message,
   MessageId,
   newFactId,
   newMatchId,
+  newMessageId,
   newRunId,
   newThreadId,
   SwipeRecord,
@@ -66,6 +69,19 @@ interface GameStateValue {
   commitFact: (input: CommitFactInput) => Promise<Fact | null>;
   /** Discard a previously captured Fact. */
   removeFact: (factId: FactId) => Promise<void>;
+  /**
+   * Idempotent — pushes the opening suspect turn for a thread that the
+   * player has never opened. Safe to call on every focus.
+   */
+  openThread: (threadId: ThreadId) => Promise<void>;
+  /**
+   * Records a player reply and pushes the next scripted suspect turn (if
+   * any). Returns the updated thread.
+   */
+  sendReply: (
+    threadId: ThreadId,
+    replyText: string,
+  ) => Promise<ChatThread | null>;
   resetRun: () => Promise<void>;
 }
 
@@ -96,6 +112,36 @@ function buildRun(forced?: KillerIdentity): CaseRun {
   };
 }
 
+/**
+ * Forward-compatible coercion for runs persisted before Pass 2 widened the
+ * thread schema. Old threads stored `messages: unknown[]` (always empty)
+ * and had no `turnIndex`. We patch them in-place on load so the rest of
+ * the store can assume the new shape.
+ */
+function migrateRun(run: CaseRun | null): CaseRun | null {
+  if (!run) return null;
+  const threads = run.threads.map((t) => {
+    const rawMessages = Array.isArray(t.messages) ? t.messages : [];
+    // Defensively coerce — anything that doesn't look like a Message gets
+    // dropped instead of crashing the chat renderer.
+    const messages: Message[] = rawMessages.filter(
+      (m): m is Message =>
+        !!m &&
+        typeof m === "object" &&
+        typeof (m as Message).id === "string" &&
+        typeof (m as Message).text === "string" &&
+        ((m as Message).sender === "suspect" ||
+          (m as Message).sender === "player"),
+    );
+    const turnIndex =
+      typeof (t as ChatThread).turnIndex === "number"
+        ? (t as ChatThread).turnIndex
+        : 0;
+    return { ...t, messages, turnIndex } satisfies ChatThread;
+  });
+  return { ...run, threads };
+}
+
 let hydrationPromise: Promise<void> | null = null;
 
 export const useGameState = create<GameStateValue>((set, get) => ({
@@ -105,7 +151,7 @@ export const useGameState = create<GameStateValue>((set, get) => ({
   hydrate: async () => {
     if (hydrationPromise) return hydrationPromise;
     hydrationPromise = (async () => {
-      const existing = await loadActiveRun();
+      const existing = migrateRun(await loadActiveRun());
       set({ run: existing, hydrated: true });
     })();
     return hydrationPromise;
@@ -169,7 +215,9 @@ export const useGameState = create<GameStateValue>((set, get) => ({
           id: threadId,
           runId: prev.id,
           candidateId,
-          messages: [], // Pass 2 will populate this.
+          // openThread() will lazily push the opening salvo on first view.
+          messages: [],
+          turnIndex: 0,
         },
       ];
     }
@@ -240,6 +288,91 @@ export const useGameState = create<GameStateValue>((set, get) => ({
     const next: CaseRun = { ...prev, facts: filtered };
     set({ run: next });
     await saveActiveRun(next);
+  },
+
+  openThread: async (threadId) => {
+    const prev = get().run;
+    if (!prev) return;
+    const thread = prev.threads.find((t) => t.id === threadId);
+    if (!thread) return;
+    // Already opened — nothing to push.
+    if (thread.messages.length > 0 || thread.turnIndex > 0) return;
+
+    const candidate = prev.deck.find((c) => c.id === thread.candidateId);
+    if (!candidate) return;
+    const script = getScriptForCandidate(candidate);
+    const turn = script[0];
+    if (!turn) return;
+
+    const opening: Message[] = turn.suspectMessages.map((text) => ({
+      id: newMessageId(),
+      sender: "suspect",
+      text,
+      sentAt: nowIso(),
+      beatKey: turn.beatKey,
+    }));
+
+    const updatedThread: ChatThread = {
+      ...thread,
+      messages: [...thread.messages, ...opening],
+      turnIndex: 1,
+    };
+
+    const next: CaseRun = {
+      ...prev,
+      threads: prev.threads.map((t) => (t.id === threadId ? updatedThread : t)),
+    };
+    set({ run: next });
+    await saveActiveRun(next);
+  },
+
+  sendReply: async (threadId, replyText) => {
+    const prev = get().run;
+    if (!prev) return null;
+    const thread = prev.threads.find((t) => t.id === threadId);
+    if (!thread) return null;
+
+    const candidate = prev.deck.find((c) => c.id === thread.candidateId);
+    if (!candidate) return null;
+    const script = getScriptForCandidate(candidate);
+
+    // Bound check — once we run out of authored turns the player can't
+    // reply (the UI hides the picker too, but guard here as well).
+    const replyTurn = script[thread.turnIndex - 1];
+    if (!replyTurn) return null;
+
+    const playerMsg: Message = {
+      id: newMessageId(),
+      sender: "player",
+      text: replyText,
+      sentAt: nowIso(),
+      beatKey: replyTurn.beatKey,
+    };
+
+    const nextTurn = script[thread.turnIndex];
+    const suspectMsgs: Message[] = nextTurn
+      ? nextTurn.suspectMessages.map((text) => ({
+          id: newMessageId(),
+          sender: "suspect",
+          text,
+          sentAt: nowIso(),
+          beatKey: nextTurn.beatKey,
+        }))
+      : [];
+
+    const updatedThread: ChatThread = {
+      ...thread,
+      messages: [...thread.messages, playerMsg, ...suspectMsgs],
+      turnIndex: thread.turnIndex + 1,
+    };
+
+    const next: CaseRun = {
+      ...prev,
+      threads: prev.threads.map((t) => (t.id === threadId ? updatedThread : t)),
+    };
+    set({ run: next });
+    await saveActiveRun(next);
+    return updatedThread;
   },
 
   resetRun: async () => {

@@ -42,6 +42,21 @@ export type MatchId = string;
 export type ThreadId = string;
 export type MessageId = string;
 
+export type MessageSender = "suspect" | "player";
+
+/**
+ * Single chat line in a thread. `beatKey` is an authoring breadcrumb so
+ * later passes (Journal facts, contradiction wall) can locate the moment
+ * a player committed to a fact without re-parsing the prose.
+ */
+export interface Message {
+  id: MessageId;
+  sender: MessageSender;
+  text: string;
+  sentAt: string;
+  beatKey?: string;
+}
+
 export interface Candidate {
   id: CandidateId;
   identity: KillerIdentity;
@@ -70,8 +85,13 @@ export interface ChatThread {
   id: ThreadId;
   runId: RunId;
   candidateId: CandidateId;
-  /** Pass 2 will populate this. Empty in Pass 1. */
-  messages: unknown[];
+  messages: Message[];
+  /**
+   * Number of suspect-led "turns" already delivered into this thread.
+   * 0 means the opening salvo hasn't been pushed yet. Each player reply
+   * pushes the next turn's suspect lines and bumps this by one.
+   */
+  turnIndex: number;
 }
 
 /**

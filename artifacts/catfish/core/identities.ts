@@ -47,6 +47,19 @@ import {
   newCandidateId,
 } from "./models";
 
+/**
+ * One scripted exchange in a chat thread. The suspect speaks first
+ * (`suspectMessages`) and the player picks one of `replyOptions`. Pass 2
+ * is intentionally turn-based and finite — Pass 4 will replace this
+ * with a fact-aware dialogue planner.
+ */
+export interface DialogueTurn {
+  suspectMessages: string[];
+  replyOptions: string[];
+  /** Optional authoring key surfaced on each suspect line for later passes. */
+  beatKey?: string;
+}
+
 export interface IdentityModule {
   identity: KillerIdentity;
   /** Public-facing display name for the killer (used in DEBUG menu). */
@@ -57,7 +70,68 @@ export interface IdentityModule {
   buildDeck(): Candidate[];
   /** TODO Pass 4 — authored narrative beats per day. */
   beats: Record<number, string[]>;
+  /**
+   * Authored chat script used when the player opens the killer-candidate's
+   * thread. Non-killer candidates fall back to INNOCENT_SCRIPT.
+   */
+  killerScript: DialogueTurn[];
 }
+
+/**
+ * Shared script for non-killer candidates. Keeps every match feeling
+ * "alive" without forcing us to author five distinct flirts per killer
+ * before the case-specific facts land in Pass 4.
+ */
+export const INNOCENT_SCRIPT: DialogueTurn[] = [
+  {
+    beatKey: "innocent_open",
+    suspectMessages: [
+      "hey :)",
+      "wasn't sure you'd swipe back, honestly.",
+    ],
+    replyOptions: [
+      "of course i did.",
+      "your bio got me.",
+      "happy to be wrong about?",
+    ],
+  },
+  {
+    beatKey: "innocent_weekend",
+    suspectMessages: [
+      "okay that made me smile.",
+      "what's your usual on a weekend?",
+    ],
+    replyOptions: [
+      "nothing impressive.",
+      "depends on the weather.",
+      "asking me out already?",
+    ],
+  },
+  {
+    beatKey: "innocent_probe",
+    suspectMessages: [
+      "fair, fair.",
+      "i'd rather know what you're not telling me, honestly.",
+    ],
+    replyOptions: [
+      "bold opener.",
+      "give me a few days.",
+      "try me.",
+    ],
+  },
+  {
+    beatKey: "innocent_close",
+    suspectMessages: [
+      "mysterious. dangerous.",
+      "i'll bite — coffee this week?",
+    ],
+    replyOptions: [
+      "sure.",
+      "let me check.",
+      "i'll let you know.",
+    ],
+  },
+];
 
 /* ───────────────────────── Miles — fully authored ────────────────────── */
 
@@ -157,6 +231,56 @@ const miles: IdentityModule = {
       "TODO Pass 4 — first contradiction beat (timeline alibi vs photo metadata).",
     ],
   },
+  killerScript: [
+    {
+      beatKey: "miles_open",
+      suspectMessages: [
+        "hey — saw your photos.",
+        "you have good taste in profile pictures. that's rare around here.",
+      ],
+      replyOptions: [
+        "ha, thanks. yours look like film?",
+        "are you grading me right now?",
+        "depends. what do you shoot?",
+      ],
+    },
+    {
+      beatKey: "miles_canal",
+      suspectMessages: [
+        "i shoot film, yeah. portra 400 mostly.",
+        "there's a place near the canal i go to. quiet light in the morning.",
+      ],
+      replyOptions: [
+        "which canal?",
+        "i'd like to see those photos sometime.",
+        "morning person, huh.",
+      ],
+    },
+    {
+      beatKey: "miles_ardenne",
+      suspectMessages: [
+        "ardenne canal. small bridge, easy to miss.",
+        "could send you something later. been editing all week.",
+      ],
+      replyOptions: [
+        "editing what?",
+        "send the worst one first.",
+        "no rush.",
+      ],
+    },
+    {
+      beatKey: "miles_between_projects",
+      suspectMessages: [
+        "between projects right now. just personal stuff.",
+        "what about you — busy week?",
+      ],
+      replyOptions: [
+        "pretty quiet.",
+        "nothing i'd call work.",
+        "busy enough.",
+      ],
+    },
+  ],
 };
 
 /* ───────────────────────── Tessa — STUB ──────────────────────────────── */
@@ -233,6 +357,44 @@ const tessa: IdentityModule = {
     "TODO Pass 4 — late-night radio host with too many keys on her keychain.",
   buildDeck: () => stubDeck("tessa", "Tessa", "Voice you'd recognize on the radio."),
   beats: { 1: ["TODO Pass 4 — Tessa day-1 beats."] },
+  killerScript: [
+    {
+      beatKey: "tessa_open",
+      suspectMessages: [
+        "hey — i recognize that smile from somewhere.",
+        "do you actually like radio or were you just being polite in your bio?",
+      ],
+      replyOptions: [
+        "i actually listen.",
+        "i was being polite.",
+        "what station are you on?",
+      ],
+    },
+    {
+      beatKey: "tessa_lateshift",
+      suspectMessages: [
+        "ha — points for honesty.",
+        "i do the late slot. midnight to four.",
+      ],
+      replyOptions: [
+        "that sounds brutal.",
+        "i'm usually up.",
+        "do you sleep at all?",
+      ],
+    },
+    {
+      beatKey: "tessa_callback",
+      suspectMessages: [
+        "barely. ask me again next week.",
+        "let me know what you think of the show sometime.",
+      ],
+      replyOptions: [
+        "i will.",
+        "send me a clip.",
+        "what's it called?",
+      ],
+    },
+  ],
 };
 
 const ren: IdentityModule = {
@@ -241,6 +403,44 @@ const ren: IdentityModule = {
   concept: "TODO Pass 4 — competitive sailor with a temper he calls 'focus'.",
   buildDeck: () => stubDeck("ren", "Ren", "Sailor. Up at five. Don't ask why."),
   beats: { 1: ["TODO Pass 4 — Ren day-1 beats."] },
+  killerScript: [
+    {
+      beatKey: "ren_open",
+      suspectMessages: [
+        "morning.",
+        "you look like someone who's never been on a boat before.",
+      ],
+      replyOptions: [
+        "correct.",
+        "rude.",
+        "teach me, then.",
+      ],
+    },
+    {
+      beatKey: "ren_earlybird",
+      suspectMessages: [
+        "rude was free, sorry.",
+        "sailing's not for everyone — you have to like getting up early.",
+      ],
+      replyOptions: [
+        "how early?",
+        "i can manage.",
+        "define early.",
+      ],
+    },
+    {
+      beatKey: "ren_invite",
+      suspectMessages: [
+        "four-thirty most days.",
+        "i could take you out sometime if you can survive it.",
+      ],
+      replyOptions: [
+        "i'm in.",
+        "let me think.",
+        "after coffee, sure.",
+      ],
+    },
+  ],
 };
 
 /* ────────────────────────── Kai — fully authored ─────────────────────── */
@@ -341,6 +541,44 @@ const kai: IdentityModule = {
       "TODO Pass 4 — first contradiction beat (alleged paint-late alibi vs. an inconsistency in a photo's timestamp / weather / lighting).",
     ],
   },
+  killerScript: [
+    {
+      beatKey: "kai_open",
+      suspectMessages: [
+        "hey.",
+        "i remember faces. is that creepy to lead with?",
+      ],
+      replyOptions: [
+        "a little.",
+        "depends on whose.",
+        "go on.",
+      ],
+    },
+    {
+      beatKey: "kai_drink",
+      suspectMessages: [
+        "fair, fair.",
+        "what are you drinking these days?",
+      ],
+      replyOptions: [
+        "nothing strong.",
+        "anything cold.",
+        "surprise me.",
+      ],
+    },
+    {
+      beatKey: "kai_invite",
+      suspectMessages: [
+        "respect.",
+        "swing by mine sometime. i'll make you something honest.",
+      ],
+      replyOptions: [
+        "where's mine?",
+        "tonight?",
+        "honest how?",
+      ],
+    },
+  ],
 };
 
 const delphine: IdentityModule = {
@@ -350,6 +588,44 @@ const delphine: IdentityModule = {
   buildDeck: () =>
     stubDeck("delphine", "Delphine", "Makes scents. Also reads palms, maybe."),
   beats: { 1: ["TODO Pass 4 — Delphine day-1 beats."] },
+  killerScript: [
+    {
+      beatKey: "delphine_open",
+      suspectMessages: [
+        "hello you.",
+        "you smell like someone who overthinks first messages.",
+      ],
+      replyOptions: [
+        "how can you tell?",
+        "ouch.",
+        "guilty.",
+      ],
+    },
+    {
+      beatKey: "delphine_surprise",
+      suspectMessages: [
+        "i can always tell.",
+        "tell me the last thing that surprised you.",
+      ],
+      replyOptions: [
+        "my own answer.",
+        "the weather.",
+        "you.",
+      ],
+    },
+    {
+      beatKey: "delphine_meet",
+      suspectMessages: [
+        "nicely done.",
+        "we should meet. i don't believe in long preludes.",
+      ],
+      replyOptions: [
+        "agreed.",
+        "where?",
+        "soon.",
+      ],
+    },
+  ],
 };
 
 /* ───────────────────────── Jules — fully authored ────────────────────── */
@@ -450,6 +726,56 @@ const jules: IdentityModule = {
       "TODO Pass 4 — first contradiction beat (closing-time alibi vs. the bar's posted hours).",
     ],
   },
+  killerScript: [
+    {
+      beatKey: "jules_open",
+      suspectMessages: [
+        "hey.",
+        "lemme guess what you ordered in that photo. negroni?",
+      ],
+      replyOptions: [
+        "close — paloma.",
+        "you guess everyone's drink?",
+        "what would *you* have made?",
+      ],
+    },
+    {
+      beatKey: "jules_lantern",
+      suspectMessages: [
+        "paloma, respectable.",
+        "we get a lot of palomas at the lantern. swing by tuesday — quiet night.",
+      ],
+      replyOptions: [
+        "the lantern — where's that?",
+        "tuesday's slow everywhere.",
+        "you working tuesday?",
+      ],
+    },
+    {
+      beatKey: "jules_closing",
+      suspectMessages: [
+        "downtown, off third. red sign you'd miss if you blinked.",
+        "i close most weeknights. it's mine after eleven.",
+      ],
+      replyOptions: [
+        "alone?",
+        "long hours.",
+        "what do you do after?",
+      ],
+    },
+    {
+      beatKey: "jules_alone_after",
+      suspectMessages: [
+        "yeah, alone — bartender's privilege.",
+        "after? sometimes the band practices. sometimes i just walk.",
+      ],
+      replyOptions: [
+        "walk where?",
+        "tell me about the band.",
+        "quiet life.",
+      ],
+    },
+  ],
 };
 
 /* ───────────────────────── River — fully authored ────────────────────── */
@@ -550,6 +876,44 @@ const river: IdentityModule = {
       "TODO Pass 4 — first contradiction beat (claimed solo scout vs. a witness placing him at the trailhead with someone else).",
     ],
   },
+  killerScript: [
+    {
+      beatKey: "river_open",
+      suspectMessages: [
+        "hey.",
+        "you ever been somewhere with no signal? like, real no signal.",
+      ],
+      replyOptions: [
+        "once or twice.",
+        "not on purpose.",
+        "tell me where.",
+      ],
+    },
+    {
+      beatKey: "river_invite",
+      suspectMessages: [
+        "i'm out at the gorge sundays.",
+        "easy route. bad coffee. real conversation.",
+      ],
+      replyOptions: [
+        "i'd come.",
+        "rain check?",
+        "what counts as easy?",
+      ],
+    },
+    {
+      beatKey: "river_alibi",
+      suspectMessages: [
+        "last weekend i was scouting a new line. solo.",
+        "nobody around. just me and the rock.",
+      ],
+      replyOptions: [
+        "sounds peaceful.",
+        "solo, huh.",
+        "where, exactly?",
+      ],
+    },
+  ],
 };
 
 /* ───────────────────────── Sam — fully authored ──────────────────────── */
@@ -650,6 +1014,44 @@ const sam: IdentityModule = {
       "TODO Pass 4 — first contradiction beat (claimed double shift vs. badge swipe records placing her offsite for two hours).",
     ],
   },
+  killerScript: [
+    {
+      beatKey: "sam_open",
+      suspectMessages: [
+        "hi.",
+        "you have a kind face. i've gotten good at noticing those.",
+      ],
+      replyOptions: [
+        "thank you.",
+        "noticing how?",
+        "occupational hazard?",
+      ],
+    },
+    {
+      beatKey: "sam_invite",
+      suspectMessages: [
+        "there's a quiet bar i like. tuesdays.",
+        "open mic, but the kind nobody listens to. easier to talk.",
+      ],
+      replyOptions: [
+        "i could do tuesday.",
+        "describe it.",
+        "what would we talk about?",
+      ],
+    },
+    {
+      beatKey: "sam_alibi",
+      suspectMessages: [
+        "i pulled a double on the unit last week.",
+        "long night. you forget what time it is in there.",
+      ],
+      replyOptions: [
+        "that sounds rough.",
+        "any of it stay with you?",
+        "which night, exactly?",
+      ],
+    },
+  ],
 };
 
 /* ─────────────────────────── registry ────────────────────────────────── */
@@ -667,4 +1069,18 @@ export const IDENTITY_REGISTRY: Record<KillerIdentity, IdentityModule> = {
 
 export function getIdentityModule(id: KillerIdentity): IdentityModule {
   return IDENTITY_REGISTRY[id];
+}
+
+/**
+ * Resolves the chat script for a single candidate. The killer-candidate
+ * uses their authored identity script; everyone else gets the shared
+ * INNOCENT_SCRIPT. Pass 4 will replace this with fact-aware planning.
+ */
+export function getScriptForCandidate(
+  candidate: Candidate,
+): DialogueTurn[] {
+  if (candidate.isKillerCandidate) {
+    return getIdentityModule(candidate.identity).killerScript;
+  }
+  return INNOCENT_SCRIPT;
 }

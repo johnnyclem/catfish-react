@@ -1,11 +1,13 @@
 /**
- * Tab 2 — Matches placeholder.
+ * Tab 2 — Matches.
  *
- * Pass 1 only: lists the names of right-swiped candidates with the day
- * they matched. Pass 2 owns chat threads.
+ * Pass 2: each match is a tappable row that pushes into the per-thread
+ * chat. The row also previews the most recent message and surfaces a
+ * dim "new" pip for threads the player hasn't opened yet, so the tab
+ * feels alive even before the player taps in.
  */
 
-import { router } from "expo-router";
+import { Link } from "expo-router";
 import { Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -45,34 +47,78 @@ export default function MatchesTab() {
         ) : (
           matches.map((m) => {
             const cand = run!.deck.find((c) => c.id === m.candidateId);
+            const thread = run!.threads.find((t) => t.id === m.threadId);
+            const lastMsg = thread?.messages[thread.messages.length - 1];
+            const previewRaw =
+              lastMsg?.text ??
+              "they matched you. open the thread to say hi.";
+            // Truncate to keep the row to a single, predictable height —
+            // the chat screen shows the full message.
+            const preview =
+              previewRaw.length > 64
+                ? `${previewRaw.slice(0, 61).trimEnd()}…`
+                : previewRaw;
+            const isUnopened = !thread || thread.messages.length === 0;
             return (
-              <Pressable
+              <Link
                 key={m.id}
-                onPress={() => router.push(`/thread/${m.threadId}`)}
-                style={({ pressed }) => [pressed && { opacity: 0.7 }]}
+                href={`/chat/${m.threadId}` as never}
+                asChild
               >
-                <PixelPanel variant="default" style={styles.row}>
-                  <View style={styles.avatarWrap}>
-                    <AssetImage
-                      id={cand?.portraitAssetId ?? "A500_avatar_placeholder"}
-                      style={styles.avatar}
-                      containerStyle={styles.avatar}
-                      resizeMode="cover"
-                    />
-                  </View>
-                  <View style={{ flex: 1, paddingHorizontal: 12 }}>
-                    <PixelText size={10} color={cfPalette.bone} uppercase>
-                      {cand?.displayName ?? "unknown"}
+                <Pressable
+                  testID={`match-row-${m.id}`}
+                  style={({ pressed }) => [
+                    styles.rowPress,
+                    { opacity: pressed ? 0.7 : 1 },
+                  ]}
+                >
+                  <PixelPanel variant="default" style={styles.row}>
+                    <View style={styles.avatarWrap}>
+                      <AssetImage
+                        id={cand?.portraitAssetId ?? "A500_avatar_placeholder"}
+                        style={styles.avatar}
+                        containerStyle={styles.avatar}
+                        resizeMode="cover"
+                      />
+                    </View>
+                    <View style={styles.body}>
+                      <View style={styles.bodyHeader}>
+                        <PixelText size={10} color={cfPalette.bone} uppercase>
+                          {cand?.displayName ?? "unknown"}
+                        </PixelText>
+                        {isUnopened && (
+                          <View style={styles.newPip}>
+                            <PixelText
+                              size={6}
+                              color={cfPalette.void}
+                              uppercase
+                            >
+                              new
+                            </PixelText>
+                          </View>
+                        )}
+                      </View>
+                      <PixelText
+                        size={7}
+                        color={cfPalette.ash}
+                        style={styles.preview}
+                      >
+                        {preview}
+                      </PixelText>
+                      <PixelText
+                        size={6}
+                        color={cfPalette.fog}
+                        style={{ marginTop: 4 }}
+                      >
+                        {`matched day ${m.matchedOnDay}`}
+                      </PixelText>
+                    </View>
+                    <PixelText size={7} color={cfPalette.purpleHot} uppercase>
+                      ▸
                     </PixelText>
-                    <PixelText size={7} color={cfPalette.ash} style={{ marginTop: 4 }}>
-                      {`matched day ${m.matchedOnDay}`}
-                    </PixelText>
-                  </View>
-                  <PixelText size={7} color={cfPalette.cyan} uppercase>
-                    open ›
-                  </PixelText>
-                </PixelPanel>
-              </Pressable>
+                  </PixelPanel>
+                </Pressable>
+              </Link>
             );
           })
         )}
@@ -102,6 +148,9 @@ const styles = StyleSheet.create({
     padding: 28,
     alignItems: "center",
   },
+  rowPress: {
+    width: "100%",
+  },
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -114,5 +163,25 @@ const styles = StyleSheet.create({
   avatar: {
     width: 48,
     height: 48,
+  },
+  body: {
+    flex: 1,
+    paddingHorizontal: 12,
+  },
+  bodyHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  preview: {
+    marginTop: 6,
+    lineHeight: 11,
+  },
+  newPip: {
+    backgroundColor: cfPalette.cyan,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: cfPalette.cyanHot,
   },
 });

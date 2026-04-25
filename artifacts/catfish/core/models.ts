@@ -188,6 +188,12 @@ export interface FactPayload {
  * "If the player has discovered all of `requiredFactIDs`, surface
  * `narrativeBeat` when they accuse." Used by the accusation resolver
  * to tell the player *how* they cracked the case.
+ *
+ * Each entry in `requiredFactIDs` is an authoring key from
+ * `factUniverse.json`. Authored Facts use their authoring key as their
+ * `Fact.id` (see `factBootstrap.buildAuthoredFacts`), so the resolver's
+ * subset check works uniformly against either `Fact.id` or
+ * `Fact.authoringKey` — they're the same string for authored rows.
  */
 export interface Deduction {
   id: string;
@@ -234,6 +240,14 @@ export interface AccusationResult {
  * long-presses chat messages.
  */
 export interface Fact {
+  /**
+   * Stable per-row identifier. For authored Facts, this equals the
+   * authoring key from `factUniverse.json` (e.g.
+   * `"miles_bio_downtown_view"`) so deductions in
+   * `requiredFactIDs` subset-check directly against `Fact.id`. For
+   * captured Facts, this is a random `newFactId()` UUID minted at
+   * capture time.
+   */
   id: FactId;
   runId: RunId;
   /**
@@ -242,7 +256,12 @@ export interface Fact {
    * "conditional"`.
    */
   kind: FactKind;
-  /** Authoring key (e.g. "miles_apartment_view"). */
+  /**
+   * Authoring key (e.g. `"miles_apartment_view"`). Equal to `id` for
+   * authored Facts; for captured Facts this is a content-derived
+   * stable string (e.g. `"captured_${messageId}"`) distinct from the
+   * row's random `id`.
+   */
   authoringKey: string;
   /**
    * Where this Fact came from in-fiction (bio, IG post, a friend's

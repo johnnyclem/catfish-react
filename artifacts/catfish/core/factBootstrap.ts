@@ -26,7 +26,6 @@ import {
   FactSource,
   FriendID,
   KillerIdentity,
-  newFactId,
   RunId,
 } from "./models";
 
@@ -63,10 +62,15 @@ export function getAuthoredFactUniverse(): readonly AuthoredFactRow[] {
 /**
  * Produce the per-run authored Fact rows for the given killer.
  *
- * Pure: same `runId` + same `killer` always returns the same shape.
- * IDs on individual rows are *not* deterministic (they use `newFactId`
- * which embeds a timestamp + random suffix), but the inclusion set
- * and resolved payloads are.
+ * Pure: same `runId` + same `killer` always returns the same shape,
+ * including the per-row `id`s — authored Facts use their authoring key
+ * (the stable string from `factUniverse.json`, e.g.
+ * `"miles_bio_downtown_view"`) as their `Fact.id` so the accusation
+ * resolver's `requiredFactIDs` subset check works against either
+ * `Fact.id` or `Fact.authoringKey` — they're guaranteed equal for
+ * authored rows. Captured Facts (added later via `commitFact`) keep
+ * the random `newFactId()` UUID scheme so two captures of distinct
+ * messages can't collide.
  */
 export function buildAuthoredFacts(
   runId: RunId,
@@ -90,7 +94,11 @@ export function buildAuthoredFacts(
     }
 
     const fact: Fact = {
-      id: newFactId(),
+      // Authored rows use the authoring key as their id so the
+      // accusation resolver's `requiredFactIDs` (which are authoring
+      // keys) subset-check works directly against `Fact.id`. See the
+      // function header for the full rationale.
+      id: row.id,
       runId,
       kind: row.kind,
       authoringKey: row.id,

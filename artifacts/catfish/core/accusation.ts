@@ -43,21 +43,20 @@ export interface ResolveAccusationInput {
   /**
    * Fact ids the player has discovered.
    *
-   * IMPORTANT — these are **authoring keys** (e.g.
-   * `"miles_bio_downtown_view"`), not the random per-row
-   * `Fact.id` UUIDs minted by `newFactId()`. The resolver
-   * subset-checks them against `solvingDeduction.requiredFactIDs`,
-   * which are themselves authoring keys.
-   *
-   * The Pass-4 typing reuses `FactId` for both, which is a known
-   * footgun — see follow-up "Make accusation use stable fact
-   * identifiers across the codebase" for the planned cleanup. Until
-   * then, callers should map their discovered facts to authoring
-   * keys before passing them in:
+   * The resolver subset-checks these against
+   * `solvingDeduction.requiredFactIDs`, which carry authoring keys
+   * from `factUniverse.json` (e.g. `"miles_bio_downtown_view"`).
+   * Authored Facts use their authoring key as their `Fact.id` (see
+   * `factBootstrap.buildAuthoredFacts`), so callers can pass either
+   * `f.id` or `f.authoringKey` interchangeably:
    *
    *     const discovered = run.facts
    *       .filter(isDiscovered)
-   *       .map((f) => f.authoringKey as unknown as FactId);
+   *       .map((f) => f.id);
+   *
+   * Captured Facts (kind: "captured") have random per-row UUIDs and
+   * never appear in any deduction's `requiredFactIDs`, so passing
+   * them in is harmless — they just don't match anything.
    */
   discoveredFactIds: ReadonlySet<FactId> | readonly FactId[];
   /** Defaults to `"accuse"` — the player explicitly accusing. */

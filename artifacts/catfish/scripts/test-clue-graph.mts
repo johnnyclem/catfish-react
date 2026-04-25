@@ -285,21 +285,31 @@ const state = useGameState.getState;
 // ─── Test 5: resolveAccusation covers all four endings ─────────────────
 {
   const run = state().run!;
-  // Per the Swift design doc, the resolver subset-checks the truth
-  // identity's `solvingDeduction.requiredFactIDs` — which are
-  // authoring keys (e.g. "miles_bio_downtown_view"), not the random
-  // per-row `Fact.id`s. Callers pass the set of authoring keys the
-  // player has surfaced. We cast to FactId for the API boundary.
-  type FactIdLike = (typeof run.facts)[number]["id"];
-  const allAuthoringKeys = new Set<FactIdLike>(
-    run.facts.map((f) => f.authoringKey as unknown as FactIdLike),
-  );
+  // Authored Facts use their authoring key as their `Fact.id` (see
+  // `factBootstrap.buildAuthoredFacts`), so the accusation resolver's
+  // `requiredFactIDs` (themselves authoring keys) subset-check works
+  // uniformly against either field. No casts needed — pass `f.id`
+  // straight through.
+  const allDiscoveredIds = new Set(run.facts.map((f) => f.id));
+
+  // Lock the invariant in: every authored fact has `id ===
+  // authoringKey`. If a future change reintroduces random per-row
+  // ids for authored rows, the resolver silently breaks — make that
+  // failure loud here.
+  for (const f of run.facts) {
+    if (f.kind !== "captured") {
+      assert(
+        f.id === f.authoringKey,
+        `authored fact ${f.authoringKey} must use its authoring key as id; got ${f.id}`,
+      );
+    }
+  }
 
   // 5a — wrong accusation.
   const wrong = resolveAccusation({
     accused: "tessa",
     run,
-    discoveredFactIds: allAuthoringKeys,
+    discoveredFactIds: allDiscoveredIds,
   });
   assert(
     wrong.ending === "wrongfulAccusation" &&
@@ -309,23 +319,27 @@ const state = useGameState.getState;
   );
 
   // 5b — correct + partial chain (drop one required fact).
-  const requiredKeys: FactIdLike[] = [
-    "miles_bio_downtown_view" as unknown as FactIdLike,
-    "miles_ig_window_reflection" as unknown as FactIdLike,
-    "miles_portrait_uneasy_day5" as unknown as FactIdLike,
-    "dev_text_day4_miles_sus" as unknown as FactIdLike,
+  // Authoring keys are plain strings, and `FactId = string`, so these
+  // literals assign without any cast.
+  const requiredKeys = [
+    "miles_bio_downtown_view",
+    "miles_ig_window_reflection",
+    "miles_portrait_uneasy_day5",
+    "dev_text_day4_miles_sus",
   ];
-  const requiredIds = new Set<FactIdLike>(requiredKeys);
+  const requiredIds = new Set(requiredKeys);
   // Sanity: every required authoring key was actually materialized
   // for the Miles run (otherwise the resolver test is meaningless).
+  // We look the row up by `id` here (not `authoringKey`) to also
+  // exercise the new invariant: id === authoringKey for authored rows.
   for (const k of requiredKeys) {
     assert(
-      run.facts.some((f) => f.authoringKey === (k as unknown as string)),
-      `expected required fact ${String(k)} to be in the materialized run`,
+      run.facts.some((f) => f.id === k),
+      `expected required fact ${k} to be in the materialized run with id === authoringKey`,
     );
   }
 
-  const partial = new Set<FactIdLike>(requiredIds);
+  const partial = new Set(requiredIds);
   // Remove one — verify resolver detects the missing link.
   const drop = [...partial][0]!;
   partial.delete(drop);

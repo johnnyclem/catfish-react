@@ -8,12 +8,14 @@
  * crashing.
  *
  * Asset-id ranges (loose convention):
- *   A0xx — title / character portraits / fullbody renders
+ *   A0xx — title / brand marks (app icons, wordmark) / character
+ *          portraits / fullbody renders
  *   A1xx — visual FX overlays
- *   A2xx — match / celebration overlays
- *   A3xx — journal UI elements
+ *   A2xx — match / swipe-feedback / celebration overlays
+ *   A3xx — journal UI elements (book, sparkles, ornate frames)
  *   A4xx — buttons
  *   A5xx — avatar placeholders / charms / speech bubbles
+ *          (A503 = outgoing/sender pink, A504 = incoming/received gray)
  *   A6xx — background scene art (rooms, locations, exteriors)
  *   A9xx — spritesheet / reference art
  *
@@ -21,12 +23,23 @@
  * chat-thread backdrops in Pass 2 (each candidate-thread can pin a
  * scene that matches their bio) and for journal location markers in
  * Pass 3. They are intentionally not wired into any screen yet.
+ *
+ * Brand foundation (A001-A005, A201, A303, A503-A504) bundled in this
+ * pass. A001 (title card) and A200 (MATCH! stamp) are upgraded art that
+ * auto-appear on the title screen and match overlay. The remaining
+ * pieces — app icons (A002-A004), wordmark (A005), NOPE stamp (A201),
+ * ornate portrait frame (A303), and the two-sided chat bubbles
+ * (A503/A504) — await screen-level wiring in later passes.
  */
 
 import { ImageSourcePropType } from "react-native";
 
 export type AssetId =
   | "A001_title_logo"
+  | "A002_app_icon_primary"
+  | "A003_app_icon_alt_anchor"
+  | "A004_app_icon_alt_hook"
+  | "A005_wordmark_catfish"
   | "A021_accuse_modal_bg"
   | "A034_miles_portrait_neutral"
   | "A035_miles_portrait_smile"
@@ -74,13 +87,17 @@ export type AssetId =
   | "A102_fx_message_pop"
   | "A103_fx_unmatch_shatter"
   | "A200_match_overlay"
+  | "A201_nope_stamp"
   | "A300_journal_book"
   | "A301_search_sparkle"
   | "A302_heart_ring"
+  | "A303_portrait_frame"
   | "A400_button_red"
   | "A500_avatar_placeholder"
   | "A501_charm_fire"
   | "A502_speech_bubble"
+  | "A503_speech_bubble_outgoing"
+  | "A504_speech_bubble_incoming"
   | "A600_bg_parking_garage_b2"
   | "A601_bg_bedroom_night"
   | "A602_bg_lounge_skyline"
@@ -92,6 +109,10 @@ export type AssetId =
 
 const REGISTRY: Partial<Record<AssetId, ImageSourcePropType>> = {
   A001_title_logo: require("./images/A001_title_logo.png"),
+  A002_app_icon_primary: require("./images/A002_app_icon_primary.png"),
+  A003_app_icon_alt_anchor: require("./images/A003_app_icon_alt_anchor.png"),
+  A004_app_icon_alt_hook: require("./images/A004_app_icon_alt_hook.png"),
+  A005_wordmark_catfish: require("./images/A005_wordmark_catfish.png"),
   A034_miles_portrait_neutral: require("./images/A034_miles_portrait_neutral.png"),
   A035_miles_portrait_smile: require("./images/A035_miles_portrait_smile.png"),
   A036_miles_portrait_flirty: require("./images/A036_miles_portrait_flirty.png"),
@@ -133,13 +154,17 @@ const REGISTRY: Partial<Record<AssetId, ImageSourcePropType>> = {
   A073_sam_fullbody_casual: require("./images/A073_sam_fullbody_casual.png"),
   A074_sam_fullbody_formal: require("./images/A074_sam_fullbody_formal.png"),
   A200_match_overlay: require("./images/A200_match_overlay.png"),
+  A201_nope_stamp: require("./images/A201_nope_stamp.png"),
   A300_journal_book: require("./images/A300_journal_book.png"),
   A301_search_sparkle: require("./images/A301_search_sparkle.png"),
   A302_heart_ring: require("./images/A302_heart_ring.png"),
+  A303_portrait_frame: require("./images/A303_portrait_frame.png"),
   A400_button_red: require("./images/A400_button_red.png"),
   A500_avatar_placeholder: require("./images/A500_avatar_placeholder.png"),
   A501_charm_fire: require("./images/A501_charm_fire.png"),
   A502_speech_bubble: require("./images/A502_speech_bubble.png"),
+  A503_speech_bubble_outgoing: require("./images/A503_speech_bubble_outgoing.png"),
+  A504_speech_bubble_incoming: require("./images/A504_speech_bubble_incoming.png"),
   A600_bg_parking_garage_b2: require("./images/A600_bg_parking_garage_b2.png"),
   A601_bg_bedroom_night: require("./images/A601_bg_bedroom_night.png"),
   A602_bg_lounge_skyline: require("./images/A602_bg_lounge_skyline.png"),

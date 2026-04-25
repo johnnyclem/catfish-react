@@ -60,6 +60,11 @@ export function useDialogueVoice(): DialogueVoiceController {
   // doesn't re-trigger the next-track logic on every re-render.
   const lastFinishHandledRef = useRef(0);
   const finishCounterRef = useRef(0);
+  // Serializes playLine() across async fetches so a slow live-TTS
+  // call for line N+0 cannot be overtaken by a baked clip for line
+  // N+1. Always reset to a resolved promise — never rejected — so a
+  // single failed line can't poison the chain.
+  const enqueueLockRef = useRef<Promise<void>>(Promise.resolve());
 
   const playNext = useCallback(() => {
     const next = queueRef.current.shift();
@@ -101,6 +106,8 @@ export function useDialogueVoice(): DialogueVoiceController {
   }, [status?.didJustFinish, playNext]);
 
   // Mute mid-stream → drain the queue and pause whatever's current.
+  // Also reset the enqueue chain so a re-mute after un-mute starts
+  // from a clean baseline (no stranded inflight fetches in flight).
   useEffect(() => {
     if (voiceMuted) {
       queueRef.current = [];
@@ -110,6 +117,7 @@ export function useDialogueVoice(): DialogueVoiceController {
         /* idle player on web throws, which is fine */
       }
       playingRef.current = false;
+      enqueueLockRef.current = Promise.resolve();
     }
   }, [voiceMuted, player]);
 
@@ -130,25 +138,38 @@ export function useDialogueVoice(): DialogueVoiceController {
       const profile: VoiceProfile = voiceForCandidate(candidate);
       const key = audioKey(profile.characterKey, beatKey, lineIndex);
 
-      // Hot path — pre-generated clips bundle as static asset modules.
-      const baked = getAudioAsset(key);
-      if (baked !== undefined) {
-        enqueue({ source: baked, label: key });
-        return;
-      }
-
-      // Live TTS fallback — fetch + base64 + queue.
-      try {
-        const { uri } = await fetchVoiceClip({ profile, text });
-        // The user could have muted between request and response —
-        // bail before queueing so we don't reanimate a stopped player.
+      // Lock ordering at call-time — every playLine() chains onto the
+      // previous one, so slow live-TTS lookups can't be jumped by a
+      // subsequent baked-clip enqueue. The promise resolves once *this*
+      // line is enqueued (not when the audio finishes — the audio
+      // player's own queue handles serial playback).
+      const next = enqueueLockRef.current.then(async () => {
+        // Re-check mute inside the chain — the user may have toggled
+        // off while we were waiting for our turn.
         if (useGameState.getState().voiceMuted) return;
-        enqueue({ source: { uri }, label: `live:${key}` });
-      } catch (err) {
-        if (__DEV__) {
-          console.warn("[voice] live TTS failed for", key, err);
+
+        // Hot path — pre-generated clips bundle as static asset modules.
+        const baked = getAudioAsset(key);
+        if (baked !== undefined) {
+          enqueue({ source: baked, label: key });
+          return;
         }
-      }
+
+        // Live TTS fallback — fetch + base64 + queue.
+        try {
+          const { uri } = await fetchVoiceClip({ profile, text });
+          if (useGameState.getState().voiceMuted) return;
+          enqueue({ source: { uri }, label: `live:${key}` });
+        } catch (err) {
+          if (__DEV__) {
+            console.warn("[voice] live TTS failed for", key, err);
+          }
+        }
+      });
+      // Swallow rejections in the chain so one failing fetch doesn't
+      // permanently strand subsequent calls.
+      enqueueLockRef.current = next.catch(() => undefined);
+      return next;
     },
     [enqueue, voiceMuted],
   );

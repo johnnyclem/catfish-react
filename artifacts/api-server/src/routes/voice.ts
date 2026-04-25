@@ -189,10 +189,84 @@ async function callElevenLabs(
   return { audio };
 }
 
+/* ─────────────── abuse guard ─────────────────────────────────────── */
+
+/**
+ * Lightweight per-IP token-bucket rate limit. The route proxies a
+ * paid upstream (ElevenLabs) and is reachable from the public web via
+ * the Replit dev domain — without a guard, anyone with the URL could
+ * burn quota / cost. Burst budget + sustained refill chosen to
+ * comfortably accommodate one player working through a chat thread
+ * (rare new lines) while throttling scripted abuse to a crawl.
+ *
+ * In-memory only — restarting the server resets the buckets. Good
+ * enough for this artifact (single-process); a multi-replica deploy
+ * would need a shared store like Redis instead.
+ */
+const RATE_LIMIT_BURST = 30; // tokens immediately available per IP
+const RATE_LIMIT_REFILL_PER_SEC = 0.5; // ≈ 30 req/min sustained
+
+interface Bucket {
+  tokens: number;
+  lastRefill: number;
+}
+const buckets = new Map<string, Bucket>();
+// Cap the map so a flood of unique IPs can't OOM the process.
+const BUCKETS_CAP = 5000;
+
+function rateLimitConsume(ip: string): boolean {
+  const now = Date.now();
+  let bucket = buckets.get(ip);
+  if (!bucket) {
+    if (buckets.size >= BUCKETS_CAP) {
+      // Drop the oldest entry to keep the map bounded. Map iteration
+      // order is insertion order, so the first key is the LRU-ish one.
+      const oldest = buckets.keys().next().value;
+      if (oldest !== undefined) buckets.delete(oldest);
+    }
+    bucket = { tokens: RATE_LIMIT_BURST, lastRefill: now };
+    buckets.set(ip, bucket);
+  } else {
+    const elapsedSec = (now - bucket.lastRefill) / 1000;
+    bucket.tokens = Math.min(
+      RATE_LIMIT_BURST,
+      bucket.tokens + elapsedSec * RATE_LIMIT_REFILL_PER_SEC,
+    );
+    bucket.lastRefill = now;
+  }
+  if (bucket.tokens < 1) return false;
+  bucket.tokens -= 1;
+  return true;
+}
+
+/**
+ * Best-effort client identifier. Express's `req.ip` honours the
+ * trust-proxy setting; behind the Replit edge that's the real client.
+ * Falls back to socket address for the local-dev case.
+ */
+function clientIp(req: Request): string {
+  return (
+    req.ip ?? req.socket.remoteAddress ?? "unknown"
+  );
+}
+
 /* ─────────────── route ───────────────────────────────────────────── */
 
 router.post("/voice/speak", async (req: Request, res: Response) => {
   const t0 = Date.now();
+
+  // Throttle FIRST — cheap rejection before we ever touch the body
+  // parser or upstream. Returns 429 + Retry-After so well-behaved
+  // clients back off rather than hammering.
+  const ip = clientIp(req);
+  if (!rateLimitConsume(ip)) {
+    res.setHeader("Retry-After", "30");
+    return res.status(429).json({
+      error: "rate_limited",
+      detail: "Too many voice requests from this client. Try again shortly.",
+    });
+  }
+
   const parsed = VoiceSpeakRequestSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({

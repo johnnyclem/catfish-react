@@ -147,12 +147,47 @@ function toElevenLabsBody(input: VoiceSpeakRequest, modelId: string): string {
   });
 }
 
-async function callElevenLabs(
+/**
+ * Two upstream paths are supported, in priority order:
+ *   1. `ELEVENLABS_API_KEY` env secret — direct call to the public
+ *      api.elevenlabs.io endpoint with `xi-api-key`. Preferred when
+ *      set because it sidesteps the connector and works as a plain
+ *      workspace-level secret.
+ *   2. Replit `elevenlabs` integration via the connectors proxy —
+ *      used when the env secret is absent. Auth header is injected
+ *      by the proxy so the key never reaches client code.
+ *
+ * Both paths return raw audio/mpeg bytes on success and throw a
+ * tagged Error on upstream failure so the route handler can map
+ * 401/429/5xx into useful HTTP responses.
+ */
+const ELEVENLABS_BASE_URL = "https://api.elevenlabs.io";
+
+async function callElevenLabsDirect(
+  apiKey: string,
   input: VoiceSpeakRequest,
   modelId: string,
-): Promise<UpstreamResult> {
+): Promise<globalThis.Response> {
+  return fetch(
+    `${ELEVENLABS_BASE_URL}/v1/text-to-speech/${encodeURIComponent(input.voiceId)}`,
+    {
+      method: "POST",
+      headers: {
+        "xi-api-key": apiKey,
+        "Content-Type": "application/json",
+        Accept: "audio/mpeg",
+      },
+      body: toElevenLabsBody(input, modelId),
+    },
+  );
+}
+
+async function callElevenLabsViaConnector(
+  input: VoiceSpeakRequest,
+  modelId: string,
+): Promise<globalThis.Response> {
   const connectors = getConnectorsClient();
-  const proxyRes = await connectors.proxy(
+  return connectors.proxy(
     "elevenlabs",
     `/v1/text-to-speech/${encodeURIComponent(input.voiceId)}`,
     {
@@ -164,25 +199,35 @@ async function callElevenLabs(
       body: toElevenLabsBody(input, modelId),
     },
   );
+}
 
-  if (!proxyRes.ok) {
+async function callElevenLabs(
+  input: VoiceSpeakRequest,
+  modelId: string,
+): Promise<UpstreamResult> {
+  const directKey = process.env.ELEVENLABS_API_KEY;
+  const upstream = directKey
+    ? await callElevenLabsDirect(directKey, input, modelId)
+    : await callElevenLabsViaConnector(input, modelId);
+
+  if (!upstream.ok) {
     // Pull the upstream error body as text so we can surface a useful
     // message back to the caller (especially during the pre-gen pass
     // when a stale voice id will produce a quiet 422).
     let detail = "";
     try {
-      detail = await proxyRes.text();
+      detail = await upstream.text();
     } catch {
       detail = "<unreadable upstream body>";
     }
     const err = new Error(
-      `ElevenLabs upstream returned ${proxyRes.status}: ${detail.slice(0, 400)}`,
+      `ElevenLabs upstream returned ${upstream.status}: ${detail.slice(0, 400)}`,
     );
-    (err as Error & { upstreamStatus?: number }).upstreamStatus = proxyRes.status;
+    (err as Error & { upstreamStatus?: number }).upstreamStatus = upstream.status;
     throw err;
   }
 
-  const audio = Buffer.from(await proxyRes.arrayBuffer());
+  const audio = Buffer.from(await upstream.arrayBuffer());
   if (audio.byteLength === 0) {
     throw new Error("ElevenLabs upstream returned an empty audio body");
   }
@@ -250,6 +295,23 @@ function clientIp(req: Request): string {
   );
 }
 
+/**
+ * Loopback addresses are treated as trusted: this server only listens
+ * on localhost and the Replit edge proxy presents real client IPs as
+ * non-loopback addresses, so any request whose remote address is
+ * loopback originated from inside the workspace itself (the pre-gen
+ * pass, healthchecks, internal scripts). Throttling those would only
+ * hurt the developer running `voice:pregen`.
+ */
+function isLoopback(ip: string): boolean {
+  return (
+    ip === "127.0.0.1" ||
+    ip === "::1" ||
+    ip === "::ffff:127.0.0.1" ||
+    ip.startsWith("127.")
+  );
+}
+
 /* ─────────────── route ───────────────────────────────────────────── */
 
 router.post("/voice/speak", async (req: Request, res: Response) => {
@@ -257,9 +319,10 @@ router.post("/voice/speak", async (req: Request, res: Response) => {
 
   // Throttle FIRST — cheap rejection before we ever touch the body
   // parser or upstream. Returns 429 + Retry-After so well-behaved
-  // clients back off rather than hammering.
+  // clients back off rather than hammering. Loopback callers (the
+  // pre-gen script + internal smoke tests) bypass the limiter.
   const ip = clientIp(req);
-  if (!rateLimitConsume(ip)) {
+  if (!isLoopback(ip) && !rateLimitConsume(ip)) {
     res.setHeader("Retry-After", "30");
     return res.status(429).json({
       error: "rate_limited",

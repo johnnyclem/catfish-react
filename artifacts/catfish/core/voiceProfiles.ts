@@ -86,7 +86,7 @@ export const KILLER_VOICES: Record<KillerIdentity, VoiceProfile> = {
   // closeness are the on-air voice you'd actually leave the radio on for.
   tessa: {
     characterKey: "tessa",
-    voiceId: "EXAVITQu4vr4xnSDxMaC", // Bella
+    voiceId: "hpp4J3VqNfWAUOO0d1Us", // Bella (Professional, Bright, Warm)
     modelId: MODEL,
     settings: PRESET_HUSHED,
     notes: "Bella — warm, broadcast-soft female. Reads 'midnight to four'.",

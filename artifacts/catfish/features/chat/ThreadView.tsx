@@ -150,6 +150,7 @@ export function ThreadView({ threadId }: ThreadViewProps) {
   const openThread = useGameState((s) => s.openThread);
   const sendReply = useGameState((s) => s.sendReply);
   const unmatchThread = useGameState((s) => s.unmatchThread);
+  const markThreadRead = useGameState((s) => s.markThreadRead);
 
   const [pending, setPending] = useState(false);
   const [unmatchPending, setUnmatchPending] = useState(false);
@@ -226,6 +227,16 @@ export function ThreadView({ threadId }: ThreadViewProps) {
       void voice.playLine(candidateRef.current!, beatKey, lineIndex, m.text);
     }
   }, [hydrated, thread, candidate, voice]);
+
+  // Clear unread once on initial focus of this thread. We deliberately
+  // do NOT re-fire on every thread mutation — when sendReply pushes a
+  // new suspect turn, that bump should persist on the Matches row so
+  // the player sees a badge after they navigate back. markThreadRead
+  // fires again on the next focus (re-mount) when they re-enter.
+  useEffect(() => {
+    if (!hydrated) return;
+    void markThreadRead(threadId);
+  }, [hydrated, threadId, markThreadRead]);
 
   const replyOptions = useMemo(() => {
     if (!candidate || !thread) return [];

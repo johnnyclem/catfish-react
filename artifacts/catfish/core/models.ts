@@ -92,6 +92,12 @@ export interface ChatThread {
    * pushes the next turn's suspect lines and bumps this by one.
    */
   turnIndex: number;
+  /**
+   * Suspect messages that have arrived since the player last opened the
+   * thread. Bumped by `sendReply` when the next suspect turn lands and
+   * cleared by `markThreadRead` when the player views the thread.
+   */
+  unreadCount: number;
 }
 
 /**

@@ -12,9 +12,19 @@ import { Platform, StyleSheet, View } from "react-native";
 
 import { PIXEL_FONT } from "@/components/PixelChrome";
 import { cfPalette } from "@/constants/colors";
+import { useGameState } from "@/core/gameStore";
 
 export default function TabLayout() {
   const isWeb = Platform.OS === "web";
+
+  // Sum unread suspect messages across every active thread so the Matches
+  // tab bar pip reflects "anything new across all matches" rather than a
+  // single thread. Cap the visible label to keep the badge compact.
+  const unreadTotal = useGameState((s) =>
+    (s.run?.threads ?? []).reduce((acc, t) => acc + (t.unreadCount ?? 0), 0),
+  );
+  const matchesBadge =
+    unreadTotal > 0 ? (unreadTotal > 9 ? "9+" : String(unreadTotal)) : undefined;
 
   return (
     <Tabs
@@ -57,6 +67,13 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => (
             <Feather name="message-circle" size={20} color={color} />
           ),
+          tabBarBadge: matchesBadge,
+          tabBarBadgeStyle: {
+            backgroundColor: cfPalette.pinkHot,
+            color: cfPalette.void,
+            fontFamily: PIXEL_FONT,
+            fontSize: 9,
+          },
         }}
       />
       <Tabs.Screen

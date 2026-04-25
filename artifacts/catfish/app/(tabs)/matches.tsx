@@ -65,9 +65,14 @@ export default function MatchesTab() {
               previewRaw.length > 64
                 ? `${previewRaw.slice(0, 61).trimEnd()}…`
                 : previewRaw;
-            const isUnopened =
-              !m.unmatched && (!thread || thread.messages.length === 0);
             const isDropped = m.unmatched;
+            const unread = isDropped ? 0 : (thread?.unreadCount ?? 0);
+            const isUnopened =
+              !isDropped && unread === 0 && (!thread || thread.messages.length === 0);
+
+            // Cap the visible count so the pip stays a single, predictable
+            // width even after a long stretch of unanswered turns.
+            const unreadLabel = unread > 9 ? "9+" : String(unread);
             return (
               <Link
                 key={m.id}
@@ -108,18 +113,7 @@ export default function MatchesTab() {
                         >
                           {cand?.displayName ?? "unknown"}
                         </PixelText>
-                        {isUnopened && (
-                          <View style={styles.newPip}>
-                            <PixelText
-                              size={6}
-                              color={cfPalette.void}
-                              uppercase
-                            >
-                              new
-                            </PixelText>
-                          </View>
-                        )}
-                        {isDropped && (
+                        {isDropped ? (
                           <View
                             style={styles.droppedPip}
                             testID={`match-dropped-${m.id}`}
@@ -132,6 +126,31 @@ export default function MatchesTab() {
                               dropped
                             </PixelText>
                           </View>
+                        ) : unread > 0 ? (
+                          <View
+                            style={styles.unreadPip}
+                            testID={`match-unread-${m.id}`}
+                          >
+                            <PixelText
+                              size={6}
+                              color={cfPalette.void}
+                              uppercase
+                            >
+                              {unreadLabel}
+                            </PixelText>
+                          </View>
+                        ) : (
+                          isUnopened && (
+                            <View style={styles.newPip}>
+                              <PixelText
+                                size={6}
+                                color={cfPalette.void}
+                                uppercase
+                              >
+                                new
+                              </PixelText>
+                            </View>
+                          )
                         )}
                       </View>
                       <PixelText
@@ -232,5 +251,14 @@ const styles = StyleSheet.create({
   },
   rowDropped: {
     borderColor: cfPalette.fog,
+  },
+  unreadPip: {
+    backgroundColor: cfPalette.pinkHot,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: cfPalette.pink,
+    minWidth: 16,
+    alignItems: "center",
   },
 });

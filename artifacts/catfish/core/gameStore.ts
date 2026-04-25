@@ -123,6 +123,11 @@ interface GameStateValue {
    * row is a no-op.
    */
   unmatchThread: (matchId: MatchId) => Promise<void>;
+  /**
+   * Clears the unread suspect-message counter on a thread. Idempotent —
+   * safe to call on every focus / message update from the chat screen.
+   */
+  markThreadRead: (threadId: ThreadId) => Promise<void>;
   resetRun: () => Promise<void>;
 }
 
@@ -178,7 +183,17 @@ function migrateRun(run: CaseRun | null): CaseRun | null {
       typeof (t as ChatThread).turnIndex === "number"
         ? (t as ChatThread).turnIndex
         : 0;
-    return { ...t, messages, turnIndex } satisfies ChatThread;
+    const unreadCount =
+      typeof (t as ChatThread).unreadCount === "number" &&
+      (t as ChatThread).unreadCount >= 0
+        ? (t as ChatThread).unreadCount
+        : 0;
+    return {
+      ...t,
+      messages,
+      turnIndex,
+      unreadCount,
+    } satisfies ChatThread;
   });
   return { ...run, threads };
 }
@@ -332,6 +347,7 @@ export const useGameState = create<GameStateValue>((set, get) => ({
           // openThread() will lazily push the opening salvo on first view.
           messages: [],
           turnIndex: 0,
+          unreadCount: 0,
         },
       ];
     }
@@ -444,6 +460,8 @@ export const useGameState = create<GameStateValue>((set, get) => ({
       ...thread,
       messages: [...thread.messages, ...opening],
       turnIndex: 1,
+      // Player is actively viewing — opening salvo lands as already read.
+      unreadCount: 0,
     };
 
     const next: CaseRun = {
@@ -492,6 +510,11 @@ export const useGameState = create<GameStateValue>((set, get) => ({
       ...thread,
       messages: [...thread.messages, playerMsg, ...suspectMsgs],
       turnIndex: thread.turnIndex + 1,
+      // Bump unread for any new suspect lines. ThreadView clears it back
+      // to 0 on the next render via markThreadRead so a player who is
+      // actively in the thread never sees a stale badge — but a player
+      // who navigated away mid-conversation will.
+      unreadCount: thread.unreadCount + suspectMsgs.length,
     };
 
     const next: CaseRun = {
@@ -556,7 +579,19 @@ export const useGameState = create<GameStateValue>((set, get) => ({
     await saveActiveRun(next);
   },
 
-
+  markThreadRead: async (threadId) => {
+    const prev = get().run;
+    if (!prev) return;
+    const thread = prev.threads.find((t) => t.id === threadId);
+    if (!thread || thread.unreadCount === 0) return;
+    const updatedThread: ChatThread = { ...thread, unreadCount: 0 };
+    const next: CaseRun = {
+      ...prev,
+      threads: prev.threads.map((t) => (t.id === threadId ? updatedThread : t)),
+    };
+    set({ run: next });
+    await saveActiveRun(next);
+  },
   resetRun: async () => {
     cancelDiscardTimer();
     set({ run: null, recentlyDiscarded: null });

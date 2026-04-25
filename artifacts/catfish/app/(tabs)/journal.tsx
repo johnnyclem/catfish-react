@@ -22,6 +22,7 @@ import { Platform, Pressable, ScrollView, StyleSheet, View } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
+  NeonButton,
   PixelPanel,
   PixelText,
   ScanlineOverlay,
@@ -29,6 +30,7 @@ import {
 import { cfPalette } from "@/constants/colors";
 import { useGameState } from "@/core/gameStore";
 import { Candidate, CandidateId, Fact } from "@/core/models";
+import { AccusationSheet } from "@/features/accusation/AccusationSheet";
 import { EmptyState } from "@/features/journal/EmptyState";
 import {
   JournalControls,
@@ -51,6 +53,7 @@ export default function JournalTab() {
   const [selectedSuspectId, setSelectedSuspectId] =
     useState<CandidateId | null>(null);
   const [sortMode, setSortMode] = useState<JournalSortMode>("newest");
+  const [accuseOpen, setAccuseOpen] = useState(false);
 
   const committed = useMemo<Fact[]>(
     () =>
@@ -176,6 +179,17 @@ export default function JournalTab() {
         />
       )}
 
+      {run && !run.closed && (
+        <NeonButton
+          label="Accuse A Suspect"
+          variant="primary"
+          size="md"
+          fullWidth
+          onPress={() => setAccuseOpen(true)}
+          style={styles.accuseBtn}
+        />
+      )}
+
       <ScrollView
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
@@ -203,6 +217,11 @@ export default function JournalTab() {
 
       <UndoDiscardBanner
         bottomOffset={Platform.OS === "web" ? 16 : Math.max(insets.bottom, 12)}
+      />
+
+      <AccusationSheet
+        visible={accuseOpen}
+        onClose={() => setAccuseOpen(false)}
       />
     </View>
   );
@@ -285,6 +304,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   statLabel: { marginTop: 4 },
+  accuseBtn: {
+    marginBottom: 14,
+  },
   list: {
     paddingBottom: Platform.OS === "web" ? 100 : 24,
   },

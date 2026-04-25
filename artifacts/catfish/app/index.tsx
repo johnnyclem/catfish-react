@@ -93,7 +93,7 @@ export default function TitleScreen() {
         </PixelPanel>
 
         <View style={styles.buttons}>
-          {run ? (
+          {run && !run.closed ? (
             <>
               <NeonButton
                 label="Continue Case"
@@ -115,13 +115,27 @@ export default function TitleScreen() {
               />
             </>
           ) : (
-            <NeonButton
-              label="Start New Case"
-              variant="primary"
-              size="lg"
-              fullWidth
-              onPress={handleNewCase}
-            />
+            <>
+              <NeonButton
+                label="Start New Case"
+                variant="primary"
+                size="lg"
+                fullWidth
+                onPress={handleNewCase}
+              />
+              {run && run.closed ? (
+                // Closed-run footnote — explains why "Continue" is gone
+                // so the player doesn't think their save was wiped.
+                <PixelText
+                  size={7}
+                  color={cfPalette.ash}
+                  align="center"
+                  style={{ marginTop: 12, lineHeight: 12 }}
+                >
+                  {`last case closed on day ${run.day} — start a new one to play again`}
+                </PixelText>
+              ) : null}
+            </>
           )}
         </View>
 

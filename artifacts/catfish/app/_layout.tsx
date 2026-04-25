@@ -11,6 +11,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useGameHydration } from "@/core/gameStore";
+import { EndOfRunCard } from "@/features/accusation/EndOfRunCard";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -19,20 +20,28 @@ function RootLayoutNav() {
   // exposes `hydrated`; consumers gate their UI on that flag.
   useGameHydration();
   return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-        contentStyle: { backgroundColor: "#0a0420" },
-      }}
-    >
-      <Stack.Screen name="index" />
-      <Stack.Screen name="(tabs)" />
-      <Stack.Screen name="thread/[id]" />
-      <Stack.Screen
-        name="chat/[threadId]"
-        options={{ animation: "slide_from_right" }}
-      />
-    </Stack>
+    <>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: "#0a0420" },
+        }}
+      >
+        <Stack.Screen name="index" />
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="thread/[id]" />
+        <Stack.Screen
+          name="chat/[threadId]"
+          options={{ animation: "slide_from_right" }}
+        />
+      </Stack>
+      {/* Mounted at the root so a closed run surfaces its End-of-Run
+          overlay no matter which screen is visible — Day 7 face-to-
+          face can fire from the swipe deck just as easily as a
+          player accusation can fire from the journal. The card
+          renders nothing while `run.ending` is null. */}
+      <EndOfRunCard />
+    </>
   );
 }
 

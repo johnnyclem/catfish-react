@@ -19,9 +19,11 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect } from "react";
 import { create } from "zustand";
 
+import { AccusationOutcome, resolveAccusation } from "./accusation";
 import { buildAuthoredFacts } from "./factBootstrap";
 import { getIdentityModule, getScriptForCandidate } from "./identities";
 import {
+  AccusationResult,
   ALL_KILLERS,
   CandidateId,
   CaseRun,
@@ -60,6 +62,28 @@ export interface CommitFactInput {
   quote: string;
 }
 
+/**
+ * Input to the run-end accusation.
+ *
+ * `outcome` defaults to `"accuse"` (the player explicitly fingered a
+ * candidate). Adjacent flows pass `"escaped"` (the player walked away
+ * before nailing it) — `"metKiller"` is wired internally by
+ * `advanceDay` when the Day 7 face-to-face fires, not by external
+ * callers.
+ */
+export interface AccuseInput {
+  accused: KillerIdentity;
+  outcome?: AccusationOutcome;
+}
+
+/**
+ * Day clock cap. The source doc's case window runs through Day 6 —
+ * any tick that would land on Day 7 trips the face-to-face beat
+ * instead. Lifted as a const so the swipe-deck UI and the resolver
+ * test agree on the boundary.
+ */
+export const FACE_TO_FACE_DAY = 7;
+
 interface GameStateValue {
   hydrated: boolean;
   run: CaseRun | null;
@@ -89,7 +113,31 @@ interface GameStateValue {
   /** Toggle voice playback. Persists to AsyncStorage immediately. */
   setVoiceMuted: (muted: boolean) => Promise<void>;
   startNewRun: (forced?: KillerIdentity) => Promise<CaseRun>;
+  /**
+   * Player-paced clock tick.
+   *
+   * If the resulting day would land on Day 7, the run instead closes
+   * with a `metKiller` `AccusationResult` — the source doc's "Day 7
+   * face-to-face" beat — so the player never enters a Day 7 swipe deck.
+   * No-ops if the run is already closed.
+   */
   advanceDay: () => Promise<void>;
+  /**
+   * File the run-end accusation. Calls the pure `resolveAccusation`
+   * resolver against the player's currently-discovered fact set,
+   * stamps `closed = true` and the resolved `ending` onto the run,
+   * persists, and returns the result for the run-end card to render.
+   *
+   * No-ops (returns `null`) if the run is missing or already closed.
+   */
+  accuse: (input: AccuseInput) => Promise<AccusationResult | null>;
+  /**
+   * Dismiss the run-end card without starting a new run. Clears
+   * `run.ending` so the overlay disappears; leaves `closed = true`
+   * so the previous run still reads as over and a fresh run is
+   * required to play again.
+   */
+  dismissAccusation: () => Promise<void>;
   swipe: (
     candidateId: CandidateId,
     direction: "left" | "right",
@@ -172,6 +220,7 @@ function buildRun(forced?: KillerIdentity): CaseRun {
     threads: [],
     facts: authoredFacts,
     closed: false,
+    ending: null,
   };
 }
 
@@ -436,7 +485,77 @@ export const useGameState = create<GameStateValue>((set, get) => ({
   advanceDay: async () => {
     const prev = get().run;
     if (!prev) return;
-    const next: CaseRun = { ...prev, day: prev.day + 1 };
+    // Closed runs ignore further ticks — the End-of-Run card is up,
+    // and we don't want a stale "Sleep" tap from before the close
+    // to push the day past the face-to-face boundary.
+    if (prev.closed) return;
+
+    const nextDay = prev.day + 1;
+
+    // Day 7 = face-to-face. The killer reveals themselves at the
+    // pre-arranged meeting. Bake the metKiller stub through the same
+    // resolver the explicit accuse flow uses so all four CaseEndings
+    // route through one code path.
+    if (nextDay >= FACE_TO_FACE_DAY) {
+      const result = resolveAccusation({
+        accused: prev.killer,
+        run: prev,
+        discoveredFactIds: new Set(),
+        outcome: "metKiller",
+      });
+      const next: CaseRun = {
+        ...prev,
+        day: nextDay,
+        closed: true,
+        ending: result,
+      };
+      set({ run: next });
+      await saveActiveRun(next);
+      return;
+    }
+
+    const next: CaseRun = { ...prev, day: nextDay };
+    set({ run: next });
+    await saveActiveRun(next);
+  },
+
+  accuse: async ({ accused, outcome = "accuse" }) => {
+    const prev = get().run;
+    if (!prev || prev.closed) return null;
+
+    // Discovered set = every committed authored OR captured fact, keyed
+    // by authoring key (NOT the random per-row Fact.id). The resolver
+    // subset-checks against `solvingDeduction.requiredFactIDs`, which
+    // are themselves authoring keys — see the comment block on
+    // `ResolveAccusationInput.discoveredFactIds`. This is the
+    // workaround the typed-key follow-up will eventually clean up.
+    const discoveredFactIds = new Set<FactId>(
+      prev.facts
+        .filter((f) => f.committed)
+        .map((f) => f.authoringKey as unknown as FactId),
+    );
+
+    const result = resolveAccusation({
+      accused,
+      run: prev,
+      discoveredFactIds,
+      outcome,
+    });
+
+    const next: CaseRun = {
+      ...prev,
+      closed: true,
+      ending: result,
+    };
+    set({ run: next });
+    await saveActiveRun(next);
+    return result;
+  },
+
+  dismissAccusation: async () => {
+    const prev = get().run;
+    if (!prev || !prev.ending) return;
+    const next: CaseRun = { ...prev, ending: null };
     set({ run: next });
     await saveActiveRun(next);
   },
@@ -444,6 +563,11 @@ export const useGameState = create<GameStateValue>((set, get) => ({
   swipe: async (candidateId, direction) => {
     const prev = get().run;
     if (!prev) return null;
+    // Closed runs are sealed — no further swipes can advance the deck.
+    // The End-of-Run overlay owns the next transition (Start New Case
+    // or Back To Title); we don't want a stray UI tap to mutate a
+    // run that has already been resolved.
+    if (prev.closed) return null;
 
     // Integrity guard — only the candidate currently at deckCursor may be
     // swiped. Rejects duplicate/stale commits that would otherwise
@@ -507,6 +631,9 @@ export const useGameState = create<GameStateValue>((set, get) => ({
   commitFact: async ({ candidateId, threadId, messageId, quote }) => {
     const prev = get().run;
     if (!prev) return null;
+    // Sealed run — no new evidence can be entered into the case file
+    // after the resolver has fired.
+    if (prev.closed) return null;
 
     const trimmed = quote.trim();
     if (!trimmed) return null;
@@ -566,6 +693,10 @@ export const useGameState = create<GameStateValue>((set, get) => ({
   removeFact: async (factId) => {
     const prev = get().run;
     if (!prev) return;
+    // Sealed run — the End-of-Run card is showing the chain that
+    // closed the case. Removing a fact now would corrupt that
+    // post-mortem and is meaningless after the resolver fired.
+    if (prev.closed) return;
     const removed = prev.facts.find((f) => f.id === factId);
     if (!removed) return;
     const filtered = prev.facts.filter((f) => f.id !== factId);
@@ -604,6 +735,10 @@ export const useGameState = create<GameStateValue>((set, get) => ({
   openThread: async (threadId) => {
     const prev = get().run;
     if (!prev) return;
+    // Sealed run — no new chat turns can be staged after the
+    // resolver fires. Existing transcripts stay readable; we just
+    // don't push the next opening salvo or advance turnIndex.
+    if (prev.closed) return;
     const thread = prev.threads.find((t) => t.id === threadId);
     if (!thread) return;
     // Already opened — nothing to push.
@@ -642,6 +777,9 @@ export const useGameState = create<GameStateValue>((set, get) => ({
   sendReply: async (threadId, replyText) => {
     const prev = get().run;
     if (!prev) return null;
+    // Sealed run — locks chat input the moment the resolver fires
+    // so a queued reply can't tack new evidence onto a closed case.
+    if (prev.closed) return null;
     const thread = prev.threads.find((t) => t.id === threadId);
     if (!thread) return null;
 

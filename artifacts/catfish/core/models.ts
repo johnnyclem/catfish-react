@@ -303,6 +303,17 @@ export interface CaseRun {
   facts: Fact[];
   /** Marks runs the player ended (accusation flow lives in Pass 6). */
   closed: boolean;
+  /**
+   * Resolved run-end card payload. `null` while the run is still live;
+   * populated by `accuse()` (player-driven) or by `advanceDay()` when
+   * the Day 7 face-to-face fires. Persisted alongside the rest of the
+   * run so cold-starting on top of a closed case still surfaces the
+   * ending instead of dropping the player into a frozen deck.
+   *
+   * Cleared when `dismissAccusation()` runs or when `startNewRun()`
+   * builds a fresh run.
+   */
+  ending?: AccusationResult | null;
 }
 
 /* ───────── id helpers (no `uuid` package — crashes on iOS/Android) ──── */

@@ -23,14 +23,34 @@ import {
   ALL_KILLERS,
   CandidateId,
   CaseRun,
+  Fact,
+  FactId,
   KillerIdentity,
   MatchRelationship,
+  MessageId,
+  newFactId,
   newMatchId,
   newRunId,
   newThreadId,
   SwipeRecord,
+  ThreadId,
 } from "./models";
 import { loadActiveRun, saveActiveRun } from "./repository";
+
+/**
+ * Pass 3 — Journal capture input.
+ *
+ * Pass 2's chat UI calls `commitFact` with the message it wants to
+ * promote into the case file. `messageId` is optional only because
+ * Pass 2 hasn't shipped the wire format yet — once chat lands, every
+ * capture should pass it through so we can de-dupe re-captures.
+ */
+export interface CommitFactInput {
+  candidateId: CandidateId;
+  threadId?: ThreadId;
+  messageId?: MessageId;
+  quote: string;
+}
 
 interface GameStateValue {
   hydrated: boolean;
@@ -42,6 +62,10 @@ interface GameStateValue {
     candidateId: CandidateId,
     direction: "left" | "right",
   ) => Promise<MatchRelationship | null>;
+  /** Promote a chat message into the Journal as a captured Fact. */
+  commitFact: (input: CommitFactInput) => Promise<Fact | null>;
+  /** Discard a previously captured Fact. */
+  removeFact: (factId: FactId) => Promise<void>;
   resetRun: () => Promise<void>;
 }
 
@@ -160,6 +184,62 @@ export const useGameState = create<GameStateValue>((set, get) => ({
     set({ run: next });
     await saveActiveRun(next);
     return createdMatch;
+  },
+
+  commitFact: async ({ candidateId, threadId, messageId, quote }) => {
+    const prev = get().run;
+    if (!prev) return null;
+
+    const trimmed = quote.trim();
+    if (!trimmed) return null;
+
+    // Sanity: the candidate must belong to the active run's deck so a
+    // stale capture can't pollute the case file with a phantom suspect.
+    const candidate = prev.deck.find((c) => c.id === candidateId);
+    if (!candidate) return null;
+
+    // De-dupe — re-capturing the same message is a no-op so the player
+    // can't stack identical entries by long-pressing twice.
+    if (messageId) {
+      const existing = prev.facts.find(
+        (f) => f.committed && f.capturedFromMessageId === messageId,
+      );
+      if (existing) return existing;
+    }
+
+    const at = nowIso();
+    const fact: Fact = {
+      id: newFactId(),
+      runId: prev.id,
+      authoringKey: messageId ? `captured_${messageId}` : `captured_${at}`,
+      payloadJson: JSON.stringify({
+        kind: "captured",
+        quote: trimmed,
+        threadId: threadId ?? null,
+        messageId: messageId ?? null,
+      }),
+      committed: true,
+      capturedFromCandidateId: candidateId,
+      capturedFromMessageId: messageId,
+      capturedQuote: trimmed,
+      capturedOnDay: prev.day,
+      capturedAt: at,
+    };
+
+    const next: CaseRun = { ...prev, facts: [...prev.facts, fact] };
+    set({ run: next });
+    await saveActiveRun(next);
+    return fact;
+  },
+
+  removeFact: async (factId) => {
+    const prev = get().run;
+    if (!prev) return;
+    const filtered = prev.facts.filter((f) => f.id !== factId);
+    if (filtered.length === prev.facts.length) return;
+    const next: CaseRun = { ...prev, facts: filtered };
+    set({ run: next });
+    await saveActiveRun(next);
   },
 
   resetRun: async () => {

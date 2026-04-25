@@ -5,7 +5,8 @@
  * they matched. Pass 2 owns chat threads.
  */
 
-import { Platform, ScrollView, StyleSheet, View } from "react-native";
+import { router } from "expo-router";
+import { Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AssetImage } from "@/components/AssetImage";
@@ -31,7 +32,7 @@ export default function MatchesTab() {
         matches
       </PixelText>
       <PixelText size={7} color={cfPalette.ash} style={styles.subtitle}>
-        Pass 2 will turn these into chat threads.
+        Tap a match to open the thread.
       </PixelText>
 
       <ScrollView contentContainerStyle={styles.list}>
@@ -45,27 +46,33 @@ export default function MatchesTab() {
           matches.map((m) => {
             const cand = run!.deck.find((c) => c.id === m.candidateId);
             return (
-              <PixelPanel key={m.id} variant="default" style={styles.row}>
-                <View style={styles.avatarWrap}>
-                  <AssetImage
-                    id={cand?.portraitAssetId ?? "A500_avatar_placeholder"}
-                    style={styles.avatar}
-                    containerStyle={styles.avatar}
-                    resizeMode="cover"
-                  />
-                </View>
-                <View style={{ flex: 1, paddingHorizontal: 12 }}>
-                  <PixelText size={10} color={cfPalette.bone} uppercase>
-                    {cand?.displayName ?? "unknown"}
+              <Pressable
+                key={m.id}
+                onPress={() => router.push(`/thread/${m.threadId}`)}
+                style={({ pressed }) => [pressed && { opacity: 0.7 }]}
+              >
+                <PixelPanel variant="default" style={styles.row}>
+                  <View style={styles.avatarWrap}>
+                    <AssetImage
+                      id={cand?.portraitAssetId ?? "A500_avatar_placeholder"}
+                      style={styles.avatar}
+                      containerStyle={styles.avatar}
+                      resizeMode="cover"
+                    />
+                  </View>
+                  <View style={{ flex: 1, paddingHorizontal: 12 }}>
+                    <PixelText size={10} color={cfPalette.bone} uppercase>
+                      {cand?.displayName ?? "unknown"}
+                    </PixelText>
+                    <PixelText size={7} color={cfPalette.ash} style={{ marginTop: 4 }}>
+                      {`matched day ${m.matchedOnDay}`}
+                    </PixelText>
+                  </View>
+                  <PixelText size={7} color={cfPalette.cyan} uppercase>
+                    open ›
                   </PixelText>
-                  <PixelText size={7} color={cfPalette.ash} style={{ marginTop: 4 }}>
-                    {`matched day ${m.matchedOnDay}`}
-                  </PixelText>
-                </View>
-                <PixelText size={7} color={cfPalette.purpleHot} uppercase>
-                  Pass 2
-                </PixelText>
-              </PixelPanel>
+                </PixelPanel>
+              </Pressable>
             );
           })
         )}

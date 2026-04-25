@@ -40,6 +40,7 @@ export type RunId = string;
 export type FactId = string;
 export type MatchId = string;
 export type ThreadId = string;
+export type MessageId = string;
 
 export interface Candidate {
   id: CandidateId;
@@ -74,6 +75,25 @@ export interface ChatThread {
 }
 
 /**
+ * Minimum chat message contract Pass 3 relies on so the player can
+ * capture quotes from a thread into the Journal. Pass 2 is free to
+ * extend this with mood/role metadata, but `id`, `candidateId`, and
+ * `body` MUST stay so Fact capture stays stable across passes.
+ */
+export type MessageRole = "candidate" | "player";
+
+export interface ChatMessage {
+  id: MessageId;
+  threadId: ThreadId;
+  candidateId: CandidateId;
+  role: MessageRole;
+  body: string;
+  sentAt: string;
+  /** Day-clock value at the time the message was sent. */
+  day: number;
+}
+
+/**
  * Per-run authored Fact rows. RunBootstrapper (Pass 4) materializes these
  * with payloads resolved against the chosen KillerIdentity. Pass 1 leaves
  * the array empty and the `payloadJson` opaque so the schema is stable
@@ -88,6 +108,17 @@ export interface Fact {
   payloadJson: string;
   /** Has the player committed this to the journal? Always false in Pass 1. */
   committed: boolean;
+
+  /* ──────── Pass 3 — player-captured fact metadata ──────────────────
+   * Set when the player extracts a Fact from a chat message via the
+   * long-press gesture in the Journal feature. Authored facts (Pass 4)
+   * leave these undefined and rely on `payloadJson` instead.
+   */
+  capturedFromCandidateId?: CandidateId;
+  capturedFromMessageId?: MessageId;
+  capturedQuote?: string;
+  capturedOnDay?: number;
+  capturedAt?: string;
 }
 
 export type SwipeDirection = "left" | "right";
@@ -131,3 +162,4 @@ export const newMatchId = (): MatchId => rid("match");
 export const newThreadId = (): ThreadId => rid("thread");
 export const newFactId = (): FactId => rid("fact");
 export const newCandidateId = (): CandidateId => rid("cand");
+export const newMessageId = (): MessageId => rid("msg");

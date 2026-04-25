@@ -12,6 +12,8 @@
  *  - Facts are *not* implicitly committed. Pass 5 (Journal) gates that.
  */
 
+import { AssetId } from "@/assets/manifest";
+
 export type KillerIdentity =
   | "miles"
   | "tessa"
@@ -41,7 +43,7 @@ export interface Candidate {
   tagline: string;
   bio: string;
   /** Optional asset id from assets/manifest.ts; falls back to placeholder. */
-  portraitAssetId?: string;
+  portraitAssetId?: AssetId;
   prompts: string[];
   /** Hidden flag so the engine can flag the killer in DEBUG. */
   isKillerCandidate: boolean;

@@ -17,11 +17,17 @@ import {
   ScanlineOverlay,
 } from "@/components/PixelChrome";
 import { cfPalette } from "@/constants/colors";
-import { useGameState } from "@/core/gameContext";
+import { useGameState } from "@/core/gameStore";
+import { ALL_KILLERS, KillerIdentity } from "@/core/models";
+import { getIdentityModule } from "@/core/identities";
+import { useState } from "react";
 
 export default function TitleScreen() {
   const insets = useSafeAreaInsets();
-  const { run, hydrated, startNewRun } = useGameState();
+  const run = useGameState((s) => s.run);
+  const hydrated = useGameState((s) => s.hydrated);
+  const startNewRun = useGameState((s) => s.startNewRun);
+  const [debugOpen, setDebugOpen] = useState(false);
 
   const topPad = Math.max(insets.top, Platform.OS === "web" ? 24 : 16);
   const bottomPad = Math.max(insets.bottom, 16);
@@ -32,6 +38,11 @@ export default function TitleScreen() {
 
   const handleNewCase = async () => {
     await startNewRun();
+    enterCase();
+  };
+
+  const handleForceKiller = async (identity: KillerIdentity) => {
+    await startNewRun(identity);
     enterCase();
   };
 
@@ -114,6 +125,43 @@ export default function TitleScreen() {
           )}
         </View>
 
+        <View style={styles.debugWrap}>
+          <NeonButton
+            label={debugOpen ? "▾ DEBUG" : "▸ DEBUG"}
+            variant="ghost"
+            size="sm"
+            onPress={() => setDebugOpen((v) => !v)}
+          />
+          {debugOpen && (
+            <PixelPanel style={styles.debugPanel} borderColor={cfPalette.warn}>
+              <PixelText size={7} color={cfPalette.warn} uppercase glow>
+                ⚠ force killer (starts new run)
+              </PixelText>
+              <PixelText
+                size={6}
+                color={cfPalette.ash}
+                style={{ marginTop: 6, lineHeight: 10 }}
+              >
+                Picks the suspect for a fresh case. Overwrites any active run.
+              </PixelText>
+              <View style={styles.killerGrid}>
+                {ALL_KILLERS.map((id) => {
+                  const mod = getIdentityModule(id);
+                  return (
+                    <NeonButton
+                      key={id}
+                      label={mod.displayName}
+                      variant="ghost"
+                      size="sm"
+                      onPress={() => handleForceKiller(id)}
+                    />
+                  );
+                })}
+              </View>
+            </PixelPanel>
+          )}
+        </View>
+
         <View style={styles.footer}>
           <PixelText size={6} color={cfPalette.fog} align="center">
             v0.1.0 — pass 1 build
@@ -157,6 +205,21 @@ const styles = StyleSheet.create({
   },
   buttons: {
     marginTop: 36,
+  },
+  debugWrap: {
+    marginTop: 28,
+    alignItems: "center",
+  },
+  debugPanel: {
+    marginTop: 12,
+    padding: 14,
+    width: "100%",
+  },
+  killerGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 10,
   },
   footer: {
     marginTop: 36,

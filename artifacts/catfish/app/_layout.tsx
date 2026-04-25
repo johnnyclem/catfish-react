@@ -10,11 +10,14 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { GameStateProvider } from "@/core/gameContext";
+import { useGameHydration } from "@/core/gameStore";
 
 SplashScreen.preventAutoHideAsync();
 
 function RootLayoutNav() {
+  // Kick off AsyncStorage hydration once the navigator mounts. The store
+  // exposes `hydrated`; consumers gate their UI on that flag.
+  useGameHydration();
   return (
     <Stack
       screenOptions={{
@@ -44,12 +47,10 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <ErrorBoundary>
-        <GameStateProvider>
-          <GestureHandlerRootView style={{ flex: 1, backgroundColor: "#0a0420" }}>
-            <StatusBar style="light" />
-            <RootLayoutNav />
-          </GestureHandlerRootView>
-        </GameStateProvider>
+        <GestureHandlerRootView style={{ flex: 1, backgroundColor: "#0a0420" }}>
+          <StatusBar style="light" />
+          <RootLayoutNav />
+        </GestureHandlerRootView>
       </ErrorBoundary>
     </SafeAreaProvider>
   );

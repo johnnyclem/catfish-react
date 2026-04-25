@@ -24,13 +24,15 @@ import {
   ScanlineOverlay,
 } from "@/components/PixelChrome";
 import { cfPalette } from "@/constants/colors";
-import { useGameState } from "@/core/gameContext";
+import { useGameState } from "@/core/gameStore";
 import { ALL_KILLERS, KillerIdentity } from "@/core/models";
 import { getIdentityModule } from "@/core/identities";
 
 export default function ProfileTab() {
   const insets = useSafeAreaInsets();
-  const { run, startNewRun, resetRun } = useGameState();
+  const run = useGameState((s) => s.run);
+  const startNewRun = useGameState((s) => s.startNewRun);
+  const resetRun = useGameState((s) => s.resetRun);
   const [debugMessage, setDebugMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 

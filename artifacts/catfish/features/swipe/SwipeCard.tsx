@@ -136,7 +136,7 @@ export const SwipeCard = forwardRef<SwipeCardHandle, SwipeCardProps>(function Sw
         <PixelPanel variant="raised" style={styles.panel}>
           <View style={styles.portraitWrap}>
             <AssetImage
-              id={(candidate.portraitAssetId as any) ?? "A500_avatar_placeholder"}
+              id={candidate.portraitAssetId ?? "A500_avatar_placeholder"}
               style={styles.portrait}
               containerStyle={styles.portrait}
               resizeMode="cover"

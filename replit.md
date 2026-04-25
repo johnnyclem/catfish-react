@@ -32,10 +32,10 @@ See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and pa
 Pixel-art dating-detective game. Pass 1 of 7 implemented:
 
 - 4-tab shell (Swipe / Matches / Journal / Profile) with custom pixel chrome
-- Persistent CaseRun state in `core/gameContext.tsx` (AsyncStorage, JSON-encoded)
+- Persistent CaseRun state in `core/gameStore.ts` (Zustand + AsyncStorage, JSON-encoded). `useGameHydration()` is mounted once in the root layout to rehydrate on cold start.
 - Immutable killer identity stamped at first match (5 killer stubs in `core/identities.ts`, Miles fleshed out)
 - Swipe deck (`features/swipe/`) — 110pt drag-to-commit, right-swipe = match + celebration overlay
-- Profile DEBUG menu — force killer, reset run
+- DEBUG menus on both the title screen and the Profile tab — force killer, reset run
 - Press Start 2P pixel font (`@expo-google-fonts/press-start-2p`)
 - Neon palette in `constants/colors.ts` (#0a0420 navy, #ff2f8f pink, #22e0ff cyan, #7a3cff purple)
 - 10 PNGs in `assets/images/` wired through `AssetImage` with labeled placeholder fallback

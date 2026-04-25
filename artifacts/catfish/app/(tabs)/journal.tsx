@@ -15,11 +15,11 @@ import {
   ScanlineOverlay,
 } from "@/components/PixelChrome";
 import { cfPalette } from "@/constants/colors";
-import { useGameState } from "@/core/gameContext";
+import { useGameState } from "@/core/gameStore";
 
 export default function JournalTab() {
   const insets = useSafeAreaInsets();
-  const { run } = useGameState();
+  const run = useGameState((s) => s.run);
   const topPad = Math.max(insets.top, Platform.OS === "web" ? 24 : 12);
 
   return (

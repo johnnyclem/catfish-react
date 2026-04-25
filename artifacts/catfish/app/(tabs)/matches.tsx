@@ -15,11 +15,11 @@ import {
   ScanlineOverlay,
 } from "@/components/PixelChrome";
 import { cfPalette } from "@/constants/colors";
-import { useGameState } from "@/core/gameContext";
+import { useGameState } from "@/core/gameStore";
 
 export default function MatchesTab() {
   const insets = useSafeAreaInsets();
-  const { run } = useGameState();
+  const run = useGameState((s) => s.run);
   const topPad = Math.max(insets.top, Platform.OS === "web" ? 24 : 12);
 
   const matches = run?.matches ?? [];
@@ -48,7 +48,7 @@ export default function MatchesTab() {
               <PixelPanel key={m.id} variant="default" style={styles.row}>
                 <View style={styles.avatarWrap}>
                   <AssetImage
-                    id={(cand?.portraitAssetId as any) ?? "A500_avatar_placeholder"}
+                    id={cand?.portraitAssetId ?? "A500_avatar_placeholder"}
                     style={styles.avatar}
                     containerStyle={styles.avatar}
                     resizeMode="cover"

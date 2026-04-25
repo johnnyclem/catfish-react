@@ -18,7 +18,7 @@ import { SwipeCard, SwipeCardHandle } from "./SwipeCard";
 import { MatchCelebration } from "@/components/MatchCelebration";
 import { NeonButton, PixelPanel, PixelText, ScanlineOverlay } from "@/components/PixelChrome";
 import { cfPalette } from "@/constants/colors";
-import { useGameState } from "@/core/gameContext";
+import { useGameState } from "@/core/gameStore";
 import { Candidate } from "@/core/models";
 
 interface CelebrationState {
@@ -27,7 +27,10 @@ interface CelebrationState {
 }
 
 export function SwipeView() {
-  const { run, swipe, advanceDay, hydrated } = useGameState();
+  const run = useGameState((s) => s.run);
+  const swipe = useGameState((s) => s.swipe);
+  const advanceDay = useGameState((s) => s.advanceDay);
+  const hydrated = useGameState((s) => s.hydrated);
   const topCardRef = useRef<SwipeCardHandle>(null);
   const [celebration, setCelebration] = useState<CelebrationState>({
     visible: false,

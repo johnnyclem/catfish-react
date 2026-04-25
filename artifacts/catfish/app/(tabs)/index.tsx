@@ -8,11 +8,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { SwipeView } from "@/features/swipe/SwipeView";
 import { router } from "expo-router";
-import { useGameState } from "@/core/gameContext";
+import { useGameState } from "@/core/gameStore";
 
 export default function SwipeTab() {
   const insets = useSafeAreaInsets();
-  const { hydrated, run } = useGameState();
+  const hydrated = useGameState((s) => s.hydrated);
+  const run = useGameState((s) => s.run);
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 16) : insets.top;
 
   // If we ever land here without a run (deep link, debug reset), bounce out.

@@ -1,0 +1,8 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "kh1mNTk1MIegShi-DDKz4"
+uri = "file://artifacts/catfish/assets/images/icon.png"
+type = "image"
+title = "catfish app icon"

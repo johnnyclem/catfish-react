@@ -1,10 +1,17 @@
 /**
  * KillerIdentity protocol + 8 identity modules.
  *
- * Pass 1: Miles, Jules, Kai, River and Sam are fully authored (seed
- * candidates + narrative beats); the remaining three (Tessa, Ren,
- * Delphine) are typed stubs with TODO markers — they still produce a
- * valid five-candidate roster so the swipe deck never crashes.
+ * Pass 1 shipped fully-authored seed candidates + narrative beats for
+ * Miles, Jules, Kai, River and Sam; the other three (Tessa, Ren,
+ * Delphine) used `stubDeck()` placeholders so the five-candidate
+ * roster stays valid while their bios/portraits are filled in.
+ *
+ * Pass 4 wires the Clue Graph: every identity now declares its own
+ * `conditionalFactIDs`, `variableOverrides`, and `solvingDeduction`
+ * (3–5 facts, authored narrative beat). The previous one-fact
+ * `stubGraph()` helper was removed once the last killer was upgraded
+ * — accusations now resolve against a real evidence chain for
+ * every killer in the cast.
  *
  * Authored-character asset notes:
  *   Miles — A035 (smile) is wired into his swipe-deck portrait below.
@@ -87,10 +94,11 @@ export interface IdentityModule {
    * solving deduction the accusation resolver scores against. See
    * `core/factBootstrap.ts` and `core/accusation.ts` for the reader.
    *
-   * Today: Miles is fully authored to mirror the doc's worked example.
-   * The other seven ship with minimal-but-valid stubs (one conditional
-   * fact, one solving deduction, no red herrings) — same staging
-   * convention as the existing `stubDeck` placeholders.
+   * Every identity in the registry now ships with a real 3–5 fact
+   * solving deduction, per-killer variable payload swaps, and
+   * conditional fact rows authored in `factUniverse.json` — the
+   * one-fact `stubGraph()` helper that earlier passes relied on has
+   * been removed.
    */
 
   /** Authored fact ids only included when this identity is the killer. */
@@ -103,13 +111,15 @@ export interface IdentityModule {
   variableOverrides: Record<FactId, FactPayload>;
   /**
    * The deduction the accusation resolver scores the player's
-   * discovered fact set against. Required, even for the stub
-   * identities — the resolver needs *something* to subset-check.
+   * discovered fact set against. Required for every identity — the
+   * resolver subset-checks `requiredFactIDs` against the player's
+   * discovered set to decide whether the full chain landed.
    */
   solvingDeduction: Deduction;
   /**
    * Fact ids that look damning but aren't part of the solving
-   * deduction. Empty by default for the stub identities.
+   * deduction. Empty for every identity today; reserved for a future
+   * authoring pass that adds misdirection facts on top of the chain.
    */
   redHerrings: FactId[];
 }
@@ -295,16 +305,18 @@ const miles: IdentityModule = {
   redHerrings: [],
 };
 
-/* ───────────────────────── Tessa — STUB ──────────────────────────────── */
+/* ─────────── stub-deck helper (Tessa, Ren, Delphine) ─────────────────── */
 
 function stubDeck(
   identity: KillerIdentity,
   killerName: string,
   killerTagline: string,
 ): Candidate[] {
-  // TODO Pass 4: replace the killer placeholder with an authored entry.
-  // Decoys are now drawn from the shared NPC pool (core/decoyPool.ts) so
-  // every stub identity ships with real portraits + bios from day one.
+  // Tessa, Ren, and Delphine still rely on this placeholder swipe-deck
+  // entry — their clue graphs are fully authored, but the swipe-deck
+  // bio + portrait have yet to be filled in. Decoys are drawn from the
+  // shared NPC pool (core/decoyPool.ts) so every roster ships with
+  // real portraits + bios from day one.
   return [
     {
       id: newCandidateId(),
@@ -321,42 +333,51 @@ function stubDeck(
   ];
 }
 
-/**
- * Stub Clue Graph wiring shared by the seven non-Miles identities.
- * Each gets one conditional fact id (already authored in
- * `factUniverse.json`) and a one-fact solving deduction so the
- * resolver has something to subset-check, with TODO markers calling
- * out where the next authoring pass should expand the chain.
- */
-function stubGraph(
-  conditionalId: FactId,
-  killerName: string,
-): {
-  conditionalFactIDs: FactId[];
-  variableOverrides: Record<FactId, FactPayload>;
-  solvingDeduction: Deduction;
-  redHerrings: FactId[];
-} {
-  return {
-    conditionalFactIDs: [conditionalId],
-    variableOverrides: {},
-    solvingDeduction: {
-      id: `${conditionalId}_solve_stub`,
-      requiredFactIDs: [conditionalId],
-      narrativeBeat: `TODO Pass 4 — author ${killerName}'s solving narrative beat.`,
-    },
-    redHerrings: [],
-  };
-}
-
 const tessa: IdentityModule = {
   identity: "tessa",
   displayName: "Tessa Lin",
   concept:
-    "TODO Pass 4 — late-night radio host with too many keys on her keychain.",
+    "Late-night radio host with too many keys on her keychain. Voice you'd recognize, hours nobody can verify.",
   buildDeck: () => stubDeck("tessa", "Tessa", "Voice you'd recognize on the radio."),
-  beats: { 1: ["TODO Pass 4 — Tessa day-1 beats."] },
-  ...stubGraph("tessa_conditional_lateshift", "Tessa"),
+  beats: {
+    1: [
+      "Tessa opens with a low-key joke about you being polite in your bio about radio.",
+      "Mentions the late slot — midnight to four — and that you should listen sometime.",
+    ],
+    2: [
+      "Asks what you do when you can't sleep, then names a song she queued the night something happened.",
+      "Drops that she 'pulled the late slot solo' the night the news flagged (TODO Pass 5 — anchor fact).",
+    ],
+    3: [
+      "First contradiction: a clip she sent doesn't match the time she claimed to be on air.",
+    ],
+  },
+  conditionalFactIDs: [
+    "tessa_conditional_lateshift",
+    "tessa_portrait_uneasy_day5",
+  ],
+  variableOverrides: {
+    tessa_bio_lateslot: {
+      text:
+        "Tessa's bio claims she's on-air midnight to four most weeknights — but Dev's tip later says the station has been running reruns under her name for weeks. The bio sells an alibi she stopped earning.",
+    },
+    tessa_ig_keychain: {
+      text:
+        "Recent Tessa IG — a keychain dropped on the studio console. One key on the ring isn't a station key. The shape matches a back-door type the news mentioned about the warehouse strip.",
+    },
+  },
+  solvingDeduction: {
+    id: "tessa_solve_offair_keychain",
+    requiredFactIDs: [
+      "tessa_bio_lateslot",
+      "tessa_ig_keychain",
+      "tessa_conditional_lateshift",
+      "tessa_portrait_uneasy_day5",
+    ],
+    narrativeBeat:
+      "She wasn't on air. The station had been looping reruns under her name for weeks. The keychain in her IG carried a key she never explained — the same back-door shape the news mentioned about the warehouse strip. The day-5 portrait flinched a half-second before she did.",
+  },
+  redHerrings: [],
   killerScript: [
     {
       beatKey: "tessa_open",
@@ -400,10 +421,48 @@ const tessa: IdentityModule = {
 const ren: IdentityModule = {
   identity: "ren",
   displayName: "Ren Okafor",
-  concept: "TODO Pass 4 — competitive sailor with a temper he calls 'focus'.",
+  concept:
+    "Competitive sailor with a temper he calls 'focus'. Dawn routines that don't quite line up with the marina's clock.",
   buildDeck: () => stubDeck("ren", "Ren", "Sailor. Up at five. Don't ask why."),
-  beats: { 1: ["TODO Pass 4 — Ren day-1 beats."] },
-  ...stubGraph("ren_conditional_dawn_alibi", "Ren"),
+  beats: {
+    1: [
+      "Ren opens with a teasing line about you never having been on a boat.",
+      "Mentions he's at the marina before sunrise — four-thirty most mornings.",
+    ],
+    2: [
+      "Asks if you've ever been awake when the city was still off.",
+      "Drops that he was 'first one in' the morning the news flagged (TODO Pass 5 — anchor fact).",
+    ],
+    3: [
+      "First contradiction: the marina office hours don't match the dawn-call he keeps selling.",
+    ],
+  },
+  conditionalFactIDs: [
+    "ren_conditional_dawn_alibi",
+    "ren_portrait_sinister_day5",
+  ],
+  variableOverrides: {
+    ren_bio_dawn_call: {
+      text:
+        "Ren's bio sells the four-thirty start as the marina's rule — but the marina office doesn't open until six, and the sign-out logs Dev pulled put him out hours earlier than dawn.",
+    },
+    ren_ig_marina_lights: {
+      text:
+        "Recent Ren IG — a marina under floodlights, captioned 'first one in'. Across the water the warehouse strip is dark, which makes this well after midnight, not dawn.",
+    },
+  },
+  solvingDeduction: {
+    id: "ren_solve_dawn_lie",
+    requiredFactIDs: [
+      "ren_bio_dawn_call",
+      "ren_ig_marina_lights",
+      "ren_conditional_dawn_alibi",
+      "ren_portrait_sinister_day5",
+    ],
+    narrativeBeat:
+      "His 'four-thirty most mornings' was a story the marina logs didn't back up — Dev pulled the sign-out sheet himself. The IG photo he labeled 'first one in' was taken with the warehouse strip dark across the water: middle of the night, not dawn. The day-5 portrait was a man who'd realized he'd told the wrong person.",
+  },
+  redHerrings: [],
   killerScript: [
     {
       beatKey: "ren_open",
@@ -483,7 +542,32 @@ const kai: IdentityModule = {
       "TODO Pass 4 — first contradiction beat (alleged paint-late alibi vs. an inconsistency in a photo's timestamp / weather / lighting).",
     ],
   },
-  ...stubGraph("kai_conditional_paint_late", "Kai"),
+  conditionalFactIDs: [
+    "kai_conditional_paint_late",
+    "kai_portrait_sinister_day5",
+  ],
+  variableOverrides: {
+    kai_bio_transit_wall: {
+      text:
+        "Kai's bio invites you 'down by the old transit lot' to see the new piece — but the lot's been fenced off for a month. Whatever wall he's standing in front of, it isn't the one he says it is.",
+    },
+    kai_ig_scissor_lift: {
+      text:
+        "Recent Kai IG from the scissor lift — over his shoulder, a strip of warehouse roofs. Same skyline the news camera caught the night the warehouse strip was named.",
+    },
+  },
+  solvingDeduction: {
+    id: "kai_solve_fenced_lot",
+    requiredFactIDs: [
+      "kai_bio_transit_wall",
+      "kai_ig_scissor_lift",
+      "kai_conditional_paint_late",
+      "kai_portrait_sinister_day5",
+    ],
+    narrativeBeat:
+      "He told you he was painting late by the transit lot — but the lot's been fenced off for a month. The IG from the lift looked across at the warehouse roofs the news camera caught the same night. The 'painter brain' that remembered every face had been remembering yours, too. The day-5 portrait stopped pretending it hadn't.",
+  },
+  redHerrings: [],
   killerScript: [
     {
       beatKey: "kai_open",
@@ -527,11 +611,49 @@ const kai: IdentityModule = {
 const delphine: IdentityModule = {
   identity: "delphine",
   displayName: "Delphine Roux",
-  concept: "TODO Pass 4 — perfumer who claims she can smell secrets.",
+  concept:
+    "Perfumer who claims she can smell secrets. Quiet shop, quieter nights, an alibi that doesn't quite hold its shape.",
   buildDeck: () =>
     stubDeck("delphine", "Delphine", "Makes scents. Also reads palms, maybe."),
-  beats: { 1: ["TODO Pass 4 — Delphine day-1 beats."] },
-  ...stubGraph("delphine_conditional_smell_secret", "Delphine"),
+  beats: {
+    1: [
+      "Delphine opens with a flirty 'you smell like someone who overthinks first messages'.",
+      "Mentions the shop's quiet hours — perfume's better when the city's asleep.",
+    ],
+    2: [
+      "Asks about the last thing that surprised you, then re-routes to a story about being 'home all night' the night the news flagged.",
+      "Drops a casual reference to opening at seven the next morning (TODO Pass 5 — anchor fact).",
+    ],
+    3: [
+      "First contradiction: a candle in her IG reflects a streetlamp she shouldn't have been able to see from home.",
+    ],
+  },
+  conditionalFactIDs: [
+    "delphine_conditional_smell_secret",
+    "delphine_portrait_uneasy_day5",
+  ],
+  variableOverrides: {
+    delphine_bio_quiet_nights: {
+      text:
+        "Delphine's bio leans on 'quiet nights at the shop' — but she told you she was 'home all night' the night the news flagged. Both can't be true.",
+    },
+    delphine_ig_workbench: {
+      text:
+        "Recent Delphine IG — workbench, bottles, half-burnt candle. The window over the bench reflects a streetlamp from the warehouse corner three blocks away — not the alley her apartment looks onto.",
+    },
+  },
+  solvingDeduction: {
+    id: "delphine_solve_window_lamp",
+    requiredFactIDs: [
+      "delphine_bio_quiet_nights",
+      "delphine_ig_workbench",
+      "delphine_conditional_smell_secret",
+      "delphine_portrait_uneasy_day5",
+    ],
+    narrativeBeat:
+      "She said she was home all night. The shop receipts had her opening at seven the next morning, and the IG from her workbench reflected a streetlamp on the warehouse corner — three blocks from where she said she was. She'd been in the shop, and not for perfume. The day-5 portrait already knew the moment you'd asked.",
+  },
+  redHerrings: [],
   killerScript: [
     {
       beatKey: "delphine_open",
@@ -737,7 +859,32 @@ const river: IdentityModule = {
       "TODO Pass 4 — first contradiction beat (claimed solo scout vs. a witness placing him at the trailhead with someone else).",
     ],
   },
-  ...stubGraph("river_conditional_solo_scout", "River"),
+  conditionalFactIDs: [
+    "river_conditional_solo_scout",
+    "river_portrait_sinister_day5",
+  ],
+  variableOverrides: {
+    river_bio_solo_sundays: {
+      text:
+        "River's bio sells the 'solo sundays' line — but a hiker put him at the trailhead with someone else last weekend. The 'solo' is a story he's been telling for a while.",
+    },
+    river_ig_trailhead: {
+      text:
+        "Recent River IG — a trailhead at first light, captioned 'just me and the rock'. Two pairs of boots are visible in the corner of the truck bed; he cropped the second pair almost out of frame.",
+    },
+  },
+  solvingDeduction: {
+    id: "river_solve_solo_lie",
+    requiredFactIDs: [
+      "river_bio_solo_sundays",
+      "river_ig_trailhead",
+      "river_conditional_solo_scout",
+      "river_portrait_sinister_day5",
+    ],
+    narrativeBeat:
+      "He sold you 'solo sundays' — but a hiker placed him at the trailhead with someone else, and the IG photo he captioned 'just me and the rock' had a second pair of boots in the truck bed he almost cropped out. The day-5 portrait was the face of someone who'd realized he hadn't cropped them far enough.",
+  },
+  redHerrings: [],
   killerScript: [
     {
       beatKey: "river_open",
@@ -817,7 +964,32 @@ const sam: IdentityModule = {
       "TODO Pass 4 — first contradiction beat (claimed double shift vs. badge swipe records placing her offsite for two hours).",
     ],
   },
-  ...stubGraph("sam_conditional_double_shift", "Sam"),
+  conditionalFactIDs: [
+    "sam_conditional_double_shift",
+    "sam_portrait_sinister_day5",
+  ],
+  variableOverrides: {
+    sam_bio_overnight: {
+      text:
+        "Sam's bio leans on the 'overnights on the unit' line — but the badge swipes that should anchor the alibi don't quite cover the night the news flagged.",
+    },
+    sam_ig_breakroom: {
+      text:
+        "Recent Sam IG — a breakroom shelf of paperback mysteries. The window above it shows the warehouse strip across the river — not the courtyard the unit's actual breakroom faces.",
+    },
+  },
+  solvingDeduction: {
+    id: "sam_solve_offsite_breakroom",
+    requiredFactIDs: [
+      "sam_bio_overnight",
+      "sam_ig_breakroom",
+      "sam_conditional_double_shift",
+      "sam_portrait_sinister_day5",
+    ],
+    narrativeBeat:
+      "She said she pulled a double, but her badge was off the floor for two hours. The 'breakroom' photo she posted that night looked across the river at the warehouse strip — not the courtyard the unit's actual breakroom faces. She wasn't where she said she was. The day-5 portrait stopped trying to tell you she was.",
+  },
+  redHerrings: [],
   killerScript: [
     {
       beatKey: "sam_open",

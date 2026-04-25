@@ -92,6 +92,26 @@
       }
     },
     {
+      "id": "tessa_bio_lateslot",
+      "kind": "variable",
+      "source": { "kind": "bio" },
+      "day": 1,
+      "aboutCharacter": "tessa",
+      "payload": {
+        "text": "Tessa's bio: 'midnight to four most weeknights — i'm the voice nobody asked for.'"
+      }
+    },
+    {
+      "id": "tessa_ig_keychain",
+      "kind": "variable",
+      "source": { "kind": "instagram" },
+      "day": 3,
+      "aboutCharacter": "tessa",
+      "payload": {
+        "text": "Recent Tessa IG — a keychain dropped on a studio console. Caption: 'mood after another long one.'"
+      }
+    },
+    {
       "id": "tessa_conditional_lateshift",
       "kind": "conditional",
       "source": { "kind": "devText" },
@@ -99,6 +119,36 @@
       "aboutCharacter": "tessa",
       "payload": {
         "text": "Dev's text: 'Tessa wasn't on air Tuesday — station ran a rerun. she told me she was working.'"
+      }
+    },
+    {
+      "id": "tessa_portrait_uneasy_day5",
+      "kind": "conditional",
+      "source": { "kind": "portrait", "expression": "uneasy" },
+      "day": 5,
+      "aboutCharacter": "tessa",
+      "payload": {
+        "text": "Tessa's profile pic flipped overnight — same booth, same headphones. The smile is gone and she's looking just past the camera."
+      }
+    },
+    {
+      "id": "ren_bio_dawn_call",
+      "kind": "variable",
+      "source": { "kind": "bio" },
+      "day": 1,
+      "aboutCharacter": "ren",
+      "payload": {
+        "text": "Ren's bio: 'on the water before sunrise. four-thirty most mornings.'"
+      }
+    },
+    {
+      "id": "ren_ig_marina_lights",
+      "kind": "variable",
+      "source": { "kind": "instagram" },
+      "day": 2,
+      "aboutCharacter": "ren",
+      "payload": {
+        "text": "Recent Ren IG — a marina under floodlights. Caption: 'first one in.'"
       }
     },
     {
@@ -112,6 +162,36 @@
       }
     },
     {
+      "id": "ren_portrait_sinister_day5",
+      "kind": "conditional",
+      "source": { "kind": "portrait", "expression": "sinister" },
+      "day": 5,
+      "aboutCharacter": "ren",
+      "payload": {
+        "text": "Ren swapped his profile shot. Same dock, same hat — the smile is set differently now, like he's measuring the distance to the camera."
+      }
+    },
+    {
+      "id": "kai_bio_transit_wall",
+      "kind": "variable",
+      "source": { "kind": "bio" },
+      "day": 1,
+      "aboutCharacter": "kai",
+      "payload": {
+        "text": "Kai's bio: 'finishing a piece down by the old transit lot. swing by — afternoon light's good.'"
+      }
+    },
+    {
+      "id": "kai_ig_scissor_lift",
+      "kind": "variable",
+      "source": { "kind": "instagram" },
+      "day": 3,
+      "aboutCharacter": "kai",
+      "payload": {
+        "text": "Recent Kai IG — a half-finished mural shot from the scissor lift. Caption: 'long week. worth it.'"
+      }
+    },
+    {
       "id": "kai_conditional_paint_late",
       "kind": "conditional",
       "source": { "kind": "devText" },
@@ -119,6 +199,36 @@
       "aboutCharacter": "kai",
       "payload": {
         "text": "Dev's text: 'Kai said he was painting late by the transit lot — but the lot's been fenced off all month.'"
+      }
+    },
+    {
+      "id": "kai_portrait_sinister_day5",
+      "kind": "conditional",
+      "source": { "kind": "portrait", "expression": "sinister" },
+      "day": 5,
+      "aboutCharacter": "kai",
+      "payload": {
+        "text": "Kai's new profile pic — same paint-splattered denim, but the easy grin has settled into something he's holding very still."
+      }
+    },
+    {
+      "id": "delphine_bio_quiet_nights",
+      "kind": "variable",
+      "source": { "kind": "bio" },
+      "day": 1,
+      "aboutCharacter": "delphine",
+      "payload": {
+        "text": "Delphine's bio: 'quiet nights at the shop. perfume's better when the city's asleep.'"
+      }
+    },
+    {
+      "id": "delphine_ig_workbench",
+      "kind": "variable",
+      "source": { "kind": "instagram" },
+      "day": 2,
+      "aboutCharacter": "delphine",
+      "payload": {
+        "text": "Recent Delphine IG — a workbench of bottles and a half-burnt candle. Caption: 'tonight's batch.'"
       }
     },
     {
@@ -132,6 +242,36 @@
       }
     },
     {
+      "id": "delphine_portrait_uneasy_day5",
+      "kind": "conditional",
+      "source": { "kind": "portrait", "expression": "uneasy" },
+      "day": 5,
+      "aboutCharacter": "delphine",
+      "payload": {
+        "text": "Delphine's profile pic changed. Same shop counter behind her — the easy smile is now a thinner line, and she's not quite looking at the lens."
+      }
+    },
+    {
+      "id": "river_bio_solo_sundays",
+      "kind": "variable",
+      "source": { "kind": "bio" },
+      "day": 1,
+      "aboutCharacter": "river",
+      "payload": {
+        "text": "River's bio: 'sundays alone on rock that scares my clients. cell signal optional.'"
+      }
+    },
+    {
+      "id": "river_ig_trailhead",
+      "kind": "variable",
+      "source": { "kind": "instagram" },
+      "day": 3,
+      "aboutCharacter": "river",
+      "payload": {
+        "text": "Recent River IG — a trailhead at first light. Caption: 'just me and the rock.'"
+      }
+    },
+    {
       "id": "river_conditional_solo_scout",
       "kind": "conditional",
       "source": { "kind": "devText" },
@@ -142,6 +282,36 @@
       }
     },
     {
+      "id": "river_portrait_sinister_day5",
+      "kind": "conditional",
+      "source": { "kind": "portrait", "expression": "sinister" },
+      "day": 5,
+      "aboutCharacter": "river",
+      "payload": {
+        "text": "River's profile pic shifted — same sun-bleached crag in the background, but the loose grin has gone careful, like he's done the math on what you've seen."
+      }
+    },
+    {
+      "id": "sam_bio_overnight",
+      "kind": "variable",
+      "source": { "kind": "bio" },
+      "day": 1,
+      "aboutCharacter": "sam",
+      "payload": {
+        "text": "Sam's bio: 'overnights on the unit. coffee with too much sugar. don't @ me.'"
+      }
+    },
+    {
+      "id": "sam_ig_breakroom",
+      "kind": "variable",
+      "source": { "kind": "instagram" },
+      "day": 2,
+      "aboutCharacter": "sam",
+      "payload": {
+        "text": "Recent Sam IG — a breakroom shelf of paperback mysteries. Caption: 'finished another one tonight.'"
+      }
+    },
+    {
       "id": "sam_conditional_double_shift",
       "kind": "conditional",
       "source": { "kind": "devText" },
@@ -149,6 +319,16 @@
       "aboutCharacter": "sam",
       "payload": {
         "text": "Dev's text: 'badge swipes show Sam was offsite for two hours during her supposed double shift.'"
+      }
+    },
+    {
+      "id": "sam_portrait_sinister_day5",
+      "kind": "conditional",
+      "source": { "kind": "portrait", "expression": "sinister" },
+      "day": 5,
+      "aboutCharacter": "sam",
+      "payload": {
+        "text": "Sam's profile pic updated — same cardigan, same kind face. The eyes are doing something the smile isn't."
       }
     }
   ]

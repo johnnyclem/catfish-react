@@ -115,15 +115,23 @@ const state = useGameState.getState;
     "Jules run must NOT include Miles's conditional facts",
   );
 
-  // None of the seven other-killer conditional rows leak into Miles's
-  // or Jules's run.
+  // None of the other-killer conditional rows leak into Miles's
+  // or Jules's run. Pass 4 added per-killer day-5 portrait
+  // conditionals alongside the original devText alibi rows, so the
+  // foreign list now covers both.
   const foreignConditionals = [
     "tessa_conditional_lateshift",
+    "tessa_portrait_uneasy_day5",
     "ren_conditional_dawn_alibi",
+    "ren_portrait_sinister_day5",
     "kai_conditional_paint_late",
+    "kai_portrait_sinister_day5",
     "delphine_conditional_smell_secret",
+    "delphine_portrait_uneasy_day5",
     "river_conditional_solo_scout",
+    "river_portrait_sinister_day5",
     "sam_conditional_double_shift",
+    "sam_portrait_sinister_day5",
   ];
   for (const id of foreignConditionals) {
     assert(
@@ -197,11 +205,28 @@ const state = useGameState.getState;
   const run = state().run!;
   assert(run, "run exists after startNewRun");
   assert(run.killer === "miles", "run.killer is Miles");
-  // Authored set: 3 static/variable Miles + 2 variable Jules + 2
-  // conditional Miles = 7. (Other killers' conditional rows are
-  // excluded.)
+  // Authored set, computed against the loaded universe: every
+  // static + variable row, plus only Miles's own conditional rows.
+  // (Pass 4 added per-killer variable bio/IG rows for every killer
+  // and a day-5 portrait conditional for each, so this count is
+  // expected to grow each time a new authored killer lands —
+  // computing dynamically keeps the test from drifting silently.)
+  const universe = getAuthoredFactUniverse();
+  const milesConditionalIDs = new Set([
+    "miles_portrait_uneasy_day5",
+    "dev_text_day4_miles_sus",
+  ]);
+  const expectedAuthored = universe.filter(
+    (row) =>
+      row.kind === "static" ||
+      row.kind === "variable" ||
+      (row.kind === "conditional" && milesConditionalIDs.has(row.id)),
+  ).length;
   const authored = run.facts.filter((f) => f.kind !== "captured");
-  assert(authored.length === 7, `expected 7 authored facts, got ${authored.length}`);
+  assert(
+    authored.length === expectedAuthored,
+    `expected ${expectedAuthored} authored facts for Miles run, got ${authored.length}`,
+  );
   assert(
     run.facts.every((f) => f.runId === run.id),
     "every authored fact carries the run id",

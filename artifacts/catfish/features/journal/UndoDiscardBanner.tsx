@@ -1,14 +1,19 @@
 /**
- * UndoDiscardBanner — short-lived "Fact discarded" toast for the
+ * UndoDiscardBanner — short-lived "Fact discarded" toast stack for the
  * Journal tab.
  *
- * Renders whenever `gameStore.recentlyDiscarded` is non-null. The
- * store owns the expiry timer (see `removeFact` in `gameStore.ts`) so
- * the undo window stays honest even if the player navigates away from
- * the Journal tab — this component only handles presentation. Tapping
- * UNDO restores the fact in place; letting the store-side timer fire
- * silently drops the stash and the banner unmounts on the next
- * subscription tick.
+ * Renders a banner per entry in `gameStore.recentlyDiscarded`. The
+ * store owns each entry's expiry timer (see `removeFact` in
+ * `gameStore.ts`) so the undo windows stay honest even if the player
+ * navigates away from the Journal tab — this component only handles
+ * presentation. Tapping UNDO restores that one fact in place; letting
+ * the store-side timer fire silently drops the stash and the banner
+ * unmounts on the next subscription tick. Each banner countdown is
+ * independent — undoing or expiring one doesn't affect any others
+ * still on screen.
+ *
+ * Stack order: oldest at the top, newest closest to the tab bar so
+ * the banner that just appeared lands right under the player's eye.
  */
 
 import { useEffect, useRef } from "react";
@@ -24,11 +29,12 @@ import {
 import { PixelPanel, PixelText } from "@/components/PixelChrome";
 import { cfPalette } from "@/constants/colors";
 import { useGameState } from "@/core/gameStore";
+import { Fact } from "@/core/models";
 
 interface UndoDiscardBannerProps {
   /**
-   * Distance to lift the banner above the bottom edge so it clears the
-   * tab bar / safe area inset. Computed by the Journal screen.
+   * Distance to lift the bottom-most banner above the tab bar / safe
+   * area inset. Computed by the Journal screen.
    */
   bottomOffset: number;
 }
@@ -37,12 +43,38 @@ export function UndoDiscardBanner({ bottomOffset }: UndoDiscardBannerProps) {
   const recentlyDiscarded = useGameState((s) => s.recentlyDiscarded);
   const restoreFact = useGameState((s) => s.restoreFact);
 
+  if (recentlyDiscarded.length === 0) return null;
+
+  return (
+    <View
+      pointerEvents="box-none"
+      style={[styles.wrap, { bottom: bottomOffset }]}
+    >
+      {recentlyDiscarded.map((fact) => (
+        <UndoDiscardBannerItem
+          key={fact.id}
+          fact={fact}
+          onUndo={() => {
+            void restoreFact(fact.id);
+          }}
+        />
+      ))}
+    </View>
+  );
+}
+
+interface UndoDiscardBannerItemProps {
+  fact: Fact;
+  onUndo: () => void;
+}
+
+function UndoDiscardBannerItem({ fact, onUndo }: UndoDiscardBannerItemProps) {
+  // Per-item animation values so a freshly added banner animates in
+  // without disturbing siblings already settled at rest.
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(12)).current;
 
   useEffect(() => {
-    if (!recentlyDiscarded) return;
-
     Animated.parallel([
       Animated.timing(opacity, {
         toValue: 1,
@@ -57,26 +89,17 @@ export function UndoDiscardBanner({ bottomOffset }: UndoDiscardBannerProps) {
         useNativeDriver: true,
       }),
     ]).start();
+  }, [opacity, translateY]);
 
-    return () => {
-      // Snap state back so the next discard animates in cleanly.
-      opacity.setValue(0);
-      translateY.setValue(12);
-    };
-  }, [recentlyDiscarded, opacity, translateY]);
-
-  if (!recentlyDiscarded) return null;
-
-  const preview = (recentlyDiscarded.capturedQuote ?? "").trim();
+  const preview = (fact.capturedQuote ?? "").trim();
   const truncated =
     preview.length > 48 ? `${preview.slice(0, 45).trimEnd()}…` : preview;
 
   return (
     <Animated.View
-      pointerEvents="box-none"
       style={[
-        styles.wrap,
-        { bottom: bottomOffset, opacity, transform: [{ translateY }] },
+        styles.itemWrap,
+        { opacity, transform: [{ translateY }] },
       ]}
     >
       <PixelPanel variant="raised" borderColor={cfPalette.cyan} style={styles.panel}>
@@ -94,9 +117,7 @@ export function UndoDiscardBanner({ bottomOffset }: UndoDiscardBannerProps) {
           accessibilityRole="button"
           accessibilityLabel="Undo discard"
           hitSlop={8}
-          onPress={() => {
-            void restoreFact(recentlyDiscarded.id);
-          }}
+          onPress={onUndo}
           style={({ pressed }) => [styles.chip, pressed && styles.chipPressed]}
         >
           <PixelText size={9} color={cfPalette.pinkHot} uppercase glow>
@@ -113,6 +134,9 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 18,
     right: 18,
+  },
+  itemWrap: {
+    marginTop: 8,
   },
   panel: {
     flexDirection: "row",

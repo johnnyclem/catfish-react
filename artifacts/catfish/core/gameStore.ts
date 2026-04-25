@@ -69,14 +69,19 @@ interface GameStateValue {
    */
   voiceMuted: boolean;
   /**
-   * In-memory only — the most recent Fact removed via `removeFact`,
-   * stashed so the Journal tab can offer a brief undo affordance.
-   * Cleared when the player either undoes the discard, discards
-   * another fact, or the undo window times out. Not persisted to
-   * AsyncStorage on purpose: a re-discardable fact across cold start
-   * would feel like ghost data.
+   * In-memory only — Facts removed via `removeFact`, stashed so the
+   * Journal tab can offer a brief undo affordance. A small queue (not
+   * a single slot) so a player triaging several facts in quick
+   * succession can undo each one independently. Order is oldest →
+   * newest; each entry has its own expiry timer (see
+   * `discardClearTimers`) so the windows don't share fate. Capped at
+   * `MAX_RECENT_DISCARDS` — beyond that the oldest entry is silently
+   * dropped to keep the on-screen banner stack manageable.
+   *
+   * Not persisted to AsyncStorage on purpose: a re-discardable fact
+   * across cold start would feel like ghost data.
    */
-  recentlyDiscarded: Fact | null;
+  recentlyDiscarded: Fact[];
   hydrate: () => Promise<void>;
   /** Toggle voice playback. Persists to AsyncStorage immediately. */
   setVoiceMuted: (muted: boolean) => Promise<void>;
@@ -104,16 +109,19 @@ interface GameStateValue {
     replyText: string,
   ) => Promise<ChatThread | null>;
   /**
-   * Restore the most recent fact removed via `removeFact`, provided
-   * `recentlyDiscarded` still matches. Acts as the undo handler for
-   * the Journal's discard banner.
+   * Restore a previously-discarded fact by id, provided it's still in
+   * the `recentlyDiscarded` queue. Acts as the undo handler for the
+   * Journal's discard banner stack — restoring one entry leaves any
+   * other queued discards untouched.
    */
   restoreFact: (factId: FactId) => Promise<void>;
   /**
-   * Drop the recently-discarded slot without restoring. Called when
-   * the undo window expires or the banner is dismissed. No-op if
-   * `recentlyDiscarded` doesn't match `factId`, so a stale timer can't
-   * blow away a freshly stashed entry.
+   * Drop a single entry from the `recentlyDiscarded` queue without
+   * restoring it. Called when an undo window expires or the banner is
+   * dismissed. No-op if `factId` isn't in the queue, so a stale timer
+   * can't blow away a freshly stashed entry that happens to share the
+   * same id (which can't actually happen — fact ids are unique — but
+   * the guard is cheap).
    */
   clearRecentlyDiscarded: (factId: FactId) => void;
   /**
@@ -233,25 +241,42 @@ async function saveVoiceMuted(muted: boolean): Promise<void> {
 export const UNDO_WINDOW_MS = 4500;
 
 /**
- * Module-level timer that clears `recentlyDiscarded` after the undo
- * window. Lives outside the Zustand state because it's pure side
- * effect — putting timers in state forces unnecessary re-renders and
- * makes serialization awkward.
+ * Soft cap on how many discarded facts can be queued for undo at once.
+ * Beyond this we drop the oldest entry (cancelling its timer) so the
+ * banner stack can't grow without bound if the player goes on a
+ * discard spree.
  */
-let discardClearTimer: ReturnType<typeof setTimeout> | null = null;
+export const MAX_RECENT_DISCARDS = 5;
 
-function cancelDiscardTimer(): void {
-  if (discardClearTimer) {
-    clearTimeout(discardClearTimer);
-    discardClearTimer = null;
+/**
+ * Module-level per-fact expiry timers for `recentlyDiscarded`. Lives
+ * outside the Zustand state because timers are pure side effect —
+ * putting them in state forces unnecessary re-renders and makes
+ * serialization awkward. Keyed by FactId so each queued discard
+ * expires on its own schedule, independent of any later discards.
+ */
+const discardClearTimers = new Map<FactId, ReturnType<typeof setTimeout>>();
+
+function cancelDiscardTimer(factId: FactId): void {
+  const t = discardClearTimers.get(factId);
+  if (t) {
+    clearTimeout(t);
+    discardClearTimers.delete(factId);
   }
+}
+
+function cancelAllDiscardTimers(): void {
+  for (const t of discardClearTimers.values()) {
+    clearTimeout(t);
+  }
+  discardClearTimers.clear();
 }
 
 export const useGameState = create<GameStateValue>((set, get) => ({
   hydrated: false,
   run: null,
   voiceMuted: false,
-  recentlyDiscarded: null,
+  recentlyDiscarded: [],
 
   hydrate: async () => {
     if (hydrationPromise) return hydrationPromise;
@@ -265,12 +290,12 @@ export const useGameState = create<GameStateValue>((set, get) => ({
       // Cold-start invariant: undo state is in-memory only, so a
       // dangling stash from a prior process is impossible. Still,
       // explicitly clearing here documents the contract.
-      cancelDiscardTimer();
+      cancelAllDiscardTimers();
       set({
         run: existing,
         hydrated: true,
         voiceMuted: muted,
-        recentlyDiscarded: null,
+        recentlyDiscarded: [],
       });
     })();
     return hydrationPromise;
@@ -285,10 +310,10 @@ export const useGameState = create<GameStateValue>((set, get) => ({
 
   startNewRun: async (forced) => {
     const next = buildRun(forced);
-    // Starting a fresh run forfeits any pending undo — a fact stashed
+    // Starting a fresh run forfeits any pending undos — facts stashed
     // against the previous run must not be restorable into the new one.
-    cancelDiscardTimer();
-    set({ run: next, recentlyDiscarded: null });
+    cancelAllDiscardTimers();
+    set({ run: next, recentlyDiscarded: [] });
     await saveActiveRun(next);
     return next;
   },
@@ -417,21 +442,35 @@ export const useGameState = create<GameStateValue>((set, get) => ({
     if (!removed) return;
     const filtered = prev.facts.filter((f) => f.id !== factId);
     const next: CaseRun = { ...prev, facts: filtered };
-    // Stash the removed fact so the Journal can offer a brief undo.
-    // Replacing any prior stash is intentional — only the latest
-    // discard is recoverable, matching standard mobile snackbar UX.
-    cancelDiscardTimer();
-    set({ run: next, recentlyDiscarded: removed });
+
+    // Append to the discard queue so the Journal can offer a brief
+    // undo on each one independently. If the player has already
+    // queued the cap, evict the oldest (and cancel its timer) so the
+    // banner stack stays bounded.
+    const prevQueue = get().recentlyDiscarded;
+    const nextQueue = [...prevQueue, removed];
+    while (nextQueue.length > MAX_RECENT_DISCARDS) {
+      const evicted = nextQueue.shift();
+      if (evicted) cancelDiscardTimer(evicted.id);
+    }
+
+    set({ run: next, recentlyDiscarded: nextQueue });
     await saveActiveRun(next);
-    // Schedule expiry from the store itself so the undo window stays
-    // honest even if the player navigates away from the Journal tab.
-    discardClearTimer = setTimeout(() => {
-      discardClearTimer = null;
+
+    // Schedule this entry's expiry from the store itself so the undo
+    // window stays honest even if the player navigates away from the
+    // Journal tab. Each entry has its own timer so an earlier
+    // discard's countdown isn't reset by a later one.
+    const timer = setTimeout(() => {
+      discardClearTimers.delete(removed.id);
       const current = get().recentlyDiscarded;
-      if (current && current.id === removed.id) {
-        set({ recentlyDiscarded: null });
+      if (current.some((f) => f.id === removed.id)) {
+        set({
+          recentlyDiscarded: current.filter((f) => f.id !== removed.id),
+        });
       }
     }, UNDO_WINDOW_MS);
+    discardClearTimers.set(removed.id, timer);
   },
 
   openThread: async (threadId) => {
@@ -528,38 +567,42 @@ export const useGameState = create<GameStateValue>((set, get) => ({
 
   restoreFact: async (factId) => {
     const { run: prev, recentlyDiscarded } = get();
-    if (!prev || !recentlyDiscarded || recentlyDiscarded.id !== factId) {
-      return;
-    }
+    const target = recentlyDiscarded.find((f) => f.id === factId);
+    if (!prev || !target) return;
+
+    // Cancel this entry's timer up-front; every exit path below
+    // removes it from the queue, so leaving the timer to fire later
+    // would just invite a stale set() race.
+    cancelDiscardTimer(factId);
+    const trimmedQueue = recentlyDiscarded.filter((f) => f.id !== factId);
+
     // Run-identity guard — a stash from an earlier run must not be
     // injected into the active one. Belt-and-braces with the
     // startNewRun/hydrate clears, in case anything ever schedules a
     // restore across run boundaries.
-    if (recentlyDiscarded.runId !== prev.id) {
-      cancelDiscardTimer();
-      set({ recentlyDiscarded: null });
+    if (target.runId !== prev.id) {
+      set({ recentlyDiscarded: trimmedQueue });
       return;
     }
-    cancelDiscardTimer();
     // Guard against the rare race where the same fact id was already
     // re-added (e.g. a re-capture beat the undo tap).
     if (prev.facts.some((f) => f.id === factId)) {
-      set({ recentlyDiscarded: null });
+      set({ recentlyDiscarded: trimmedQueue });
       return;
     }
     const next: CaseRun = {
       ...prev,
-      facts: [...prev.facts, recentlyDiscarded],
+      facts: [...prev.facts, target],
     };
-    set({ run: next, recentlyDiscarded: null });
+    set({ run: next, recentlyDiscarded: trimmedQueue });
     await saveActiveRun(next);
   },
 
   clearRecentlyDiscarded: (factId) => {
     const current = get().recentlyDiscarded;
-    if (!current || current.id !== factId) return;
-    cancelDiscardTimer();
-    set({ recentlyDiscarded: null });
+    if (!current.some((f) => f.id === factId)) return;
+    cancelDiscardTimer(factId);
+    set({ recentlyDiscarded: current.filter((f) => f.id !== factId) });
   },
 
   unmatchThread: async (matchId) => {
@@ -593,8 +636,8 @@ export const useGameState = create<GameStateValue>((set, get) => ({
     await saveActiveRun(next);
   },
   resetRun: async () => {
-    cancelDiscardTimer();
-    set({ run: null, recentlyDiscarded: null });
+    cancelAllDiscardTimers();
+    set({ run: null, recentlyDiscarded: [] });
     await saveActiveRun(null);
   },
 }));

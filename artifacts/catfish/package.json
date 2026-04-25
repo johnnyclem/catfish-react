@@ -8,7 +8,8 @@
     "build": "node scripts/build.js",
     "serve": "node server/serve.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "voice:pregen": "tsx scripts/voice-pregen.ts"
+    "voice:pregen": "tsx scripts/voice-pregen.ts",
+    "test:undo-queue": "tsx scripts/test-undo-queue.mts"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

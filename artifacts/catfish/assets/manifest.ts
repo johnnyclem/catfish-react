@@ -45,10 +45,18 @@ export type AssetId =
   | "A049_jules_portrait_curious"
   | "A050_jules_portrait_uneasy"
   | "A051_jules_portrait_sinister"
+  | "A052_river_portrait_flirty"
+  | "A053_river_portrait_sinister"
+  | "A054_river_portrait_uneasy"
+  | "A055_river_portrait_smile"
+  | "A056_river_portrait_curious"
+  | "A057_river_portrait_neutral"
   | "A064_kai_fullbody_casual"
   | "A065_kai_fullbody_formal"
   | "A066_miles_fullbody_casual"
   | "A067_miles_fullbody_dressed_up"
+  | "A068_river_fullbody_formal"
+  | "A069_river_fullbody_casual"
   | "A070_jules_fullbody_casual"
   | "A071_jules_fullbody_dressed_up"
   | "A072_player_fullbody_default"
@@ -92,10 +100,18 @@ const REGISTRY: Partial<Record<AssetId, ImageSourcePropType>> = {
   A049_jules_portrait_curious: require("./images/A049_jules_portrait_curious.png"),
   A050_jules_portrait_uneasy: require("./images/A050_jules_portrait_uneasy.png"),
   A051_jules_portrait_sinister: require("./images/A051_jules_portrait_sinister.png"),
+  A052_river_portrait_flirty: require("./images/A052_river_portrait_flirty.png"),
+  A053_river_portrait_sinister: require("./images/A053_river_portrait_sinister.png"),
+  A054_river_portrait_uneasy: require("./images/A054_river_portrait_uneasy.png"),
+  A055_river_portrait_smile: require("./images/A055_river_portrait_smile.png"),
+  A056_river_portrait_curious: require("./images/A056_river_portrait_curious.png"),
+  A057_river_portrait_neutral: require("./images/A057_river_portrait_neutral.png"),
   A064_kai_fullbody_casual: require("./images/A064_kai_fullbody_casual.png"),
   A065_kai_fullbody_formal: require("./images/A065_kai_fullbody_formal.png"),
   A066_miles_fullbody_casual: require("./images/A066_miles_fullbody_casual.png"),
   A067_miles_fullbody_dressed_up: require("./images/A067_miles_fullbody_dressed_up.png"),
+  A068_river_fullbody_formal: require("./images/A068_river_fullbody_formal.png"),
+  A069_river_fullbody_casual: require("./images/A069_river_fullbody_casual.png"),
   A070_jules_fullbody_casual: require("./images/A070_jules_fullbody_casual.png"),
   A071_jules_fullbody_dressed_up: require("./images/A071_jules_fullbody_dressed_up.png"),
   A200_match_overlay: require("./images/A200_match_overlay.png"),

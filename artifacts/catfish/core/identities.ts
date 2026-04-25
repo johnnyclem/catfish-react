@@ -1,10 +1,10 @@
 /**
- * KillerIdentity protocol + 6 identity modules.
+ * KillerIdentity protocol + 7 identity modules.
  *
- * Pass 1: Miles, Jules and Kai are fully authored (seed candidates +
- * narrative beats); the other three (Tessa, Ren, Delphine) are typed
- * stubs with TODO markers — they still produce a valid five-candidate
- * roster so the swipe deck never crashes.
+ * Pass 1: Miles, Jules, Kai and River are fully authored (seed
+ * candidates + narrative beats); the remaining three (Tessa, Ren,
+ * Delphine) are typed stubs with TODO markers — they still produce a
+ * valid five-candidate roster so the swipe deck never crashes.
  *
  * Authored-character asset notes:
  *   Miles — A035 (smile) is wired into his swipe-deck portrait below.
@@ -20,6 +20,12 @@
  *     A040-A042, A044-A045 (flirty/sinister/uneasy/curious/neutral)
  *     and A064-A065 (casual and formal fullbody) are bundled for the
  *     same Pass 2 / Pass 3 consumption points.
+ *   River — A055 (smile) is wired into his swipe-deck portrait below.
+ *     A052-A054, A056-A057 (flirty/sinister/uneasy/curious/neutral)
+ *     and A068-A069 (formal and casual fullbody) are bundled for the
+ *     same Pass 2 / Pass 3 consumption points. Note: dropped art
+ *     filenames numbered River's portraits A046-A051, but A047-A051
+ *     were already taken by Jules — bumped to A052-A057 on bundle.
  *
  * Pass 4 (Content/Bootstrapper) will replace these in-line rosters with
  * authored JSON fact universes resolved at run start.
@@ -436,6 +442,106 @@ const jules: IdentityModule = {
   },
 };
 
+/* ───────────────────────── River — fully authored ────────────────────── */
+
+const river: IdentityModule = {
+  identity: "river",
+  displayName: "River Sutherland",
+  concept:
+    "Climbing instructor and weekend trail guide. Sun-bleached, easy in his body, asks more questions than he answers. The carabiner on his belt is decorative — and isn't.",
+  buildDeck: () => [
+    {
+      id: newCandidateId(),
+      identity: "river",
+      displayName: "River",
+      age: 30,
+      tagline: "Climber. Sleeps better at altitude.",
+      bio:
+        "Runs guided routes out of a small outfitter near the gorge. Spends weekdays teaching beginners how to fall safely and Sundays alone on rock that scares his clients. Says he's looking for someone who doesn't need a phone signal to be okay.",
+      portraitAssetId: "A055_river_portrait_smile",
+      prompts: [
+        "First date energy: tailgate by the trailhead, bad coffee, real conversation.",
+        "Two true things: I've slept under stars more nights than ceilings this year, and I'll absolutely teach you the figure-eight knot.",
+        "Dealbreaker: people who treat a parking lot like a personality.",
+      ],
+      isKillerCandidate: true,
+    },
+    {
+      id: newCandidateId(),
+      identity: "river",
+      displayName: "Hank",
+      age: 32,
+      tagline: "Trail-running coach. Up before sunrise.",
+      bio:
+        "Coaches a small ultra crew out of a barn east of town. Drinks his coffee cold because he forgets it. Easy company on long miles, quiet in a kitchen.",
+      portraitAssetId: "A500_avatar_placeholder",
+      prompts: [
+        "Best date: a sunrise loop and breakfast we're too tired to talk through.",
+        "I won't apologize for: the alarm at 4:30.",
+      ],
+      isKillerCandidate: false,
+    },
+    {
+      id: newCandidateId(),
+      identity: "river",
+      displayName: "Soren",
+      age: 29,
+      tagline: "Arborist. Quiet about it.",
+      bio:
+        "Climbs the kind of trees most people don't notice. Carries a paperback in his harness bag. Will name three birds before you've finished your sentence.",
+      portraitAssetId: "A500_avatar_placeholder",
+      prompts: [
+        "I get evangelical about: pruning timing.",
+        "Sunday: somewhere green, no signal, slow lunch after.",
+      ],
+      isKillerCandidate: false,
+    },
+    {
+      id: newCandidateId(),
+      identity: "river",
+      displayName: "Marit",
+      age: 31,
+      tagline: "Wilderness EMT. Calm in a crisis.",
+      bio:
+        "Spends summers stationed near alpine huts and winters teaching avalanche awareness. Has the kind of laugh that defuses a room. Doesn't tell stories on a first date.",
+      portraitAssetId: "A500_avatar_placeholder",
+      prompts: [
+        "Skill I'm weirdly proud of: tying a sling out of a bandana.",
+        "Green flag: knowing which end of a map is north without thinking.",
+      ],
+      isKillerCandidate: false,
+    },
+    {
+      id: newCandidateId(),
+      identity: "river",
+      displayName: "Pax",
+      age: 27,
+      tagline: "Mapmaker. Draws places nobody walks anymore.",
+      bio:
+        "Ink-and-paper cartographer; sells small editions at a bookshop on the river. Geeks out about old fire-lookout routes and the typography of contour lines.",
+      portraitAssetId: "A500_avatar_placeholder",
+      prompts: [
+        "I'll bring on a hike: a thermos and a hand-drawn map of where we are.",
+        "If we get along we'll eventually argue about: the right shade of forest green.",
+      ],
+      isKillerCandidate: false,
+    },
+  ],
+  beats: {
+    1: [
+      "River opens with a soft compliment about a backdrop in one of your photos — names the ridge it was taken from. Invites you to the gorge 'next free Sunday, weather depending'.",
+      "Mentions he's running a beginner clinic at the climbing gym Tuesdays and Thursdays. Says you should drop by 'even if you just want to watch'.",
+    ],
+    2: [
+      "Asks if you've ever been somewhere with no cell signal. Listens carefully.",
+      "Lets slip that he was 'scouting a new line solo' the weekend something happened in the foothills (TODO Pass 4 — anchor fact).",
+    ],
+    3: [
+      "TODO Pass 4 — first contradiction beat (claimed solo scout vs. a witness placing him at the trailhead with someone else).",
+    ],
+  },
+};
+
 /* ─────────────────────────── registry ────────────────────────────────── */
 
 export const IDENTITY_REGISTRY: Record<KillerIdentity, IdentityModule> = {
@@ -445,6 +551,7 @@ export const IDENTITY_REGISTRY: Record<KillerIdentity, IdentityModule> = {
   kai,
   delphine,
   jules,
+  river,
 };
 
 export function getIdentityModule(id: KillerIdentity): IdentityModule {

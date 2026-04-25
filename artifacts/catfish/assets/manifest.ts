@@ -6,6 +6,21 @@
  * `<AssetImage />` component shows a labeled placeholder when an id isn't
  * registered yet, so we can grow the catalog across passes without
  * crashing.
+ *
+ * Asset-id ranges (loose convention):
+ *   A0xx — title / character portraits / fullbody renders
+ *   A1xx — visual FX overlays
+ *   A2xx — match / celebration overlays
+ *   A3xx — journal UI elements
+ *   A4xx — buttons
+ *   A5xx — avatar placeholders / charms / speech bubbles
+ *   A6xx — background scene art (rooms, locations, exteriors)
+ *   A9xx — spritesheet / reference art
+ *
+ * Background scenes (A6xx) are bundled now and earmarked for use as
+ * chat-thread backdrops in Pass 2 (each candidate-thread can pin a
+ * scene that matches their bio) and for journal location markers in
+ * Pass 3. They are intentionally not wired into any screen yet.
  */
 
 import { ImageSourcePropType } from "react-native";
@@ -33,6 +48,13 @@ export type AssetId =
   | "A500_avatar_placeholder"
   | "A501_charm_fire"
   | "A502_speech_bubble"
+  | "A600_bg_parking_garage_b2"
+  | "A601_bg_bedroom_night"
+  | "A602_bg_lounge_skyline"
+  | "A603_bg_dive_bar"
+  | "A604_bg_park_sunset"
+  | "A605_bg_cafe_day"
+  | "A606_bg_cafe_night"
   | "A999_spritesheet_reference";
 
 const REGISTRY: Partial<Record<AssetId, ImageSourcePropType>> = {
@@ -52,6 +74,13 @@ const REGISTRY: Partial<Record<AssetId, ImageSourcePropType>> = {
   A500_avatar_placeholder: require("./images/A500_avatar_placeholder.png"),
   A501_charm_fire: require("./images/A501_charm_fire.png"),
   A502_speech_bubble: require("./images/A502_speech_bubble.png"),
+  A600_bg_parking_garage_b2: require("./images/A600_bg_parking_garage_b2.png"),
+  A601_bg_bedroom_night: require("./images/A601_bg_bedroom_night.png"),
+  A602_bg_lounge_skyline: require("./images/A602_bg_lounge_skyline.png"),
+  A603_bg_dive_bar: require("./images/A603_bg_dive_bar.png"),
+  A604_bg_park_sunset: require("./images/A604_bg_park_sunset.png"),
+  A605_bg_cafe_day: require("./images/A605_bg_cafe_day.png"),
+  A606_bg_cafe_night: require("./images/A606_bg_cafe_night.png"),
   A999_spritesheet_reference: require("./images/A999_spritesheet_reference.png"),
 };
 

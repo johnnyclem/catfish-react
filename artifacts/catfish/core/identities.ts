@@ -13,9 +13,10 @@
  *     same Pass 2 chat expression swaps and Pass 3 Profile / Journal
  *     fullbody renders.
  *   Jules — A047 (smile) is wired into his swipe-deck portrait below.
- *     A048-A051 (flirty/curious/uneasy/sinister) and A070-A071 (casual
- *     and dressed_up fullbody) are bundled for Pass 2 chat expression
- *     swaps and Pass 3 Profile/Journal fullbody renders.
+ *     A046, A048-A051 (neutral/flirty/curious/uneasy/sinister) and
+ *     A070-A071 (casual and dressed_up fullbody) are bundled for
+ *     Pass 2 chat expression swaps and Pass 3 Profile/Journal
+ *     fullbody renders.
  *   Kai — A043 (smile) is wired into his swipe-deck portrait below.
  *     A040-A042, A044-A045 (flirty/sinister/uneasy/curious/neutral)
  *     and A064-A065 (casual and formal fullbody) are bundled for the

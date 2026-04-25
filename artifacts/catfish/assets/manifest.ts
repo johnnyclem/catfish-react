@@ -40,6 +40,7 @@ export type AssetId =
   | "A043_kai_portrait_smile"
   | "A044_kai_portrait_curious"
   | "A045_kai_portrait_neutral"
+  | "A046_jules_portrait_neutral"
   | "A047_jules_portrait_smile"
   | "A048_jules_portrait_flirty"
   | "A049_jules_portrait_curious"
@@ -103,6 +104,7 @@ const REGISTRY: Partial<Record<AssetId, ImageSourcePropType>> = {
   A043_kai_portrait_smile: require("./images/A043_kai_portrait_smile.png"),
   A044_kai_portrait_curious: require("./images/A044_kai_portrait_curious.png"),
   A045_kai_portrait_neutral: require("./images/A045_kai_portrait_neutral.png"),
+  A046_jules_portrait_neutral: require("./images/A046_jules_portrait_neutral.png"),
   A047_jules_portrait_smile: require("./images/A047_jules_portrait_smile.png"),
   A048_jules_portrait_flirty: require("./images/A048_jules_portrait_flirty.png"),
   A049_jules_portrait_curious: require("./images/A049_jules_portrait_curious.png"),

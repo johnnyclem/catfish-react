@@ -81,6 +81,37 @@ function safeRead<T>(fn: () => T, fallback: T): T {
   }
 }
 
+/**
+ * Call `player.play()` and swallow BOTH failure modes:
+ *
+ *   - synchronous throws (idle web player before load)
+ *   - rejected promises (the web HTMLMediaElement contract — iOS
+ *     Safari rejects with `NotAllowedError` whenever play() is called
+ *     outside the synchronous span of a user gesture, which is what
+ *     happens when our `day_end` SFX fires from a `useEffect` after
+ *     React commits the day-advance state)
+ *
+ * Without this guard the rejected promise becomes an unhandled
+ * rejection and surfaces as a full-screen red box on the dev client.
+ */
+function safePlay(player: { play: () => unknown }): void {
+  let result: unknown;
+  try {
+    result = player.play();
+  } catch {
+    return;
+  }
+  if (
+    result &&
+    typeof (result as { then?: unknown }).then === "function" &&
+    typeof (result as { catch?: unknown }).catch === "function"
+  ) {
+    (result as Promise<unknown>).catch(() => {
+      /* autoplay-blocked or load-stalled — silent SFX is fine */
+    });
+  }
+}
+
 interface Props {
   children: ReactNode;
 }
@@ -121,13 +152,13 @@ export function AudioProvider({ children }: Props) {
   const tryStartMusic = (): void => {
     if (useGameState.getState().musicMuted) return;
     if (!userInteractedRef.current) return;
+    let alreadyPlaying = false;
     try {
-      if (!musicPlayer.playing) {
-        musicPlayer.play();
-      }
+      alreadyPlaying = musicPlayer.playing;
     } catch {
       /* idle-player throw on web before load — fine */
     }
+    if (!alreadyPlaying) safePlay(musicPlayer);
   };
 
   // ── Music lifecycle
@@ -189,17 +220,21 @@ export function AudioProvider({ children }: Props) {
         player.replace(sfxAsset(name) as Parameters<typeof player.replace>[0]);
         player.volume = SFX_VOLUME;
         player.seekTo(0);
-        player.play();
-        if (__DEV__) {
-          recordDebug({
-            lastSfx: name,
-            lastSfxAt: Date.now(),
-            sfxFireCount: (getDebug().sfxFireCount ?? 0) + 1,
-          });
-        }
       } catch {
         // A pool slot may be mid-decode of its previous source — we
         // don't want a single dropped click to crash the whole bus.
+        return;
+      }
+      // play() lives outside the try because its async failure mode
+      // (a rejected promise) wouldn't be caught here anyway. safePlay
+      // handles both sync throws and promise rejections.
+      safePlay(player);
+      if (__DEV__) {
+        recordDebug({
+          lastSfx: name,
+          lastSfxAt: Date.now(),
+          sfxFireCount: (getDebug().sfxFireCount ?? 0) + 1,
+        });
       }
     };
     return subscribeSfx(handler);

@@ -29,6 +29,68 @@ import { subscribeSfx } from "./audioEvents";
 import { MUSIC_LOOP_ASSET, sfxAsset, type SfxName } from "./sfxManifest";
 
 /**
+ * Module-load patch for `HTMLMediaElement.prototype.play` (web only).
+ *
+ * Why this exists:
+ *
+ * `expo-audio@1.1.1`'s web wrapper (`AudioModule.web.js`) implements
+ * `play()` as `this.media.play(); this.isPlaying = true;` — it drops
+ * the Promise returned by the native `HTMLMediaElement.play()`. When
+ * that Promise rejects (iOS Safari rejects with `NotAllowedError`
+ * whenever play() is called outside the synchronous span of a user
+ * gesture; any browser rejects with `AbortError` if play() is
+ * interrupted by a quick pause()/replace()), the rejection has no
+ * handler and surfaces as an unhandled rejection — which the Expo
+ * dev client paints as a full-screen red box.
+ *
+ * We tried a window-level `unhandledrejection` listener with
+ * `preventDefault()`, but the Expo dev client registers its own
+ * listener at bundle-init (long before our React provider mounts), so
+ * its listener fires first and the overlay renders before we can
+ * suppress it.
+ *
+ * The robust fix is to ensure the rejection is *never* unhandled in
+ * the first place. We wrap the prototype's `play()` once: it still
+ * returns the same Promise to callers (so anyone who *does* attach
+ * `.catch` keeps their normal behavior), but we eagerly attach our
+ * own no-op `.catch` so the runtime considers the rejection handled.
+ *
+ * This is a global patch but is safe: a Promise can have any number
+ * of handlers, and ours is a no-op that never suppresses anyone
+ * else's. Once `expo-audio` fixes its dropped-Promise bug upstream
+ * we can delete this whole block.
+ */
+declare global {
+  interface HTMLMediaElement {
+    __catfishPlayPatched?: boolean;
+  }
+}
+if (typeof HTMLMediaElement !== "undefined") {
+  const proto = HTMLMediaElement.prototype;
+  if (!proto.__catfishPlayPatched) {
+    Object.defineProperty(proto, "__catfishPlayPatched", {
+      value: true,
+      writable: false,
+      enumerable: false,
+      configurable: false,
+    });
+    const originalPlay = proto.play;
+    proto.play = function patchedPlay(this: HTMLMediaElement) {
+      const result = originalPlay.call(this);
+      if (
+        result &&
+        typeof (result as Promise<void>).catch === "function"
+      ) {
+        (result as Promise<void>).catch(() => {
+          /* swallowed — autoplay-blocked or play()-aborted */
+        });
+      }
+      return result;
+    };
+  }
+}
+
+/**
  * On native there's no autoplay gate, so we can start music as soon
  * as the player is ready. On web (and unknown platforms, which we
  * treat conservatively) we wait for a user gesture first.

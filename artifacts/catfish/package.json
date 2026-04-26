@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "build": "node scripts/build.js",
+    "check:expo-versions": "node scripts/check-expo-versions.mjs",
     "serve": "node server/serve.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "voice:pregen": "tsx scripts/voice-pregen.ts",

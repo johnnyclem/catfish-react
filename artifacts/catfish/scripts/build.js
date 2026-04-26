@@ -510,6 +510,12 @@ async function main() {
 
   setupSignalHandlers();
 
+  // Block the build when Expo reports a package-version mismatch — those
+  // mismatches show up only as a yellow warning at runtime and have shipped
+  // straight to real devices in the past (see audio crash, Apr 2026).
+  const { enforceExpoVersions } = await import("./check-expo-versions.mjs");
+  await enforceExpoVersions({ context: "static build" });
+
   const domain = getDeploymentDomain();
   const expoPublicReplId = getExpoPublicReplId();
   const baseUrl = `https://${domain}`;

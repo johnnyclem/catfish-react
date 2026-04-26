@@ -9,8 +9,14 @@
  * applied here without touching package.json.
  */
 import { spawn } from "node:child_process";
+import { enforceExpoVersions } from "./check-expo-versions.mjs";
 
 const PORT = process.env.PORT || "8000";
+
+// Refuse to launch the dev server when Expo reports a package-version
+// mismatch — those mismatches only show up as a yellow warning otherwise and
+// can ship straight to real devices (see audio crash, Apr 2026).
+await enforceExpoVersions({ context: "dev server startup" });
 
 const env = {
   ...process.env,

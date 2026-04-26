@@ -9,9 +9,27 @@
  * a base64 data: URL so expo-audio can play them on both web and
  * native without us depending on expo-file-system.
  */
-import { Buffer } from "buffer";
-
 import type { VoiceProfile } from "@/core/voiceProfiles";
+
+/**
+ * Convert an ArrayBuffer to a base64 string without pulling in the
+ * Node-only `buffer` polyfill. `btoa` is available in Hermes since
+ * RN 0.71 and on the web. We chunk the byte array because
+ * `String.fromCharCode.apply` blows the JS arg-stack on large buffers.
+ */
+function arrayBufferToBase64(ab: ArrayBuffer): string {
+  const bytes = new Uint8Array(ab);
+  let binary = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    const slice = bytes.subarray(i, i + CHUNK);
+    binary += String.fromCharCode.apply(
+      null,
+      slice as unknown as number[],
+    );
+  }
+  return btoa(binary);
+}
 
 const DEFAULT_BASE = "/api";
 
@@ -80,13 +98,13 @@ export async function fetchVoiceClip(
     throw new Error(`voice/speak failed: ${detail}`);
   }
 
-  const buf = Buffer.from(await res.arrayBuffer());
+  const base64 = arrayBufferToBase64(await res.arrayBuffer());
   const cacheHeader = res.headers.get("X-Voice-Cache");
   const cache: SpeakResult["cache"] =
     cacheHeader === "hit" || cacheHeader === "miss" ? cacheHeader : "unknown";
 
   return {
-    uri: `data:audio/mpeg;base64,${buf.toString("base64")}`,
+    uri: `data:audio/mpeg;base64,${base64}`,
     cache,
   };
 }

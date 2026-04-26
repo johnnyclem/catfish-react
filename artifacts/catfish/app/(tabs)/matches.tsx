@@ -83,8 +83,18 @@ export default function MatchesTab() {
                 : previewRaw;
             const isDropped = m.unmatched;
             const unread = isDropped ? 0 : (thread?.unreadCount ?? 0);
-            const isUnopened =
-              !isDropped && unread === 0 && (!thread || thread.messages.length === 0);
+            // Task #30 — "NEW" calls out matches that formed on the
+            // current day's overnight resolution (not stale unopened
+            // threads from earlier days). Tying the affordance to
+            // `matchedOnDay === run.day` instead of "any unopened
+            // thread" keeps the cue meaningful past Day 1 while still
+            // disappearing the moment the player taps in (which causes
+            // openThread to seed the first suspect message).
+            const isNewToday =
+              !isDropped &&
+              unread === 0 &&
+              m.matchedOnDay === run!.day &&
+              (!thread || thread.messages.length === 0);
 
             // Cap the visible count so the pip stays a single, predictable
             // width even after a long stretch of unanswered turns.
@@ -156,8 +166,8 @@ export default function MatchesTab() {
                             </PixelText>
                           </View>
                         ) : (
-                          isUnopened && (
-                            <View style={styles.newPip}>
+                          isNewToday && (
+                            <View style={styles.newPip} testID={`match-new-${m.id}`}>
                               <PixelText
                                 size={6}
                                 color={cfPalette.void}

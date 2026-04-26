@@ -44,6 +44,23 @@ export default function TabLayout() {
   const matchesBadge =
     unreadTotal > 0 ? (unreadTotal > 9 ? "9+" : String(unreadTotal)) : undefined;
 
+  // Task #30 — surface queued "It's a Match!" celebrations on the Swipe
+  // tab so the player still notices new matches if they sleep and then
+  // immediately switch to Chat / Journal / Profile. The Swipe tab is
+  // where the celebration overlay actually drains, so the badge is a
+  // pointer back to the place that owns the queue. Closed runs hide
+  // the badge — the End-of-Run card is in charge of the screen and a
+  // stray pip would imply more swipe work to do.
+  const pendingMatches = useGameState((s) =>
+    s.run && !s.run.closed ? (s.run.pendingMatchAnnouncements ?? []).length : 0,
+  );
+  const swipeBadge =
+    pendingMatches > 0
+      ? pendingMatches > 9
+        ? "9+"
+        : String(pendingMatches)
+      : undefined;
+
   return (
     <Tabs
       screenOptions={{
@@ -77,6 +94,13 @@ export default function TabLayout() {
         options={{
           title: "Swipe",
           tabBarIcon: ({ color }) => <Feather name="heart" size={20} color={color} />,
+          tabBarBadge: swipeBadge,
+          tabBarBadgeStyle: {
+            backgroundColor: cfPalette.cyan,
+            color: cfPalette.void,
+            fontFamily: PIXEL_FONT,
+            fontSize: 9,
+          },
         }}
       />
       <Tabs.Screen

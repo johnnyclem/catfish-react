@@ -1,0 +1,278 @@
+# Catfish Audio — Production Brief
+
+Companion to `catfish_audio_assets.csv` (65 audio assets total).
+
+This brief covers the *strategy* — what to build, in what order, how
+they fit together, and the integration points with the existing engine
+and Date Mode PRD.
+
+-----
+
+## TL;DR
+
+**65 audio assets across 7 categories.**
+
+|Category                       |Count|Source     |Priority pile|
+|-------------------------------|----:|-----------|-------------|
+|Music — hero tracks            |8    |**Compose**|P0           |
+|Music — endings                |4    |**Compose**|P0           |
+|Music — stings                 |8    |ElevenLabs |mostly P0    |
+|SFX — UI synthetic             |22   |ElevenLabs |P0           |
+|SFX — diegetic ambience (loops)|8    |ElevenLabs |P0           |
+|SFX — diegetic one-shots       |11   |ElevenLabs |P1           |
+|SFX — narrative moments        |4    |ElevenLabs |mixed        |
+
+**You compose: ~25 minutes of original music (12 tracks).**
+**ElevenLabs generates: ~9 minutes total across 53 short clips.**
+
+That ratio matches the brief — you own the hero music (where craft and
+musicality matter and players hear repeatedly) and ElevenLabs handles the
+high-volume, low-creative-stakes work (UI clicks, stings, ambience).
+
+-----
+
+## Why these specific tracks (the design logic)
+
+### The eight hero tracks form a complete app-state map
+
+Every screen the player can be on has a music bed:
+
+|Player is in…                                |Plays                   |
+|---------------------------------------------|------------------------|
+|Title / menus                                |`main_theme`            |
+|Swipe deck                                   |`swipe_mode_loop`       |
+|Active chat thread                           |`chat_mode_bed`         |
+|Date preamble (between accept and scene load)|`date_mode_anticipation`|
+|Date scene, things going well                |`date_mode_loop_warm`   |
+|Date scene, focus shift / tense moment       |`date_mode_loop_tense`  |
+|Journal review                               |`journal_theme`         |
+|Accusation modal                             |`accusation_theme`      |
+
+The transitions between these are scripted moments — `main_theme` →
+`swipe_mode_loop` is the “I’m starting a new run” feeling. `chat_mode_bed`
+→ `date_mode_anticipation` is the “this is happening now” feeling. The
+music itself becomes a UX cue.
+
+### date_mode_loop_warm ↔ date_mode_loop_tense crossfade is the most
+
+### important musical moment in the game
+
+These two tracks should share the same instrumentation and key center but
+differ in mode (major vs. minor) and one held-note presence. The
+crossfade between them is the *emotional* version of the Focus Shift —
+same surface, different reality underneath. Players will subconsciously
+associate the tense bed with “they’re hiding something” by the second
+date. By the fourth date, hearing it cross in becomes a foreshadowing
+cue.
+
+If you only get to compose perfectly TWO things in this OST, make it
+these two.
+
+### The endings each subvert main_theme differently
+
+Notice the ending tracks all reference `main_theme` melodically but
+distort it in different ways:
+
+- **caught_them**: slower and contemplative — bittersweet
+- **wrongful_accusation**: quoting it pitched-down — wrong
+- **met_killer**: detuned, distant — lost
+- **killer_escaped**: continuing it as if nothing happened — bleak
+
+This means players who replay will recognize the main theme echoed in
+each ending, which makes the credits roll (which uses `main_theme` again)
+hit harder. Free emotional ROI from compositional discipline.
+
+-----
+
+## Audio mixing rules
+
+These belong codified in `VoicePlayer` (Date Mode PRD Epic 2.4) and the
+broader audio engine:
+
+### Volume hierarchy (loudest → quietest)
+
+1. **Voice (ElevenLabs scripted dialogue, on-demand)** — full level
+1. **Stings** — peak at -6dB relative to voice
+1. **UI SFX** — peak at -10dB relative to voice
+1. **Music** — sits at -15dB during voice, -8dB without voice (auto-duck)
+1. **Diegetic ambience** — sits at -25dB always, -30dB during voice
+
+Music ducks when voice plays. Ambience ducks slightly further so it
+stays atmospheric without competing. UI SFX should be just loud enough
+to feel responsive but never compete with voice.
+
+### Implementation: AVAudioEngine submix routing
+
+Three audio buses, each a separate `AVAudioMixerNode`:
+
+- **Music bus** — long loops, ducked dynamically
+- **SFX bus** — UI + stings + diegetic one-shots
+- **Voice bus** — ElevenLabs scripted + on-demand
+
+The director sends a “voice playing” notification that the music bus
+listens to and ducks accordingly. This is standard AVFoundation work,
+your wheelhouse.
+
+### Audio session category
+
+`.playback` with `.mixWithOthers` so the player can have Spotify running.
+For the Date Mode dialogue specifically, the app should *interrupt* their
+music — set `.playback` without `.mixWithOthers` only during date scenes,
+restore on scene exit.
+
+-----
+
+## Production order recommendation
+
+### Phase 1 (audio MVP — alongside engine Phase A)
+
+Get something audible into the swipe + chat experience as soon as
+possible. Music has a longer tail than visuals — players will tolerate
+placeholder music longer than they will silence.
+
+1. **`main_theme`** — compose this first. It’s the OST anchor, every other
+   composition references it.
+1. **`swipe_mode_loop`** — second compose priority. Most-heard track.
+1. **All 22 UI SFX** — generate via ElevenLabs in one batch. Cheap,
+   immediate game-feel improvement.
+1. **`message_send` and `message_received`** are in the UI batch — those
+   two specifically make the chat feel alive.
+1. **`match_celebration_sting`, `clue_discovered_sting`** — first two
+   stings to generate. Already needed for swipe right and journal logging.
+
+Result: app feels alive end-to-end. Music carries main menu and swipe.
+Chat has SFX. Journal has SFX.
+
+### Phase 2 (Date Mode PRD Phase A)
+
+When you start building the date scene plumbing:
+
+1. **`date_mode_anticipation`** — compose. Date preamble screen needs music.
+1. **`date_mode_loop_warm`** — compose. The default date bed.
+1. **`focus_shift_sting`** — generate via ElevenLabs.
+1. **`dialogue_advance_tap`, `choice_button_select`** — UI SFX for date scenes.
+1. **All 8 ambience loops** — generate batch. Each date environment needs
+   one. Drop them in as soon as the matching environment art is in.
+
+### Phase 3 (Date Mode PRD Phase C — killer tell mechanic)
+
+1. **`date_mode_loop_tense`** — compose. The half of the warm/tense
+   crossfade that makes the Focus Shift land.
+1. **`saint_mask_subliminal_tone`, `saint_mask_first_glimpse`,
+   `clue_discovered_date_subtle`** — generate. The Saint Mask layer’s
+   audio half.
+1. **Diegetic one-shots** — generate batch. Lower priority but
+   substantially raises immersion in dates.
+
+### Phase 4 (polish + endings)
+
+1. **Four ending tracks** — compose. Last because they’re heard once per
+   ending, and you’ll have the most musical context to draw on after
+   composing the other 8 hero tracks.
+1. **`accusation_theme`** — compose.
+1. **`journal_theme`** — compose. Lowest priority hero track because the
+   journal is a power-user feature.
+1. **Remaining stings and narrative SFX** — generate.
+
+-----
+
+## ElevenLabs music generation tips
+
+ElevenLabs’s text-to-music endpoint is good at short clips, less reliable
+on long ones. The CSV reflects this — every ElevenLabs-source track is
+≤4 seconds except ambience (which is a different model concern, not
+musical composition).
+
+**For stings specifically:**
+
+- Generate 3-4 variants of each and cherry-pick the best
+- Keep prompts concrete (BPM, instrument, target emotion) rather than
+  abstract
+- Reference the matching hero track in the prompt where applicable
+  (“complementing the warm major-key feel of the swipe deck music”)
+- Specify “hard out, no fade” or “cold start” explicitly — ElevenLabs
+  tends to fade-in/out by default
+
+**For ambience:**
+
+- The prompts are deliberately specific about volume layering (“at -25dB,”
+  “barely audible”) because ambience has to be readable as background
+- Don’t accept loops with obvious seams — regenerate or use
+  Audacity to manually crossfade-loop
+- 60 seconds is the minimum for a non-distracting loop. Anything shorter
+  becomes a 30-second cycle that the player notices.
+
+-----
+
+## Hand-composition tips (your zone, but worth naming)
+
+You compose 12 tracks totaling ~25 minutes. A few constraints worth
+respecting:
+
+**Mix headroom.** Master to -6dB peak so we have room for the auto-duck
+behavior. AVAudioMixerNode applies attenuation cleanly — don’t try to
+build the duck into the master.
+
+**Loop points matter.** Every “seamless” loop track must have a hard
+loop point that’s musically inaudible. AVAudioPlayer can do gapless
+looping but only if the file’s loop point is sample-accurate. Render
+to PCM first, edit the loop point in a DAW, then encode to M4A.
+
+**Stems if you can.** For each hero track, render at minimum a “with
+melodic lead” and “without melodic lead” stem. This lets the engine
+duck JUST the lead during voice playback without losing the bed —
+much more musical than ducking the whole track.
+
+**Tempo continuity.** The tracks at the same emotional level should sit
+at compatible BPMs so transitions don’t feel jarring. The CSV recommends
+specific BPMs for each track that form a coherent map: swipe (78), chat
+(70), date warm (75), date tense (70), journal (80), accusation (95).
+Endings vary by emotion.
+
+**Bundle size.** All music files at 192kbps VBR M4A is a good target.
+~25 minutes at 192kbps ≈ 35MB total music. Stays well under the Date
+Mode PRD bundle budget.
+
+-----
+
+## What’s NOT in the audio sheet (intentionally)
+
+- **Character voices.** Already in Date Mode PRD Epic 2. Voice cast,
+  pre-generated lines, voice IDs, pricing — all there.
+- **Friend NPC voices.** Same, in PRD Epic 2.1.
+- **Narrator voice.** Optional, also PRD Epic 2.1.
+- **Per-character musical themes.** Considered and rejected. Five themes
+  - bedroom + swipe + chat + journal + accusation + endings = OST bloat.
+    The match characters get musical *texture* via their date-scene
+    emotional state (warm/tense), not personal leitmotifs.
+- **Adaptive music systems.** No FMOD, no horizontal/vertical re-sequencing.
+  Crossfades between fixed tracks are sufficient for v1.
+- **Spatial audio / 3D positioning.** Mobile target, headphones aren’t
+  guaranteed. Stereo throughout.
+- **Voiced friend NPC reactions to clues.** Friends are TEXT-only in the
+  Corgi Cabal chat per Epic 7.7. Audio is just message_received chimes.
+
+-----
+
+## Open questions
+
+1. **ElevenLabs music API pricing at this volume.** 53 generated clips
+   plus iteration runs (3-4 attempts per sting to cherry-pick) means
+   probably 200+ generation calls. Need real cost projection before
+   batch-running.
+1. **License terms for ElevenLabs-generated audio.** Confirm the music
+   they generate is commercially redistributable in a paid mobile game.
+   Their terms have changed before — verify current state before
+   shipping.
+1. **Adaptive vs. fixed crossfade timing for warm↔tense date music.**
+   Do we crossfade on every Focus Shift (could feel manipulative) or
+   only on first tell-eligible choice in a scene (cleaner)? Decide
+   before composing the two date loops.
+1. **Voice-of-the-game for narrator stings.** Do we want a narrator at
+   all, or are the stings enough to mark scene transitions? Lighter
+   touch is probably better, but worth deciding before composing
+   `main_theme` (which sets the project tone).
+1. **Soundtrack release as separate product?** The 12 hand-composed
+   tracks could ship as a Bandcamp release at ~$5. Free marketing,
+   minimal additional work, validates “this is a real game with a
+   real OST.” Worth thinking about now even if the call is later.

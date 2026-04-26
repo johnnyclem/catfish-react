@@ -38,12 +38,10 @@ export default function TabLayout() {
 
   // Sum unread suspect messages across every active thread so the Matches
   // tab bar pip reflects "anything new across all matches" rather than a
-  // single thread. Cap the visible label to keep the badge compact.
+  // single thread.
   const unreadTotal = useGameState((s) =>
     (s.run?.threads ?? []).reduce((acc, t) => acc + (t.unreadCount ?? 0), 0),
   );
-  const matchesBadge =
-    unreadTotal > 0 ? (unreadTotal > 9 ? "9+" : String(unreadTotal)) : undefined;
 
   // Task #30 — surface queued "It's a Match!" celebrations on the Swipe
   // tab so the player still notices new matches if they sleep and then
@@ -53,8 +51,8 @@ export default function TabLayout() {
   // the badge — the End-of-Run card is in charge of the screen and a
   // stray pip would imply more swipe work to do.
   //
-  // Task #32 — render the badge ourselves inside `tabBarIcon` so we can
-  // pulse it when the count grows. React Navigation's stock
+  // Task #32 / #34 — render both badges ourselves inside `tabBarIcon`
+  // so we can pulse them when the count grows. React Navigation's stock
   // `tabBarBadge` is a static string with no animation hook.
   const runOpen = useGameState((s) => !!s.run && !s.run.closed);
   const pendingMatches = useGameState((s) =>
@@ -94,7 +92,17 @@ export default function TabLayout() {
         options={{
           title: "Swipe",
           tabBarIcon: ({ color }) => (
-            <SwipeTabIcon color={color} count={pendingMatches} runOpen={runOpen} />
+            <PulseBadgeIcon
+              iconName="heart"
+              color={color}
+              count={pendingMatches}
+              visible={runOpen && pendingMatches > 0}
+              shouldPulse={runOpen}
+              badgeColor={cfPalette.cyan}
+              accessibilityLabel={`${pendingMatches} new ${
+                pendingMatches === 1 ? "match" : "matches"
+              }`}
+            />
           ),
         }}
       />
@@ -103,15 +111,18 @@ export default function TabLayout() {
         options={{
           title: "Matches",
           tabBarIcon: ({ color }) => (
-            <Feather name="message-circle" size={20} color={color} />
+            <PulseBadgeIcon
+              iconName="message-circle"
+              color={color}
+              count={unreadTotal}
+              visible={unreadTotal > 0}
+              shouldPulse={runOpen}
+              badgeColor={cfPalette.pinkHot}
+              accessibilityLabel={`${unreadTotal} unread ${
+                unreadTotal === 1 ? "message" : "messages"
+              }`}
+            />
           ),
-          tabBarBadge: matchesBadge,
-          tabBarBadgeStyle: {
-            backgroundColor: cfPalette.pinkHot,
-            color: cfPalette.void,
-            fontFamily: PIXEL_FONT,
-            fontSize: 9,
-          },
         }}
       />
       <Tabs.Screen
@@ -132,21 +143,41 @@ export default function TabLayout() {
   );
 }
 
-interface SwipeTabIconProps {
+interface PulseBadgeIconProps {
+  iconName: React.ComponentProps<typeof Feather>["name"];
   color: string;
   count: number;
-  runOpen: boolean;
+  /** Whether the numeric badge should be rendered at all. */
+  visible: boolean;
+  /**
+   * Whether a strict count-increase should trigger the pulse animation.
+   * Pass `false` while the run is closed so the badge doesn't twitch
+   * on top of the End-of-Run card.
+   */
+  shouldPulse: boolean;
+  badgeColor: string;
+  accessibilityLabel?: string;
 }
 
 /**
- * Heart icon + queued-match badge, rendered together so the badge can
- * pulse when the count grows. The pulse fires only on a strict
- * count-increase (so re-renders that keep the same value don't replay
- * it), and is suppressed while the run is closed — the badge itself is
- * already hidden in that case, so animating empty space would be
- * wasteful and visually wrong.
+ * Tab icon + small numeric badge that briefly scale-pulses whenever
+ * `count` strictly increases. The pulse fires only on a real increase
+ * (so re-renders that keep the same value don't replay it), and is
+ * suppressed when `shouldPulse` is false.
+ *
+ * Used by both the Swipe tab (queued match celebrations) and the
+ * Matches tab (unread suspect messages across threads) so they feel
+ * consistent — same scale curve, same timing.
  */
-function SwipeTabIcon({ color, count, runOpen }: SwipeTabIconProps) {
+function PulseBadgeIcon({
+  iconName,
+  color,
+  count,
+  visible,
+  shouldPulse,
+  badgeColor,
+  accessibilityLabel,
+}: PulseBadgeIconProps) {
   const scale = useRef(new Animated.Value(1)).current;
   const prevCount = useRef(count);
 
@@ -154,7 +185,7 @@ function SwipeTabIcon({ color, count, runOpen }: SwipeTabIconProps) {
     const previous = prevCount.current;
     prevCount.current = count;
 
-    if (!runOpen) return;
+    if (!shouldPulse) return;
     if (count <= previous) return;
 
     scale.setValue(1);
@@ -171,21 +202,23 @@ function SwipeTabIcon({ color, count, runOpen }: SwipeTabIconProps) {
         stiffness: 140,
       }),
     ]).start();
-  }, [count, runOpen, scale]);
+  }, [count, shouldPulse, scale]);
 
-  const showBadge = runOpen && count > 0;
   const label = count > 9 ? "9+" : String(count);
 
   return (
-    <View style={swipeIconStyles.wrap}>
-      <Feather name="heart" size={20} color={color} />
-      {showBadge ? (
+    <View style={pulseBadgeStyles.wrap}>
+      <Feather name={iconName} size={20} color={color} />
+      {visible ? (
         <Animated.View
-          style={[swipeIconStyles.badge, { transform: [{ scale }] }]}
+          style={[
+            pulseBadgeStyles.badge,
+            { backgroundColor: badgeColor, transform: [{ scale }] },
+          ]}
           pointerEvents="none"
-          accessibilityLabel={`${count} new ${count === 1 ? "match" : "matches"}`}
+          accessibilityLabel={accessibilityLabel}
         >
-          <Text style={swipeIconStyles.badgeText} numberOfLines={1}>
+          <Text style={pulseBadgeStyles.badgeText} numberOfLines={1}>
             {label}
           </Text>
         </Animated.View>
@@ -194,7 +227,7 @@ function SwipeTabIcon({ color, count, runOpen }: SwipeTabIconProps) {
   );
 }
 
-const swipeIconStyles = StyleSheet.create({
+const pulseBadgeStyles = StyleSheet.create({
   wrap: {
     width: 28,
     height: 22,
@@ -209,7 +242,6 @@ const swipeIconStyles = StyleSheet.create({
     height: 16,
     paddingHorizontal: 4,
     borderRadius: 8,
-    backgroundColor: cfPalette.cyan,
     alignItems: "center",
     justifyContent: "center",
   },

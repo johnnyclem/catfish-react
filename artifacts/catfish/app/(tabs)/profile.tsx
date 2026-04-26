@@ -35,6 +35,10 @@ export default function ProfileTab() {
   const resetRun = useGameState((s) => s.resetRun);
   const voiceMuted = useGameState((s) => s.voiceMuted);
   const setVoiceMuted = useGameState((s) => s.setVoiceMuted);
+  const sfxMuted = useGameState((s) => s.sfxMuted);
+  const setSfxMuted = useGameState((s) => s.setSfxMuted);
+  const musicMuted = useGameState((s) => s.musicMuted);
+  const setMusicMuted = useGameState((s) => s.setMusicMuted);
   const [debugMessage, setDebugMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -108,45 +112,35 @@ export default function ProfileTab() {
         <PixelText size={9} color={cfPalette.cyan} uppercase>
           audio
         </PixelText>
-        <PixelText size={9} color={cfPalette.bone} style={{ marginTop: 6 }}>
-          Mute suspect voices
-        </PixelText>
         <PixelText size={7} color={cfPalette.ash} style={{ marginTop: 4, lineHeight: 11 }}>
-          Voices for suspect messages. Choice survives across runs.
+          Three independent channels. Each choice survives across runs.
         </PixelText>
-        <Pressable
-          onPress={() => {
-            void setVoiceMuted(!voiceMuted);
-          }}
-          style={({ pressed }) => [
-            styles.voiceToggle,
-            {
-              opacity: pressed ? 0.6 : 1,
-              borderColor: voiceMuted ? cfPalette.fog : cfPalette.cyan,
-            },
-          ]}
-          testID="voice-mute-toggle"
-          accessibilityRole="switch"
-          accessibilityState={{ checked: voiceMuted }}
-          accessibilityLabel="Mute suspect voices"
-        >
-          <PixelText
-            size={9}
-            color={voiceMuted ? cfPalette.fog : cfPalette.cyan}
-            uppercase
-            glow={!voiceMuted}
-          >
-            {voiceMuted ? "voices: off" : "voices: on"}
-          </PixelText>
-          <PixelText
-            size={6}
-            color={cfPalette.ash}
-            style={{ marginTop: 4 }}
-            uppercase
-          >
-            tap to toggle
-          </PixelText>
-        </Pressable>
+        <View style={styles.audioToggleRow}>
+          <AudioToggle
+            label="voices"
+            description="Suspect dialogue"
+            muted={voiceMuted}
+            onToggle={() => void setVoiceMuted(!voiceMuted)}
+            testID="voice-mute-toggle"
+            accessibilityLabel="Mute suspect voices"
+          />
+          <AudioToggle
+            label="sfx"
+            description="Swipes, matches, file"
+            muted={sfxMuted}
+            onToggle={() => void setSfxMuted(!sfxMuted)}
+            testID="sfx-mute-toggle"
+            accessibilityLabel="Mute sound effects"
+          />
+          <AudioToggle
+            label="music"
+            description="Noir background"
+            muted={musicMuted}
+            onToggle={() => void setMusicMuted(!musicMuted)}
+            testID="music-mute-toggle"
+            accessibilityLabel="Mute background music"
+          />
+        </View>
       </PixelPanel>
 
       {run && (
@@ -219,6 +213,66 @@ export default function ProfileTab() {
   );
 }
 
+interface AudioToggleProps {
+  label: string;
+  description: string;
+  muted: boolean;
+  onToggle: () => void;
+  testID: string;
+  accessibilityLabel: string;
+}
+
+function AudioToggle({
+  label,
+  description,
+  muted,
+  onToggle,
+  testID,
+  accessibilityLabel,
+}: AudioToggleProps) {
+  return (
+    <Pressable
+      onPress={onToggle}
+      style={({ pressed }) => [
+        styles.audioToggleCell,
+        {
+          opacity: pressed ? 0.6 : 1,
+          borderColor: muted ? cfPalette.fog : cfPalette.cyan,
+        },
+      ]}
+      testID={testID}
+      accessibilityRole="switch"
+      accessibilityState={{ checked: !muted }}
+      accessibilityLabel={accessibilityLabel}
+    >
+      <PixelText
+        size={9}
+        color={muted ? cfPalette.fog : cfPalette.cyan}
+        uppercase
+        glow={!muted}
+      >
+        {label}
+      </PixelText>
+      <PixelText
+        size={6}
+        color={muted ? cfPalette.fog : cfPalette.bone}
+        uppercase
+        style={{ marginTop: 4 }}
+      >
+        {muted ? "off" : "on"}
+      </PixelText>
+      <PixelText
+        size={5}
+        color={cfPalette.ash}
+        align="center"
+        style={{ marginTop: 6, lineHeight: 8 }}
+      >
+        {description}
+      </PixelText>
+    </Pressable>
+  );
+}
+
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.statCell}>
@@ -267,6 +321,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderWidth: 2,
     alignItems: "center",
+  },
+  audioToggleRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 12,
+  },
+  audioToggleCell: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderWidth: 2,
+    alignItems: "center",
+    minHeight: 86,
   },
   statsGrid: {
     flexDirection: "row",

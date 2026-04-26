@@ -25,7 +25,7 @@
  */
 
 import { router } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Modal, Platform, ScrollView, StyleSheet, View } from "react-native";
 
 import {
@@ -38,6 +38,7 @@ import { cfPalette } from "@/constants/colors";
 import { useGameState } from "@/core/gameStore";
 import { getIdentityModule } from "@/core/identities";
 import { AccusationResult, CaseEnding, KillerIdentity } from "@/core/models";
+import { emitSfx } from "@/features/audio/audioEvents";
 
 interface EndingPalette {
   /** Loud header (e.g. "Caught Them"). */
@@ -86,6 +87,16 @@ export function EndOfRunCard() {
   const startNewRun = useGameState((s) => s.startNewRun);
   const dismissAccusation = useGameState((s) => s.dismissAccusation);
   const [busy, setBusy] = useState(false);
+
+  // Win/lose sting fires the first frame the result is on screen.
+  // The effect dep is the ending string itself — it can only flip
+  // null→<value> for a given run, so we won't re-fire on re-renders.
+  // `caughtThem` is the only happy ending; everything else is a loss.
+  const endingTag: CaseEnding | null = run?.ending?.ending ?? null;
+  useEffect(() => {
+    if (!endingTag) return;
+    emitSfx(endingTag === "caughtThem" ? "win" : "lose");
+  }, [endingTag]);
 
   // Hidden until the resolver has fired and stamped a result onto the
   // run. Both player accusations and the Day 7 face-to-face beat take

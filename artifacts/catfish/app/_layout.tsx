@@ -12,6 +12,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useGameHydration } from "@/core/gameStore";
 import { EndOfRunCard } from "@/features/accusation/EndOfRunCard";
+import { AudioProvider } from "@/features/audio/AudioProvider";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -62,7 +63,12 @@ export default function RootLayout() {
       <ErrorBoundary>
         <GestureHandlerRootView style={{ flex: 1, backgroundColor: "#0a0420" }}>
           <StatusBar style="light" />
-          <RootLayoutNav />
+          {/* AudioProvider mounts the looping music + SFX pool. Lives
+              inside the gesture root because we use the first user
+              gesture to satisfy browser autoplay policy. */}
+          <AudioProvider>
+            <RootLayoutNav />
+          </AudioProvider>
         </GestureHandlerRootView>
       </ErrorBoundary>
     </SafeAreaProvider>

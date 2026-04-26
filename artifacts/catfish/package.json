@@ -9,6 +9,8 @@
     "serve": "node server/serve.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "voice:pregen": "tsx scripts/voice-pregen.ts",
+    "sfx:pregen": "tsx scripts/sfx-pregen.mts",
+    "music:pregen": "tsx scripts/music-pregen.mts",
     "test:undo-queue": "tsx scripts/test-undo-queue.mts",
     "test:clue-graph": "tsx scripts/test-clue-graph.mts",
     "test:accusation-flow": "tsx scripts/test-accusation-flow.mts",

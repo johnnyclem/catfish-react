@@ -17,6 +17,7 @@ import { AssetImage } from "./AssetImage";
 import { NeonButton, PixelPanel, PixelText } from "./PixelChrome";
 
 import { cfPalette } from "@/constants/colors";
+import { emitSfx } from "@/features/audio/audioEvents";
 
 interface MatchCelebrationProps {
   visible: boolean;
@@ -38,6 +39,9 @@ export function MatchCelebration({
       fade.setValue(0);
       return;
     }
+    // Triumphant arpeggio — coincides with the heart-pop spring so
+    // the bass note lands as the heart reaches full size.
+    emitSfx("match");
     Animated.parallel([
       Animated.timing(fade, {
         toValue: 1,

@@ -49,6 +49,7 @@ import { PixelText } from "@/components/PixelChrome";
 import { cfPalette } from "@/constants/colors";
 import { useGameState } from "@/core/gameStore";
 import { CandidateId, MessageId, ThreadId } from "@/core/models";
+import { emitSfx } from "@/features/audio/audioEvents";
 
 interface MessageFactGestureProps {
   candidateId: CandidateId;
@@ -115,6 +116,8 @@ export function MessageFactGesture({
       if (Platform.OS !== "web") {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       }
+      // Audible "got it" pip — fires alongside the visual flash.
+      emitSfx("fact_filed");
       // Cyan flash — fade in fast, fade out a touch slower for a
       // satisfying "snap" feel.
       flashAnim.setValue(0);

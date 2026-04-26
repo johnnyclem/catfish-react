@@ -38,6 +38,7 @@ import {
 import { cfPalette } from "@/constants/colors";
 import { useGameState } from "@/core/gameStore";
 import { Candidate, KillerIdentity } from "@/core/models";
+import { emitSfx } from "@/features/audio/audioEvents";
 
 interface AccusationSheetProps {
   visible: boolean;
@@ -114,6 +115,10 @@ export function AccusationSheet({ visible, onClose }: AccusationSheetProps) {
     if (submitting) return;
     if (outcome === "accuse" && !selected) return;
     setSubmitting(true);
+    // Tense rising sting on commit — fires immediately so the player
+    // hears the gravity of the choice before the EndOfRunCard
+    // resolves and overlays its own win/lose sting on top.
+    emitSfx("accuse");
     try {
       // For escaped we still need to pass an `accused` value so the
       // resolver's signature is satisfied — it gets ignored by the

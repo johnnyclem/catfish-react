@@ -23,6 +23,7 @@ import { NeonButton, PixelPanel, PixelText, ScanlineOverlay } from "@/components
 import { cfPalette } from "@/constants/colors";
 import { useGameState } from "@/core/gameStore";
 import { Candidate } from "@/core/models";
+import { emitSfx } from "@/features/audio/audioEvents";
 
 interface LikeStampState {
   visible: boolean;
@@ -60,10 +61,13 @@ export function SwipeView() {
     visible: false,
     day: 0,
   });
-  // Track the last day we observed so we can fire the "Day N begins"
-  // banner exactly once per tick — but only when there are no match
-  // announcements competing for the same patch of screen.
-  const prevDayRef = useRef<number | null>(null);
+  // Track the last (run, day) we observed so we can fire the "Day N
+  // begins" banner exactly once per tick — but only when there are no
+  // match announcements competing for the same patch of screen. We
+  // key off run.id too so that ending one case and starting a fresh
+  // one (day 7 → day 1) is recognized as a new run rather than as a
+  // backwards day-change that would falsely trigger the day_end SFX.
+  const prevDayRef = useRef<{ runId: string; day: number } | null>(null);
 
   const remaining: Candidate[] = useMemo(() => {
     if (!run) return [];
@@ -96,12 +100,20 @@ export function SwipeView() {
   // so a fresh hydrate doesn't immediately fire a phantom banner.
   useEffect(() => {
     if (!run) return;
-    if (prevDayRef.current === null) {
-      prevDayRef.current = run.day;
+    const prev = prevDayRef.current;
+    // First observation, or a brand-new run (different id) — initialize
+    // the pointer without firing day_end. Otherwise a fresh case would
+    // open with a phantom "end of day" sting on day 1.
+    if (prev === null || prev.runId !== run.id) {
+      prevDayRef.current = { runId: run.id, day: run.day };
       return;
     }
-    if (run.day === prevDayRef.current) return;
-    prevDayRef.current = run.day;
+    if (run.day === prev.day) return;
+    prevDayRef.current = { runId: run.id, day: run.day };
+    // Day-end SFX always fires on the tick — even when the End-of-
+    // Run card is about to take over (it gives the close a beat of
+    // its own). The win/lose sting then plays on top a moment later.
+    emitSfx("day_end");
     if (announcements.length > 0) return;
     // Don't congratulate the player on reaching Day 7 — the End-of-
     // Run card is about to take over and own the screen.
@@ -119,7 +131,12 @@ export function SwipeView() {
       const top = remaining[0];
       if (!top) return;
       const accepted = await swipe(top.id, direction);
-      if (accepted && direction === "right") {
+      // Only fire SFX once the store accepted the swipe. A rejected
+      // commit (stale tap, integrity guard, etc.) shouldn't make a
+      // sound — the deck didn't actually move.
+      if (!accepted) return;
+      emitSfx(direction === "right" ? "swipe_like" : "swipe_pass");
+      if (direction === "right") {
         setLikeStamp((prev) => ({
           visible: true,
           name: top.displayName,

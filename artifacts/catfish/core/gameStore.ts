@@ -99,6 +99,19 @@ interface GameStateValue {
    */
   voiceMuted: boolean;
   /**
+   * Persistent SFX-mute preference. Same shape and rationale as
+   * `voiceMuted` — separate AsyncStorage row so a toggle doesn't
+   * rewrite the run blob, survives `resetRun()`, default-off so a
+   * fresh install has full audio. Honored by the `useSfx` hook.
+   */
+  sfxMuted: boolean;
+  /**
+   * Persistent music-mute preference. Same persistence contract as
+   * `voiceMuted` and `sfxMuted`. Honored by the `MusicProvider`,
+   * which pauses/resumes the looping pad track in response.
+   */
+  musicMuted: boolean;
+  /**
    * In-memory only — Facts removed via `removeFact`, stashed so the
    * Journal tab can offer a brief undo affordance. A small queue (not
    * a single slot) so a player triaging several facts in quick
@@ -115,6 +128,10 @@ interface GameStateValue {
   hydrate: () => Promise<void>;
   /** Toggle voice playback. Persists to AsyncStorage immediately. */
   setVoiceMuted: (muted: boolean) => Promise<void>;
+  /** Toggle UI sound effects. Persists to AsyncStorage immediately. */
+  setSfxMuted: (muted: boolean) => Promise<void>;
+  /** Toggle background music. Persists to AsyncStorage immediately. */
+  setMusicMuted: (muted: boolean) => Promise<void>;
   startNewRun: (forced?: KillerIdentity) => Promise<CaseRun>;
   /**
    * Player-paced clock tick.
@@ -485,23 +502,33 @@ let hydrationPromise: Promise<void> | null = null;
  * the boolean shape without losing the player's choice.
  */
 const VOICE_MUTED_KEY = "catfish/prefs/voice_muted/v1";
+const SFX_MUTED_KEY = "catfish/prefs/sfx_muted/v1";
+const MUSIC_MUTED_KEY = "catfish/prefs/music_muted/v1";
 
-async function loadVoiceMuted(): Promise<boolean> {
+async function loadBoolPref(key: string): Promise<boolean> {
   try {
-    const raw = await AsyncStorage.getItem(VOICE_MUTED_KEY);
+    const raw = await AsyncStorage.getItem(key);
     return raw === "1";
   } catch {
     return false;
   }
 }
 
-async function saveVoiceMuted(muted: boolean): Promise<void> {
+async function saveBoolPref(key: string, value: boolean): Promise<void> {
   try {
-    await AsyncStorage.setItem(VOICE_MUTED_KEY, muted ? "1" : "0");
+    await AsyncStorage.setItem(key, value ? "1" : "0");
   } catch {
     // Persistence failure is non-fatal — the in-memory toggle still
     // works for the rest of the session.
   }
+}
+
+async function loadVoiceMuted(): Promise<boolean> {
+  return loadBoolPref(VOICE_MUTED_KEY);
+}
+
+async function saveVoiceMuted(muted: boolean): Promise<void> {
+  await saveBoolPref(VOICE_MUTED_KEY, muted);
 }
 
 /**
@@ -547,16 +574,20 @@ export const useGameState = create<GameStateValue>((set, get) => ({
   hydrated: false,
   run: null,
   voiceMuted: false,
+  sfxMuted: false,
+  musicMuted: false,
   recentlyDiscarded: [],
 
   hydrate: async () => {
     if (hydrationPromise) return hydrationPromise;
     hydrationPromise = (async () => {
-      // Load run + voice prefs in parallel — they live in different
+      // Load run + audio prefs in parallel — they live in different
       // AsyncStorage rows and have no ordering dependency.
-      const [existing, muted] = await Promise.all([
+      const [existing, voiceMuted, sfxMuted, musicMuted] = await Promise.all([
         loadActiveRun().then(migrateRun),
         loadVoiceMuted(),
+        loadBoolPref(SFX_MUTED_KEY),
+        loadBoolPref(MUSIC_MUTED_KEY),
       ]);
       // Cold-start invariant: undo state is in-memory only, so a
       // dangling stash from a prior process is impossible. Still,
@@ -565,7 +596,9 @@ export const useGameState = create<GameStateValue>((set, get) => ({
       set({
         run: existing,
         hydrated: true,
-        voiceMuted: muted,
+        voiceMuted,
+        sfxMuted,
+        musicMuted,
         recentlyDiscarded: [],
       });
     })();
@@ -577,6 +610,16 @@ export const useGameState = create<GameStateValue>((set, get) => ({
     // instantly; persist asynchronously in the background.
     set({ voiceMuted: muted });
     await saveVoiceMuted(muted);
+  },
+
+  setSfxMuted: async (muted) => {
+    set({ sfxMuted: muted });
+    await saveBoolPref(SFX_MUTED_KEY, muted);
+  },
+
+  setMusicMuted: async (muted) => {
+    set({ musicMuted: muted });
+    await saveBoolPref(MUSIC_MUTED_KEY, muted);
   },
 
   startNewRun: async (forced) => {

@@ -3,8 +3,10 @@
  *
  * Translated from the SwiftUI CardView in the source doc. Uses
  * react-native-gesture-handler + reanimated for the drag interaction.
- * Threshold for commit: 110pt (matches source). Right = match,
- * left = pass. The parent (`SwipeView`) handles deck advancement.
+ * Threshold for commit: 110pt (matches source). Right = like,
+ * left = pass. Right-swipes register a pending like — overnight
+ * resolution into a real match happens in `advanceDay()`. The parent
+ * (`SwipeView`) handles deck advancement and the LIKE/match overlays.
  */
 
 import { useCallback, useImperativeHandle, useRef, forwardRef } from "react";
@@ -125,7 +127,7 @@ export const SwipeCard = forwardRef<SwipeCardHandle, SwipeCardProps>(function Sw
     opacity: interpolate(tx.value, [-SWIPE_THRESHOLD, -20, 0], [1, 0.2, 0], Extrapolation.CLAMP),
     transform: [{ rotate: "-12deg" }],
   }));
-  const matchBadge = useAnimatedStyle(() => ({
+  const likeBadge = useAnimatedStyle(() => ({
     opacity: interpolate(tx.value, [0, 20, SWIPE_THRESHOLD], [0, 0.2, 1], Extrapolation.CLAMP),
     transform: [{ rotate: "12deg" }],
   }));
@@ -146,9 +148,9 @@ export const SwipeCard = forwardRef<SwipeCardHandle, SwipeCardProps>(function Sw
                 pass
               </PixelText>
             </Animated.View>
-            <Animated.View style={[styles.badge, styles.matchBadge, matchBadge]}>
+            <Animated.View style={[styles.badge, styles.likeBadge, likeBadge]}>
               <PixelText size={14} color={cfPalette.pinkHot} uppercase glow>
-                match
+                like
               </PixelText>
             </Animated.View>
           </View>
@@ -244,7 +246,7 @@ const styles = StyleSheet.create({
     borderColor: cfPalette.cyan,
     backgroundColor: "rgba(3,1,10,0.7)",
   },
-  matchBadge: {
+  likeBadge: {
     top: 16,
     left: 16,
     borderColor: cfPalette.pinkHot,

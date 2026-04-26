@@ -67,6 +67,6 @@
   },
   "dependencies": {
     "@expo-google-fonts/press-start-2p": "^0.4.1",
-    "expo-audio": "^55.0.14"
+    "expo-audio": "^1.1.1"
   }
 }

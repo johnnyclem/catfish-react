@@ -317,19 +317,23 @@ const state = useGameState.getState;
   await state().resetRun();
   await state().startNewRun("miles");
 
-  // Capture a baseline of the open run, do one swipe so we have a
-  // matched candidate to work with later.
+  // Capture a baseline of the open run, do one swipe + sleep so we
+  // have a matched candidate to work with later. Task #29: matches
+  // are now resolved by `advanceDay`, not by the swipe itself.
   const open = state().run!;
   const firstCard = open.deck[open.deckCursor];
   assert(firstCard, "deck has cards to swipe");
-  await state().swipe(firstCard.id, "right");
+  const swipeAccepted = await state().swipe(firstCard.id, "right");
+  assert(swipeAccepted === true, "right-swipe on open run is accepted");
+  // Sleep once to materialize the overnight match.
+  await state().advanceDay();
 
   const beforeClose = state().run!;
   const baselineDeckCursor = beforeClose.deckCursor;
   const baselineSwipeCount = beforeClose.swipes.length;
   const baselineFactCount = beforeClose.facts.length;
   const baselineMatch = beforeClose.matches[0];
-  assert(baselineMatch, "right-swipe produced a matched thread");
+  assert(baselineMatch, "right-swipe + sleep produced a matched thread");
   const baselineThreadId = baselineMatch.threadId;
   const baselineThread = beforeClose.threads.find(
     (t) => t.id === baselineThreadId,
@@ -358,7 +362,7 @@ const state = useGameState.getState;
     state().run!.deck[state().run!.deckCursor - 1];
   assert(nextCard, "deck has a card to attempt a swipe against");
   const swipeResult = await state().swipe(nextCard.id, "left");
-  assert(swipeResult === null, "swipe on closed run returns null");
+  assert(swipeResult === false, "swipe on closed run returns false");
 
   const factResult = await state().commitFact({
     candidateId: nextCard.id,

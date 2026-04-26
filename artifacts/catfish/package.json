@@ -11,7 +11,8 @@
     "voice:pregen": "tsx scripts/voice-pregen.ts",
     "test:undo-queue": "tsx scripts/test-undo-queue.mts",
     "test:clue-graph": "tsx scripts/test-clue-graph.mts",
-    "test:accusation-flow": "tsx scripts/test-accusation-flow.mts"
+    "test:accusation-flow": "tsx scripts/test-accusation-flow.mts",
+    "test:like-then-match": "tsx scripts/test-like-then-match.mts"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

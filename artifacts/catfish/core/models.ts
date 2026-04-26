@@ -305,6 +305,33 @@ export interface SwipeRecord {
   at: string;
 }
 
+/**
+ * Pending-like record produced by a right-swipe.
+ *
+ * The swipe path no longer mints a `MatchRelationship` synchronously —
+ * it appends a `LikeRecord` with `status: "pending"`. `advanceDay()`
+ * (the Sleep button) walks `pendingLikes` and converts every still-
+ * pending entry whose candidate is part of the run's authored deck
+ * into a real `MatchRelationship` + `ChatThread`, flipping the like's
+ * `status` to `"matched"`. This guarantees the killer (and every other
+ * story candidate) reciprocates when liked, while leaving room for a
+ * future task to reciprocate decoy NPCs probabilistically.
+ *
+ * Likes that were resolved as non-reciprocating end up `"passed"` so
+ * the run record still tells the truth about what happened. Today no
+ * code path produces `"passed"` because every deck candidate matches
+ * back, but the variant exists so the future stack-with-decoys task
+ * doesn't need a schema change.
+ */
+export interface LikeRecord {
+  candidateId: CandidateId;
+  /** Day-clock value at the time the player swiped right. */
+  day: number;
+  /** ISO timestamp the like was recorded. */
+  at: string;
+  status: "pending" | "matched" | "passed";
+}
+
 export interface CaseRun {
   id: RunId;
   /** Stamped at startNewRun and immutable. */
@@ -320,6 +347,24 @@ export interface CaseRun {
   matches: MatchRelationship[];
   threads: ChatThread[];
   facts: Fact[];
+  /**
+   * Right-swipes waiting for overnight resolution. Filled by `swipe()`
+   * with `status: "pending"`; flipped to `"matched"` (and a
+   * `MatchRelationship` minted) by `advanceDay()`. Optional on the
+   * persisted shape so runs saved before this field landed still
+   * hydrate cleanly — `migrateRun` defaults missing values to `[]`.
+   */
+  pendingLikes?: LikeRecord[];
+  /**
+   * Match ids that were materialized during the most recent
+   * `advanceDay` and have not yet been shown to the player. The Swipe
+   * tab consumes this queue to play `MatchCelebration` overlays one
+   * at a time, calling `acknowledgeMatchAnnouncement(matchId)` to
+   * dequeue. Persisted so a cold start mid-queue still surfaces the
+   * pending celebrations instead of silently dropping them. Optional
+   * for backward compatibility.
+   */
+  pendingMatchAnnouncements?: MatchId[];
   /** Marks runs the player ended (accusation flow lives in Pass 6). */
   closed: boolean;
   /**

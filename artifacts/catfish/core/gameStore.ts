@@ -33,6 +33,7 @@ import {
   FactPayload,
   FactSource,
   KillerIdentity,
+  LikeRecord,
   MatchId,
   MatchRelationship,
   Message,
@@ -138,10 +139,27 @@ interface GameStateValue {
    * required to play again.
    */
   dismissAccusation: () => Promise<void>;
+  /**
+   * Records a swipe. A right-swipe is now a "like" — it appends a
+   * pending `LikeRecord` and a `SwipeRecord` and advances the cursor,
+   * but does NOT mint a `MatchRelationship` or `ChatThread`. Match
+   * resolution happens in `advanceDay()` (the Sleep button), which
+   * walks `pendingLikes` and reciprocates every story candidate.
+   *
+   * Returns `true` if the swipe was accepted, `false` if rejected
+   * (closed run, stale candidate id, etc).
+   */
   swipe: (
     candidateId: CandidateId,
     direction: "left" | "right",
-  ) => Promise<MatchRelationship | null>;
+  ) => Promise<boolean>;
+  /**
+   * Dequeue a single match-celebration announcement after the Swipe
+   * tab has shown its overlay. Idempotent — calling with an unknown
+   * id (already acknowledged, or never queued) is a no-op so the UI
+   * doesn't have to guard against double-fires.
+   */
+  acknowledgeMatchAnnouncement: (matchId: MatchId) => Promise<void>;
   /** Promote a chat message into the Journal as a captured Fact. */
   commitFact: (input: CommitFactInput) => Promise<Fact | null>;
   /** Discard a previously captured Fact. */
@@ -219,6 +237,8 @@ function buildRun(forced?: KillerIdentity): CaseRun {
     matches: [],
     threads: [],
     facts: authoredFacts,
+    pendingLikes: [],
+    pendingMatchAnnouncements: [],
     closed: false,
     ending: null,
   };
@@ -270,7 +290,38 @@ export function migrateRun(run: CaseRun | null): CaseRun | null {
   // exact captured-facts list it had before the upgrade.
   const facts: Fact[] = run.facts.map((f) => migrateFact(f, run));
 
-  return { ...run, threads, facts };
+  // Task #29 — default the like-then-match queues so runs persisted
+  // before this field landed continue to load. An in-flight run that
+  // already has matches keeps them; only the new `pendingLikes` /
+  // `pendingMatchAnnouncements` queues are filled in.
+  const pendingLikes: LikeRecord[] = Array.isArray(run.pendingLikes)
+    ? run.pendingLikes.filter(
+        (l): l is LikeRecord =>
+          !!l &&
+          typeof l === "object" &&
+          typeof (l as LikeRecord).candidateId === "string" &&
+          typeof (l as LikeRecord).day === "number" &&
+          typeof (l as LikeRecord).at === "string" &&
+          ((l as LikeRecord).status === "pending" ||
+            (l as LikeRecord).status === "matched" ||
+            (l as LikeRecord).status === "passed"),
+      )
+    : [];
+  const pendingMatchAnnouncements: MatchId[] = Array.isArray(
+    run.pendingMatchAnnouncements,
+  )
+    ? run.pendingMatchAnnouncements.filter(
+        (id): id is MatchId => typeof id === "string",
+      )
+    : [];
+
+  return {
+    ...run,
+    threads,
+    facts,
+    pendingLikes,
+    pendingMatchAnnouncements,
+  };
 }
 
 /**
@@ -490,22 +541,82 @@ export const useGameState = create<GameStateValue>((set, get) => ({
     // to push the day past the face-to-face boundary.
     if (prev.closed) return;
 
+    // ── Task #29: resolve overnight likes BEFORE the day-clock tick ──
+    // Every still-pending like whose candidate is part of the run's
+    // authored deck reciprocates — no randomness. This guarantees
+    // the killer (and every other story candidate) matches back when
+    // liked, while leaving room for a future task to layer in
+    // probabilistic decoy NPCs from a wider pool.
+    const pendingLikesIn: LikeRecord[] = prev.pendingLikes ?? [];
+    const announcementsIn: MatchId[] = prev.pendingMatchAnnouncements ?? [];
+
+    let matches = prev.matches;
+    let threads = prev.threads;
+    let announcements = announcementsIn;
+    const resolvedLikes: LikeRecord[] = pendingLikesIn.map((like) => {
+      if (like.status !== "pending") return like;
+      const candidate = prev.deck.find((c) => c.id === like.candidateId);
+      // Candidate not in the run's authored deck — leave the like
+      // pending so a future task can decide what to do with it (e.g.
+      // probabilistic match-back for decoy-only NPCs in a wider stack).
+      if (!candidate) return like;
+      const threadId = newThreadId();
+      const matchId = newMatchId();
+      const match: MatchRelationship = {
+        id: matchId,
+        runId: prev.id,
+        candidateId: like.candidateId,
+        // Stamp the day on which the match actually formed, not the
+        // day the player swiped — the suspect "decided overnight".
+        matchedOnDay: prev.day + 1,
+        matchedAt: nowIso(),
+        threadId,
+        unmatched: false,
+      };
+      matches = [...matches, match];
+      threads = [
+        ...threads,
+        {
+          id: threadId,
+          runId: prev.id,
+          candidateId: like.candidateId,
+          // openThread() will lazily push the opening salvo on first view.
+          messages: [],
+          turnIndex: 0,
+          unreadCount: 0,
+        },
+      ];
+      announcements = [...announcements, matchId];
+      return { ...like, status: "matched" };
+    });
+
     const nextDay = prev.day + 1;
 
     // Day 7 = face-to-face. The killer reveals themselves at the
     // pre-arranged meeting. Bake the metKiller stub through the same
     // resolver the explicit accuse flow uses so all four CaseEndings
     // route through one code path.
+    //
+    // Overnight likes are still resolved above before the close so the
+    // run record tells the truth about who matched on the final night,
+    // even though the End-of-Run card may pre-empt the celebration UI.
     if (nextDay >= FACE_TO_FACE_DAY) {
+      const closing: CaseRun = {
+        ...prev,
+        day: nextDay,
+        matches,
+        threads,
+        pendingLikes: resolvedLikes,
+        pendingMatchAnnouncements: announcements,
+      };
       const result = resolveAccusation({
-        accused: prev.killer,
-        run: prev,
+        accused: closing.killer,
+        run: closing,
         discoveredFactIds: new Set(),
         outcome: "metKiller",
       });
       const next: CaseRun = {
-        ...prev,
-        day: nextDay,
+        ...closing,
         closed: true,
         ending: result,
       };
@@ -514,7 +625,14 @@ export const useGameState = create<GameStateValue>((set, get) => ({
       return;
     }
 
-    const next: CaseRun = { ...prev, day: nextDay };
+    const next: CaseRun = {
+      ...prev,
+      day: nextDay,
+      matches,
+      threads,
+      pendingLikes: resolvedLikes,
+      pendingMatchAnnouncements: announcements,
+    };
     set({ run: next });
     await saveActiveRun(next);
   },
@@ -562,70 +680,69 @@ export const useGameState = create<GameStateValue>((set, get) => ({
 
   swipe: async (candidateId, direction) => {
     const prev = get().run;
-    if (!prev) return null;
+    if (!prev) return false;
     // Closed runs are sealed — no further swipes can advance the deck.
     // The End-of-Run overlay owns the next transition (Start New Case
     // or Back To Title); we don't want a stray UI tap to mutate a
     // run that has already been resolved.
-    if (prev.closed) return null;
+    if (prev.closed) return false;
 
     // Integrity guard — only the candidate currently at deckCursor may be
     // swiped. Rejects duplicate/stale commits that would otherwise
     // double-advance the cursor and corrupt persisted run state.
     const expected = prev.deck[prev.deckCursor];
     if (!expected || expected.id !== candidateId) {
-      return null;
+      return false;
     }
 
+    const at = nowIso();
     const swipeRec: SwipeRecord = {
       candidateId,
       direction,
       day: prev.day,
-      at: nowIso(),
+      at,
     };
 
-    let matches = prev.matches;
-    let threads = prev.threads;
-    let createdMatch: MatchRelationship | null = null;
-
-    if (direction === "right") {
-      // Killer identity is immutable — we never re-stamp here.
-      const threadId = newThreadId();
-      const match: MatchRelationship = {
-        id: newMatchId(),
-        runId: prev.id,
-        candidateId,
-        matchedOnDay: prev.day,
-        matchedAt: nowIso(),
-        threadId,
-        unmatched: false,
-      };
-      createdMatch = match;
-      matches = [...prev.matches, match];
-      threads = [
-        ...prev.threads,
-        {
-          id: threadId,
-          runId: prev.id,
-          candidateId,
-          // openThread() will lazily push the opening salvo on first view.
-          messages: [],
-          turnIndex: 0,
-          unreadCount: 0,
-        },
-      ];
-    }
+    // ── Task #29: a right-swipe is a LIKE, not an immediate match ──
+    // The match itself is materialized later by `advanceDay()` when
+    // the player sleeps. No `MatchRelationship` or `ChatThread` is
+    // created here.
+    const pendingLikes: LikeRecord[] = prev.pendingLikes ?? [];
+    const nextPendingLikes: LikeRecord[] =
+      direction === "right"
+        ? [
+            ...pendingLikes,
+            {
+              candidateId,
+              day: prev.day,
+              at,
+              status: "pending",
+            },
+          ]
+        : pendingLikes;
 
     const next: CaseRun = {
       ...prev,
       deckCursor: prev.deckCursor + 1,
       swipes: [...prev.swipes, swipeRec],
-      matches,
-      threads,
+      pendingLikes: nextPendingLikes,
     };
     set({ run: next });
     await saveActiveRun(next);
-    return createdMatch;
+    return true;
+  },
+
+  acknowledgeMatchAnnouncement: async (matchId) => {
+    const prev = get().run;
+    if (!prev) return;
+    const queue = prev.pendingMatchAnnouncements ?? [];
+    if (!queue.includes(matchId)) return;
+    const next: CaseRun = {
+      ...prev,
+      pendingMatchAnnouncements: queue.filter((id) => id !== matchId),
+    };
+    set({ run: next });
+    await saveActiveRun(next);
   },
 
   commitFact: async ({ candidateId, threadId, messageId, quote }) => {

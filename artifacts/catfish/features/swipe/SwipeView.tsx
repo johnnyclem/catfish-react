@@ -5,51 +5,126 @@
  *   - Renders the top 3 candidates from `run.deck` starting at `deckCursor`
  *   - Drag-to-commit (handled in SwipeCard)
  *   - Tap buttons also commit (delegates to SwipeCard.commit())
- *   - Right swipe queues a MatchCelebration overlay
- *   - Empty state shows "deck is dry" with a Reshuffle button
- *     that just bumps day forward (Pass 1: deck doesn't refill).
+ *   - Right swipe shows a brief LIKE! stamp; matches resolve overnight
+ *     in `advanceDay()` and surface as `MatchCelebration` overlays
+ *     drained from `run.pendingMatchAnnouncements`.
+ *   - Empty state shows "deck is dry" with a Sleep button that ticks
+ *     the day clock (which also resolves any outstanding likes).
  */
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, StyleSheet, View } from "react-native";
 
 import { SwipeCard, SwipeCardHandle } from "./SwipeCard";
 
+import { LikeStamp } from "@/components/LikeStamp";
 import { MatchCelebration } from "@/components/MatchCelebration";
 import { NeonButton, PixelPanel, PixelText, ScanlineOverlay } from "@/components/PixelChrome";
 import { cfPalette } from "@/constants/colors";
 import { useGameState } from "@/core/gameStore";
 import { Candidate } from "@/core/models";
 
-interface CelebrationState {
+interface LikeStampState {
   visible: boolean;
   name: string;
+  /**
+   * Bumped on every right-swipe so back-to-back likes restart the
+   * stamp animation instead of reusing the still-animating one. The
+   * value is part of the React `key` on the LikeStamp.
+   */
+  nonce: number;
 }
+
+interface DayBannerState {
+  visible: boolean;
+  day: number;
+}
+
+const DAY_BANNER_MS = 1200;
 
 export function SwipeView() {
   const run = useGameState((s) => s.run);
   const swipe = useGameState((s) => s.swipe);
   const advanceDay = useGameState((s) => s.advanceDay);
+  const acknowledgeMatchAnnouncement = useGameState(
+    (s) => s.acknowledgeMatchAnnouncement,
+  );
   const hydrated = useGameState((s) => s.hydrated);
   const topCardRef = useRef<SwipeCardHandle>(null);
-  const [celebration, setCelebration] = useState<CelebrationState>({
+  const [likeStamp, setLikeStamp] = useState<LikeStampState>({
     visible: false,
     name: "",
+    nonce: 0,
   });
+  const [dayBanner, setDayBanner] = useState<DayBannerState>({
+    visible: false,
+    day: 0,
+  });
+  // Track the last day we observed so we can fire the "Day N begins"
+  // banner exactly once per tick — but only when there are no match
+  // announcements competing for the same patch of screen.
+  const prevDayRef = useRef<number | null>(null);
 
   const remaining: Candidate[] = useMemo(() => {
     if (!run) return [];
     return run.deck.slice(run.deckCursor);
   }, [run]);
 
+  const announcements = run?.pendingMatchAnnouncements ?? [];
+  const pendingLikes = run?.pendingLikes ?? [];
+  const stillThinking = pendingLikes.filter(
+    (l) => l.status === "pending",
+  ).length;
+
+  // Top of the announcement queue — derive name from the matched
+  // candidate so a cold start mid-queue still surfaces the right
+  // overlay instead of an anonymous heart.
+  const activeAnnouncement = useMemo(() => {
+    if (!run || announcements.length === 0) return null;
+    const matchId = announcements[0]!;
+    const match = run.matches.find((m) => m.id === matchId);
+    if (!match) return { matchId, name: "?" };
+    const candidate = run.deck.find((c) => c.id === match.candidateId);
+    return {
+      matchId,
+      name: candidate?.displayName ?? "?",
+    };
+  }, [run, announcements]);
+
+  // "Day N begins" banner — show on day change when no celebrations
+  // are queued. Initialize the previous-day pointer on first render
+  // so a fresh hydrate doesn't immediately fire a phantom banner.
+  useEffect(() => {
+    if (!run) return;
+    if (prevDayRef.current === null) {
+      prevDayRef.current = run.day;
+      return;
+    }
+    if (run.day === prevDayRef.current) return;
+    prevDayRef.current = run.day;
+    if (announcements.length > 0) return;
+    // Don't congratulate the player on reaching Day 7 — the End-of-
+    // Run card is about to take over and own the screen.
+    if (run.closed) return;
+    setDayBanner({ visible: true, day: run.day });
+    const t = setTimeout(() => {
+      setDayBanner({ visible: false, day: run.day });
+    }, DAY_BANNER_MS);
+    return () => clearTimeout(t);
+  }, [run, announcements.length]);
+
   const handleCommit = useCallback(
     async (direction: "left" | "right") => {
       if (!run) return;
       const top = remaining[0];
       if (!top) return;
-      const match = await swipe(top.id, direction);
-      if (match && direction === "right") {
-        setCelebration({ visible: true, name: top.displayName });
+      const accepted = await swipe(top.id, direction);
+      if (accepted && direction === "right") {
+        setLikeStamp((prev) => ({
+          visible: true,
+          name: top.displayName,
+          nonce: prev.nonce + 1,
+        }));
       }
     },
     [remaining, run, swipe],
@@ -59,9 +134,14 @@ export function SwipeView() {
     topCardRef.current?.commit(direction);
   }, []);
 
-  const dismissCelebration = useCallback(() => {
-    setCelebration({ visible: false, name: "" });
+  const hideLikeStamp = useCallback(() => {
+    setLikeStamp((prev) => ({ ...prev, visible: false }));
   }, []);
+
+  const dismissCelebration = useCallback(() => {
+    if (!activeAnnouncement) return;
+    void acknowledgeMatchAnnouncement(activeAnnouncement.matchId);
+  }, [activeAnnouncement, acknowledgeMatchAnnouncement]);
 
   if (!hydrated) {
     return (
@@ -109,6 +189,16 @@ export function SwipeView() {
             >
               You've worked through everyone in town.{"\n"}Sleep on it.
             </PixelText>
+            {stillThinking > 0 && (
+              <PixelText
+                size={7}
+                color={cfPalette.pinkHot}
+                align="center"
+                style={{ marginTop: 12 }}
+              >
+                {`${stillThinking} ${stillThinking === 1 ? "person is" : "people are"} still thinking about it.`}
+              </PixelText>
+            )}
             <NeonButton
               label="Sleep — End Day"
               variant="secondary"
@@ -144,18 +234,44 @@ export function SwipeView() {
             onPress={() => handleButton("left")}
           />
           <NeonButton
-            label="♥ Match"
+            label="♥ Like"
             variant="primary"
             onPress={() => handleButton("right")}
           />
         </View>
       )}
 
-      <MatchCelebration
-        visible={celebration.visible}
-        candidateName={celebration.name}
-        onDismiss={dismissCelebration}
+      <LikeStamp
+        // Keying on the nonce remounts the stamp on every right-swipe
+        // so a rapid-fire second like doesn't get swallowed by the
+        // first stamp's still-running fade-out timer.
+        key={`like-${likeStamp.nonce}`}
+        visible={likeStamp.visible}
+        candidateName={likeStamp.name}
+        onHide={hideLikeStamp}
       />
+
+      {activeAnnouncement && (
+        <MatchCelebration
+          // Keying on matchId forces a remount per announcement so
+          // chained celebrations restart the heart-pop animation
+          // instead of reusing the previous one's animated values.
+          key={`match-${activeAnnouncement.matchId}`}
+          visible
+          candidateName={activeAnnouncement.name}
+          onDismiss={dismissCelebration}
+        />
+      )}
+
+      {dayBanner.visible && !activeAnnouncement && (
+        <View pointerEvents="none" style={styles.dayBannerLayer}>
+          <PixelPanel variant="raised" style={styles.dayBanner}>
+            <PixelText size={12} color={cfPalette.cyan} uppercase glow align="center">
+              {`day ${dayBanner.day} begins`}
+            </PixelText>
+          </PixelPanel>
+        </View>
+      )}
     </View>
   );
 }
@@ -200,5 +316,15 @@ const styles = StyleSheet.create({
     justifyContent: "space-around",
     paddingHorizontal: 8,
     paddingBottom: 8,
+  },
+  dayBannerLayer: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 60,
+  },
+  dayBanner: {
+    paddingVertical: 16,
+    paddingHorizontal: 28,
   },
 });

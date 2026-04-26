@@ -220,3 +220,66 @@ export function decoysForKiller(
     };
   });
 }
+
+/**
+ * Build the morning's fresh swipe slate.
+ *
+ * `advanceDay()` calls this when the player Sleeps — appending the
+ * returned candidates to `run.deck` so the next day starts with new
+ * faces to swipe. Without this, a run runs out of deck after Day 1
+ * and Sleep just ticks the day clock until the Day 7 face-to-face,
+ * which makes the whole detective loop feel dead. See task notes.
+ *
+ * Selection rules:
+ *   1. Seed is `fnv1a("catfish:daily-refill:v1:${runId}:${day}")`,
+ *      so cold-starting between sleeps cannot reroll the slate.
+ *   2. We prefer pool templates whose `displayName` does NOT already
+ *      appear in `existingDeck` so consecutive days feel fresh.
+ *   3. If the pool is too small to deliver `count` unique names (only
+ *      10 templates exist; long runs across many killers WILL exhaust
+ *      it), we fall back to allowing repeats from the full pool —
+ *      better the player sees Onyx twice than sees an empty deck.
+ *   4. Returned Candidates have fresh ids and `isStoryCandidate: false`
+ *      so they roll the probabilistic match-back path on Sleep.
+ *
+ * `killer` is plumbed through only to stamp `Candidate.identity` —
+ * the deck still belongs to a single run and a single killer.
+ */
+export function freshDecoysForDay(
+  runId: string,
+  day: number,
+  killer: KillerIdentity,
+  existingDeck: Candidate[],
+  count = 4,
+): Candidate[] {
+  const seed = fnv1a(`catfish:daily-refill:v1:${runId}:${day}`);
+  const order = stableShuffle(DECOY_POOL.length, seed);
+
+  const usedNames = new Set(existingDeck.map((c) => c.displayName));
+  const fresh: number[] = [];
+  const repeat: number[] = [];
+  for (const poolIndex of order) {
+    const t = DECOY_POOL[poolIndex]!;
+    if (!usedNames.has(t.displayName)) fresh.push(poolIndex);
+    else repeat.push(poolIndex);
+  }
+
+  // Take fresh first, then top up from repeats if the pool can't
+  // deliver `count` unique names.
+  const picked = [...fresh, ...repeat].slice(0, Math.min(count, DECOY_POOL.length));
+  return picked.map((poolIndex) => {
+    const t = DECOY_POOL[poolIndex]!;
+    return {
+      id: newCandidateId(),
+      identity: killer,
+      displayName: t.displayName,
+      age: t.age,
+      tagline: t.tagline,
+      bio: t.bio,
+      portraitAssetId: t.portraitAssetId,
+      prompts: [...t.prompts],
+      isKillerCandidate: false,
+      isStoryCandidate: false,
+    };
+  });
+}

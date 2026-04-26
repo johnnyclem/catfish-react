@@ -20,6 +20,7 @@ import { useEffect } from "react";
 import { create } from "zustand";
 
 import { AccusationOutcome, resolveAccusation } from "./accusation";
+import { freshDecoysForDay } from "./decoyPool";
 import { buildAuthoredFacts } from "./factBootstrap";
 import { getIdentityModule, getScriptForCandidate } from "./identities";
 import {
@@ -672,6 +673,9 @@ export const useGameState = create<GameStateValue>((set, get) => ({
     // Overnight likes are still resolved above before the close so the
     // run record tells the truth about who matched on the final night,
     // even though the End-of-Run card may pre-empt the celebration UI.
+    //
+    // No deck refill on the final night — there's no Day 7 swiping,
+    // the player goes straight to the face-to-face.
     if (nextDay >= FACE_TO_FACE_DAY) {
       const closing: CaseRun = {
         ...prev,
@@ -697,9 +701,22 @@ export const useGameState = create<GameStateValue>((set, get) => ({
       return;
     }
 
+    // ── Daily deck refill ────────────────────────────────────────────
+    // Without this the run-start `buildDeck()` (killer + 4 decoys = 5
+    // candidates) is the deck for the entire 7-day run — by Day 2 the
+    // player is staring at "DECK IS DRY" and tapping Sleep until the
+    // game ends. Each Sleep now appends a fresh slate of decoys to
+    // `deck`, making `remaining = deck.slice(deckCursor)` come back
+    // alive without invalidating prior swipes/likes/matches (those
+    // index into earlier `deck` positions).
+    //
+    // Deterministic per (runId, nextDay) so cold-starts don't reroll.
+    const refill = freshDecoysForDay(prev.id, nextDay, prev.killer, prev.deck);
+
     const next: CaseRun = {
       ...prev,
       day: nextDay,
+      deck: [...prev.deck, ...refill],
       matches,
       threads,
       pendingLikes: resolvedLikes,

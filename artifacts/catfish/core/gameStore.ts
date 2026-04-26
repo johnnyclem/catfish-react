@@ -28,6 +28,7 @@ import {
   CandidateId,
   CaseRun,
   ChatThread,
+  RunId,
   Fact,
   FactId,
   FactPayload,
@@ -210,6 +211,60 @@ interface GameStateValue {
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+/**
+ * Probability that a non-story / pure-decoy candidate reciprocates a
+ * like once `advanceDay()` resolves the overnight queue. Chosen at 60%
+ * so most likes still pay off — the swipe deck still feels generous —
+ * while leaving enough quiet "no reply" outcomes to make a match feel
+ * earned once the future "wider city pool" of pure decoys lands.
+ *
+ * Story candidates (the killer plus the four authored `decoyPool`
+ * decoys today, anyone with `isStoryCandidate !== false` tomorrow)
+ * are unaffected by this — they always reciprocate.
+ */
+export const DECOY_RECIPROCATION_PROBABILITY = 0.6;
+
+/**
+ * 32-bit FNV-1a — same flavour as `core/decoyPool.ts`. Inlined here
+ * (rather than imported) so the like-resolver doesn't take a dep on
+ * the deck-pool module just to seed a decision.
+ */
+function fnv1a32(input: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash >>> 0;
+}
+
+/**
+ * Deterministic "does this pure-decoy candidate reciprocate?" decision.
+ *
+ * Seeded with `runId + candidateId` so the answer is stable across
+ * cold starts — a player who quits mid-night and comes back to Sleep
+ * later sees the same outcome they would have seen pressing Sleep
+ * immediately. The threshold defaults to
+ * `DECOY_RECIPROCATION_PROBABILITY`; the parameter is exposed so
+ * tests can probe edge values (0/1) without monkey-patching the const.
+ *
+ * Used only for candidates with `isStoryCandidate === false`. Story
+ * candidates skip this entirely — they always match back.
+ */
+export function decideDecoyReciprocation(
+  runId: RunId,
+  candidateId: CandidateId,
+  threshold: number = DECOY_RECIPROCATION_PROBABILITY,
+): boolean {
+  const seed = fnv1a32(`catfish:like-match-back:v1:${runId}:${candidateId}`);
+  // Fold the 32-bit hash into the unit interval. Dividing by 2^32
+  // keeps the ratio in [0, 1) so a `threshold` of 0 always passes
+  // (no candidate reciprocates) and a `threshold` of 1 always matches
+  // (every candidate reciprocates) — useful for the test harness.
+  const ratio = seed / 0x1_0000_0000;
+  return ratio < threshold;
 }
 
 function pickRandomKiller(): KillerIdentity {
@@ -541,12 +596,17 @@ export const useGameState = create<GameStateValue>((set, get) => ({
     // to push the day past the face-to-face boundary.
     if (prev.closed) return;
 
-    // ── Task #29: resolve overnight likes BEFORE the day-clock tick ──
-    // Every still-pending like whose candidate is part of the run's
-    // authored deck reciprocates — no randomness. This guarantees
-    // the killer (and every other story candidate) matches back when
-    // liked, while leaving room for a future task to layer in
-    // probabilistic decoy NPCs from a wider pool.
+    // ── Tasks #29 + #31: resolve overnight likes BEFORE the day-clock tick ──
+    // Story candidates (the killer plus the four authored `decoyPool`
+    // decoys today — anyone with `isStoryCandidate !== false`) always
+    // reciprocate, preserving Task #29's killer-match-back guarantee.
+    // Pure-decoy candidates (the future "wider city pool") reciprocate
+    // with `DECOY_RECIPROCATION_PROBABILITY`, decided deterministically
+    // per (runId, candidateId) so cold-starting between sleeps cannot
+    // reroll the outcome — see `decideDecoyReciprocation` above.
+    // Likes that do not reciprocate flip to `status: "passed"` so the
+    // run record still tells the truth about what happened (the
+    // Matches tab surfaces the count as a small "N didn't reply.").
     const pendingLikesIn: LikeRecord[] = prev.pendingLikes ?? [];
     const announcementsIn: MatchId[] = prev.pendingMatchAnnouncements ?? [];
 
@@ -556,10 +616,22 @@ export const useGameState = create<GameStateValue>((set, get) => ({
     const resolvedLikes: LikeRecord[] = pendingLikesIn.map((like) => {
       if (like.status !== "pending") return like;
       const candidate = prev.deck.find((c) => c.id === like.candidateId);
-      // Candidate not in the run's authored deck — leave the like
-      // pending so a future task can decide what to do with it (e.g.
-      // probabilistic match-back for decoy-only NPCs in a wider stack).
+      // Candidate not in the run's deck at all — leave the like
+      // pending. Today this can't happen (every candidate the player
+      // can swipe is in the run's deck), but the guard keeps the
+      // resolver honest if a future task ever spawns out-of-deck likes.
       if (!candidate) return like;
+
+      // Story candidates always reciprocate. `isStoryCandidate` is
+      // optional + defaults to true for back-compat with runs persisted
+      // before the field landed, so anything unmarked is treated as
+      // story.
+      const isStory = candidate.isStoryCandidate !== false;
+      if (!isStory && !decideDecoyReciprocation(prev.id, like.candidateId)) {
+        // Pure decoy that rolled past the threshold — no reply.
+        return { ...like, status: "passed" };
+      }
+
       const threadId = newThreadId();
       const matchId = newMatchId();
       const match: MatchRelationship = {

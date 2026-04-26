@@ -31,6 +31,25 @@
  *   8. Day 7 closing tick still resolves overnight likes before the
  *      End-of-Run card fires (so the run record tells the truth
  *      about who matched on the final night).
+ *   9. Story candidate guarantee (Task #31): every authored deck
+ *      candidate (killer + the four `decoyPool` decoys) reciprocates
+ *      on Sleep, regardless of the per-candidate seed.
+ *  10. Pure-decoy probabilistic match-back (Task #31): liking twenty
+ *      pure decoys (`isStoryCandidate: false`) over Sleep produces
+ *      both `matched` and `passed` outcomes — i.e. the resolver no
+ *      longer hands every decoy a match — and the count of `passed`
+ *      likes lands inside a wide tolerance band around the documented
+ *      `DECOY_RECIPROCATION_PROBABILITY`. Run id is pinned so the
+ *      matched/passed split is reproducible across reruns.
+ *  11. Pure-decoy determinism (Task #31): re-running the same
+ *      (runId, candidateId) decisions through `decideDecoyReciprocation`
+ *      yields identical outcomes, AND a cold-start round-trip
+ *      preserves the `pending` / `matched` / `passed` distribution
+ *      so a process bounce mid-night cannot reroll the result.
+ *  12. Threshold edge cases (Task #31): a threshold of 0 makes every
+ *      pure decoy pass and a threshold of 1 makes every pure decoy
+ *      reciprocate — the helper has no off-by-one in the unit-interval
+ *      fold.
  */
 
 import Module from "node:module";
@@ -55,8 +74,16 @@ Mod._resolveFilename = (request, parent, ...rest) => {
   return originalResolve(request, parent, ...rest);
 };
 
-const { useGameState } = await import("../core/gameStore.ts");
+const {
+  useGameState,
+  decideDecoyReciprocation,
+  DECOY_RECIPROCATION_PROBABILITY,
+} = await import("../core/gameStore.ts");
 const { loadActiveRun } = await import("../core/repository.ts");
+const modelsModule = await import("../core/models.ts");
+const { newCandidateId } = modelsModule;
+type Candidate = import("../core/models.ts").Candidate;
+type CaseRun = import("../core/models.ts").CaseRun;
 
 function assert(cond: unknown, msg: string): asserts cond {
   if (!cond) {
@@ -359,6 +386,279 @@ const state = useGameState.getState;
   );
 
   console.log("PASS  test 8: Day 7 closing tick still resolves overnight likes");
+}
+
+// ─── Test 9: every story candidate (killer + 4 authored decoys) matches ──
+//
+// Lifts the killer guarantee from Test 5 to the rest of the deck —
+// today every entry in `run.deck` has `isStoryCandidate` defaulting
+// to true (`!== false`), so every right-swipe must come back as a
+// match on Sleep. Walks the deck card-by-card so we exercise the
+// integrity guard's "next card only" rule rather than mutating the
+// run state behind its back.
+{
+  await state().resetRun();
+  await state().startNewRun("jules");
+  const open = state().run!;
+  const deckIds = open.deck.map((c) => c.id);
+
+  // Right-swipe every authored card in deck order.
+  for (const id of deckIds) {
+    const ok = await state().swipe(id, "right");
+    assert(ok, `right-swipe on story candidate ${id} accepted`);
+  }
+  await state().advanceDay();
+  const after = state().run!;
+  assert(
+    after.matches.length === deckIds.length,
+    "every story candidate reciprocates after sleep",
+  );
+  for (const like of after.pendingLikes ?? []) {
+    assert(
+      like.status === "matched",
+      `story-candidate like ${like.candidateId} resolves to matched`,
+    );
+  }
+  console.log(
+    "PASS  test 9: story candidates (killer + decoyPool) all reciprocate",
+  );
+}
+
+// ─── Test 10: pure decoys reciprocate probabilistically ───────────────
+//
+// We can't get the wider city-pool deck for free yet (that's a
+// separate task), so we synthesize twenty pure-decoy candidates by
+// splicing them onto the run's deck after `startNewRun`. The swipe
+// integrity guard requires the candidate to be at `deckCursor`, so
+// we first advance past the authored cards (left-swipe each) before
+// liking the injected decoys in order.
+{
+  await state().resetRun();
+  await state().startNewRun("sam");
+  const beforeRun = state().run!;
+  const baseDeckLen = beforeRun.deck.length;
+
+  // Mint twenty pure decoys against this run. We use stable, hand-picked
+  // ids (rather than `newCandidateId()`) AND pin the runId itself so
+  // test 10 is fully deterministic across reruns — otherwise the FNV
+  // seed (`runId + candidateId`) drifts on every invocation and the
+  // matched/passed split would be probabilistic, not reproducible.
+  const pureDecoys: Candidate[] = Array.from({ length: 20 }, (_, i) => ({
+    id: `pure_decoy_test10_${i}`,
+    identity: "sam",
+    displayName: `Decoy ${i + 1}`,
+    age: 28,
+    tagline: "Pure decoy from the future city pool.",
+    bio: `Synthetic test decoy #${i + 1}.`,
+    portraitAssetId: "A500_avatar_placeholder",
+    prompts: ["test"],
+    isKillerCandidate: false,
+    isStoryCandidate: false,
+  }));
+  // Splice the decoys onto the deck and pin the run id. Set rather
+  // than mutate so React reads the new reference; we're talking to
+  // Zustand directly, so no UI render is involved.
+  useGameState.setState((s) => {
+    if (!s.run) return s;
+    const next: CaseRun = {
+      ...s.run,
+      id: "run_test10_pinned",
+      deck: [...s.run.deck, ...pureDecoys],
+    };
+    return { ...s, run: next };
+  });
+
+  // Left-swipe past every authored card so we don't pollute the
+  // pending-likes queue with story matches.
+  for (let i = 0; i < baseDeckLen; i++) {
+    const cur = state().run!.deck[state().run!.deckCursor]!;
+    const ok = await state().swipe(cur.id, "left");
+    assert(ok, `pre-walk left-swipe ${i} accepted`);
+  }
+  // Right-swipe every pure decoy.
+  for (const d of pureDecoys) {
+    const ok = await state().swipe(d.id, "right");
+    assert(ok, `right-swipe on pure decoy ${d.displayName} accepted`);
+  }
+  // Sanity — twenty pending likes queued for the pure decoys, none
+  // yet resolved.
+  const queued = state().run!.pendingLikes ?? [];
+  assert(
+    queued.length === pureDecoys.length &&
+      queued.every((l) => l.status === "pending"),
+    "all pure-decoy likes queued and pending",
+  );
+
+  await state().advanceDay();
+  const after = state().run!;
+  const decoyLikes = (after.pendingLikes ?? []).filter((l) =>
+    pureDecoys.some((d) => d.id === l.candidateId),
+  );
+  const matchedDecoys = decoyLikes.filter((l) => l.status === "matched");
+  const passedDecoys = decoyLikes.filter((l) => l.status === "passed");
+  assert(
+    matchedDecoys.length + passedDecoys.length === pureDecoys.length,
+    "every pure-decoy like resolves to either matched or passed",
+  );
+  // Probabilistic: expect both outcomes to actually occur — i.e.
+  // we are no longer in the "everyone matches" regime. With ten
+  // candidates at p≈0.6, both buckets must be non-empty in any
+  // remotely plausible RNG.
+  assert(
+    matchedDecoys.length > 0,
+    "at least one pure decoy reciprocates (probabilistic, not zero)",
+  );
+  assert(
+    passedDecoys.length > 0,
+    "at least one pure decoy passes — Task #31's whole point",
+  );
+  // Wide tolerance band around the documented probability. Ten samples
+  // is a small N, but `decideDecoyReciprocation` is deterministic per
+  // (runId, candidateId) so this assertion is a regression test, not
+  // a statistical one — it locks in the outcome shape for the current
+  // hash + threshold, and will fire if either changes meaningfully.
+  const p = matchedDecoys.length / pureDecoys.length;
+  assert(
+    Math.abs(p - DECOY_RECIPROCATION_PROBABILITY) <= 0.4,
+    `match-back ratio ${p} stays within ±0.4 of the documented ${DECOY_RECIPROCATION_PROBABILITY}`,
+  );
+  // Matched decoys must mint a real Match + Thread; passed decoys
+  // must NOT.
+  for (const l of matchedDecoys) {
+    const m = after.matches.find((mm) => mm.candidateId === l.candidateId);
+    assert(m, `matched decoy ${l.candidateId} got a MatchRelationship`);
+    assert(
+      after.threads.some((t) => t.id === m!.threadId),
+      `matched decoy ${l.candidateId} got a ChatThread`,
+    );
+  }
+  for (const l of passedDecoys) {
+    assert(
+      !after.matches.some((m) => m.candidateId === l.candidateId),
+      `passed decoy ${l.candidateId} did NOT mint a MatchRelationship`,
+    );
+  }
+  console.log(
+    `PASS  test 10: pure decoys reciprocate probabilistically (${matchedDecoys.length}/${pureDecoys.length} matched, ${passedDecoys.length} passed)`,
+  );
+}
+
+// ─── Test 11: pure-decoy decision is deterministic + cold-start safe ──
+{
+  // 11a — `decideDecoyReciprocation` is pure: same (runId, candidateId)
+  //       → same answer, every call.
+  for (let i = 0; i < 64; i++) {
+    const cid = `cand_${i}`;
+    const a = decideDecoyReciprocation("run_test_det", cid);
+    const b = decideDecoyReciprocation("run_test_det", cid);
+    const c = decideDecoyReciprocation("run_test_det", cid);
+    assert(
+      a === b && b === c,
+      `decideDecoyReciprocation is deterministic for (run_test_det, ${cid})`,
+    );
+  }
+  // Different runs produce different distributions — sanity check that
+  // we're not just always returning the same boolean.
+  let matchesA = 0;
+  let matchesB = 0;
+  for (let i = 0; i < 200; i++) {
+    if (decideDecoyReciprocation("runA", `cand_${i}`)) matchesA++;
+    if (decideDecoyReciprocation("runB", `cand_${i}`)) matchesB++;
+  }
+  assert(
+    matchesA > 0 && matchesA < 200 && matchesB > 0 && matchesB < 200,
+    "decideDecoyReciprocation produces a real mix per run id",
+  );
+  // Probability sanity — across 200 trials the matched count for
+  // any given run should land in a wide band that excludes the
+  // degenerate "always matches" and "never matches" regimes. The
+  // band is intentionally generous (FNV-1a is fast, not a true RNG)
+  // so this isn't flaky against future hash tweaks; the point is
+  // to catch a regression where the threshold gets stuck at 0/1.
+  assert(
+    matchesA > 60 && matchesA < 180,
+    `runA match-back rate (${matchesA}/200) lands in the expected band`,
+  );
+
+  // 11b — full cold-start round-trip preserves the resolved
+  //       distribution. Replays test 10's setup, sleeps, then loads
+  //       the run back from the repository and confirms the same
+  //       like statuses survive.
+  await state().resetRun();
+  await state().startNewRun("river");
+  const beforeRun = state().run!;
+  const baseDeckLen = beforeRun.deck.length;
+  const pureDecoys: Candidate[] = Array.from({ length: 8 }, (_, i) => ({
+    id: newCandidateId(),
+    identity: "river",
+    displayName: `Decoy ${i + 1}`,
+    age: 28,
+    tagline: "Pure decoy from the future city pool.",
+    bio: `Synthetic test decoy #${i + 1}.`,
+    portraitAssetId: "A500_avatar_placeholder",
+    prompts: ["test"],
+    isKillerCandidate: false,
+    isStoryCandidate: false,
+  }));
+  useGameState.setState((s) => {
+    if (!s.run) return s;
+    const next: CaseRun = {
+      ...s.run,
+      deck: [...s.run.deck, ...pureDecoys],
+    };
+    return { ...s, run: next };
+  });
+  for (let i = 0; i < baseDeckLen; i++) {
+    const cur = state().run!.deck[state().run!.deckCursor]!;
+    await state().swipe(cur.id, "left");
+  }
+  for (const d of pureDecoys) {
+    await state().swipe(d.id, "right");
+  }
+  await state().advanceDay();
+
+  const before = state().run!;
+  const decoyStatusBefore = pureDecoys.map((d) => {
+    const l = (before.pendingLikes ?? []).find(
+      (ll) => ll.candidateId === d.id,
+    );
+    return { id: d.id, status: l?.status };
+  });
+
+  const persisted = await loadActiveRun();
+  assert(persisted, "run round-trips through the repository");
+  for (const { id, status } of decoyStatusBefore) {
+    const l = (persisted!.pendingLikes ?? []).find(
+      (ll) => ll.candidateId === id,
+    );
+    assert(
+      l && l.status === status,
+      `cold-start preserves pure-decoy like status for ${id} (${status})`,
+    );
+  }
+
+  console.log(
+    "PASS  test 11: pure-decoy decision is deterministic + cold-start safe",
+  );
+}
+
+// ─── Test 12: threshold edge cases (0 / 1) ────────────────────────────
+{
+  // p = 0 — nobody reciprocates, no matter the seed.
+  for (let i = 0; i < 50; i++) {
+    assert(
+      decideDecoyReciprocation("run_edge", `cand_${i}`, 0) === false,
+      `threshold 0 → no reciprocation for cand_${i}`,
+    );
+  }
+  // p = 1 — everybody reciprocates.
+  for (let i = 0; i < 50; i++) {
+    assert(
+      decideDecoyReciprocation("run_edge", `cand_${i}`, 1) === true,
+      `threshold 1 → always reciprocate for cand_${i}`,
+    );
+  }
+  console.log("PASS  test 12: threshold edge cases (0 / 1) behave correctly");
 }
 
 await state().resetRun();

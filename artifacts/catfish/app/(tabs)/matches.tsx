@@ -33,6 +33,15 @@ export default function MatchesTab() {
     if (a.unmatched === b.unmatched) return 0;
     return a.unmatched ? 1 : -1;
   });
+  // Task #31 — count likes that didn't reciprocate so the run record
+  // doesn't silently drop them. Cumulative across the run; resets only
+  // when the player starts a new case. Today this stays at 0 because
+  // every authored deck candidate is a "story" candidate; once the
+  // wider city-pool task lands and pure decoys can pass on a like,
+  // this surfaces the "3 didn't reply" cue called out in Task #31.
+  const passedLikeCount = (run?.pendingLikes ?? []).filter(
+    (l) => l.status === "passed",
+  ).length;
 
   return (
     <View style={[styles.root, { paddingTop: topPad }]}>
@@ -43,6 +52,13 @@ export default function MatchesTab() {
       <PixelText size={7} color={cfPalette.ash} style={styles.subtitle}>
         Tap a match to open the thread.
       </PixelText>
+      {passedLikeCount > 0 ? (
+        <View testID="matches-passed-note" style={styles.passedNote}>
+          <PixelText size={7} color={cfPalette.fog}>
+            {`${passedLikeCount} didn't reply.`}
+          </PixelText>
+        </View>
+      ) : null}
 
       <ScrollView contentContainerStyle={styles.list}>
         {orderedMatches.length === 0 ? (
@@ -198,6 +214,10 @@ const styles = StyleSheet.create({
   subtitle: {
     marginTop: 6,
     marginBottom: 16,
+  },
+  passedNote: {
+    marginTop: -10,
+    marginBottom: 12,
   },
   list: {
     paddingBottom: Platform.OS === "web" ? 100 : 24,

@@ -69,6 +69,21 @@ export interface Candidate {
   prompts: string[];
   /** Hidden flag so the engine can flag the killer in DEBUG. */
   isKillerCandidate: boolean;
+  /**
+   * Marks this candidate as part of the run's authored cast (the killer
+   * plus the four `decoyPool` decoys today). Story candidates are
+   * guaranteed to reciprocate when liked — that is the killer-match-back
+   * promise carried over from Task #29 plus the ambient "your authored
+   * deck always replies" feel.
+   *
+   * Optional + defaults to story (treated as `true` when missing) so
+   * runs persisted before this field landed continue to behave the way
+   * they did. The future "wider city pool" task will mint pure decoys
+   * with `isStoryCandidate: false`, at which point `advanceDay()`
+   * decides their match-back probabilistically (see
+   * `decideDecoyReciprocation` in `core/gameStore.ts`).
+   */
+  isStoryCandidate?: boolean;
 }
 
 export interface MatchRelationship {

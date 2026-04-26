@@ -9,13 +9,31 @@
 import { Feather } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import { Platform, StyleSheet, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { PIXEL_FONT } from "@/components/PixelChrome";
 import { cfPalette } from "@/constants/colors";
 import { useGameState } from "@/core/gameStore";
 
+// Inner content height for the tab bar (icon + label + a touch of
+// breathing room). The actual rendered height inflates this by the
+// device's bottom safe-area inset on web — see comment below.
+const TAB_BAR_CONTENT_HEIGHT = 64;
+
 export default function TabLayout() {
   const isWeb = Platform.OS === "web";
+  const insets = useSafeAreaInsets();
+
+  // On native (iOS/Android), react-navigation already inflates the tab
+  // bar by the safe-area inset, so leaving height undefined gives the
+  // correct behaviour automatically. On web (mobile Safari on iPhone
+  // in particular), nothing does that for us — without explicit
+  // padding the bar sits flush against the bottom edge of the
+  // viewport, INSIDE the iOS home-indicator swipe-up gesture zone.
+  // Players then have to fight gesture conflicts to tap any tab.
+  // Inflating the bar by `insets.bottom` lifts the icons clear of the
+  // gesture arc while keeping the label/icon content area unchanged.
+  const webHeight = TAB_BAR_CONTENT_HEIGHT + insets.bottom;
 
   // Sum unread suspect messages across every active thread so the Matches
   // tab bar pip reflects "anything new across all matches" rather than a
@@ -44,7 +62,8 @@ export default function TabLayout() {
           borderTopWidth: 2,
           borderTopColor: cfPalette.purple,
           elevation: 0,
-          height: isWeb ? 84 : undefined,
+          height: isWeb ? webHeight : undefined,
+          paddingBottom: isWeb ? insets.bottom : undefined,
         },
         tabBarBackground: () => (
           <View

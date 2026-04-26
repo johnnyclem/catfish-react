@@ -31,6 +31,7 @@ import { cfPalette } from "@/constants/colors";
 import { useGameState } from "@/core/gameStore";
 import { getScriptForCandidate } from "@/core/identities";
 import { ThreadId } from "@/core/models";
+import { MessageFactGesture } from "@/features/journal/MessageFactGesture";
 import { useDialogueVoice } from "@/features/voice/useDialogueVoice";
 import type { Message } from "@/core/models";
 
@@ -379,7 +380,20 @@ export function ThreadView({ threadId }: ThreadViewProps) {
         showsVerticalScrollIndicator={false}
       >
         {thread.messages.map((m) => (
-          <MessageBubble key={m.id} message={m} />
+          // Tap-and-hold a suspect bubble to file it as a Fact.
+          // Player bubbles pass `disabled` so we don't accidentally
+          // capture the detective's own replies as evidence.
+          // `MessageFactGesture` no-ops when disabled.
+          <MessageFactGesture
+            key={m.id}
+            candidateId={candidate.id}
+            threadId={thread.id}
+            messageId={m.id}
+            quote={m.text}
+            disabled={m.sender === "player"}
+          >
+            <MessageBubble message={m} />
+          </MessageFactGesture>
         ))}
         {isUnmatched && (
           <PixelPanel variant="ghost" style={styles.endHint}>

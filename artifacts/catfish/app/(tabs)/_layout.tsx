@@ -8,7 +8,8 @@
 
 import { Feather } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
-import { Platform, StyleSheet, View } from "react-native";
+import { useEffect, useRef } from "react";
+import { Animated, Platform, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { PIXEL_FONT } from "@/components/PixelChrome";
@@ -51,15 +52,14 @@ export default function TabLayout() {
   // pointer back to the place that owns the queue. Closed runs hide
   // the badge — the End-of-Run card is in charge of the screen and a
   // stray pip would imply more swipe work to do.
+  //
+  // Task #32 — render the badge ourselves inside `tabBarIcon` so we can
+  // pulse it when the count grows. React Navigation's stock
+  // `tabBarBadge` is a static string with no animation hook.
+  const runOpen = useGameState((s) => !!s.run && !s.run.closed);
   const pendingMatches = useGameState((s) =>
     s.run && !s.run.closed ? (s.run.pendingMatchAnnouncements ?? []).length : 0,
   );
-  const swipeBadge =
-    pendingMatches > 0
-      ? pendingMatches > 9
-        ? "9+"
-        : String(pendingMatches)
-      : undefined;
 
   return (
     <Tabs
@@ -93,14 +93,9 @@ export default function TabLayout() {
         name="index"
         options={{
           title: "Swipe",
-          tabBarIcon: ({ color }) => <Feather name="heart" size={20} color={color} />,
-          tabBarBadge: swipeBadge,
-          tabBarBadgeStyle: {
-            backgroundColor: cfPalette.cyan,
-            color: cfPalette.void,
-            fontFamily: PIXEL_FONT,
-            fontSize: 9,
-          },
+          tabBarIcon: ({ color }) => (
+            <SwipeTabIcon color={color} count={pendingMatches} runOpen={runOpen} />
+          ),
         }}
       />
       <Tabs.Screen
@@ -136,3 +131,93 @@ export default function TabLayout() {
     </Tabs>
   );
 }
+
+interface SwipeTabIconProps {
+  color: string;
+  count: number;
+  runOpen: boolean;
+}
+
+/**
+ * Heart icon + queued-match badge, rendered together so the badge can
+ * pulse when the count grows. The pulse fires only on a strict
+ * count-increase (so re-renders that keep the same value don't replay
+ * it), and is suppressed while the run is closed — the badge itself is
+ * already hidden in that case, so animating empty space would be
+ * wasteful and visually wrong.
+ */
+function SwipeTabIcon({ color, count, runOpen }: SwipeTabIconProps) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const prevCount = useRef(count);
+
+  useEffect(() => {
+    const previous = prevCount.current;
+    prevCount.current = count;
+
+    if (!runOpen) return;
+    if (count <= previous) return;
+
+    scale.setValue(1);
+    Animated.sequence([
+      Animated.timing(scale, {
+        toValue: 1.45,
+        duration: 160,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scale, {
+        toValue: 1,
+        useNativeDriver: true,
+        damping: 6,
+        stiffness: 140,
+      }),
+    ]).start();
+  }, [count, runOpen, scale]);
+
+  const showBadge = runOpen && count > 0;
+  const label = count > 9 ? "9+" : String(count);
+
+  return (
+    <View style={swipeIconStyles.wrap}>
+      <Feather name="heart" size={20} color={color} />
+      {showBadge ? (
+        <Animated.View
+          style={[swipeIconStyles.badge, { transform: [{ scale }] }]}
+          pointerEvents="none"
+          accessibilityLabel={`${count} new ${count === 1 ? "match" : "matches"}`}
+        >
+          <Text style={swipeIconStyles.badgeText} numberOfLines={1}>
+            {label}
+          </Text>
+        </Animated.View>
+      ) : null}
+    </View>
+  );
+}
+
+const swipeIconStyles = StyleSheet.create({
+  wrap: {
+    width: 28,
+    height: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  badge: {
+    position: "absolute",
+    top: -6,
+    right: -10,
+    minWidth: 16,
+    height: 16,
+    paddingHorizontal: 4,
+    borderRadius: 8,
+    backgroundColor: cfPalette.cyan,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  badgeText: {
+    color: cfPalette.void,
+    fontFamily: PIXEL_FONT,
+    fontSize: 9,
+    lineHeight: 10,
+    includeFontPadding: false,
+  },
+});

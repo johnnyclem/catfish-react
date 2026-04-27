@@ -51,6 +51,53 @@ import {
 import { loadActiveRun, saveActiveRun } from "./repository";
 
 /**
+ * Task #39 — Parody mini-game persistent best scores.
+ *
+ * Each parody app on the new "Apps" tab tracks one durable stat. We
+ * keep the slice intentionally flat (one number per game) so the
+ * persistence shape is small and the migration story is trivial.
+ * Lives at the top of the store (not on `CaseRun`) because these
+ * scores must survive `resetRun()` and span runs — they're meta
+ * progress, not case progress.
+ */
+export type ParodyGame =
+  | "wordLow"
+  | "safeSpot"
+  | "egoTrip"
+  | "sugarCoat";
+
+export interface ParodyScores {
+  /** Best win streak in Word-Low (Wordle parody). */
+  wordLowBestStreak: number;
+  /** Highest wave-survived in Safe Spot (PvZ parody). */
+  safeSpotBestWave: number;
+  /** Highest pillar-passed score in Ego Trip (Flappy parody). */
+  egoTripHighScore: number;
+  /** Highest CLOUT score in Sugar Coat (match-3 parody). */
+  sugarCoatHighClout: number;
+}
+
+export const EMPTY_PARODY_SCORES: ParodyScores = {
+  wordLowBestStreak: 0,
+  safeSpotBestWave: 0,
+  egoTripHighScore: 0,
+  sugarCoatHighClout: 0,
+};
+
+function parodyKeyFor(game: ParodyGame): keyof ParodyScores {
+  switch (game) {
+    case "wordLow":
+      return "wordLowBestStreak";
+    case "safeSpot":
+      return "safeSpotBestWave";
+    case "egoTrip":
+      return "egoTripHighScore";
+    case "sugarCoat":
+      return "sugarCoatHighClout";
+  }
+}
+
+/**
  * Pass 3 — Journal capture input.
  *
  * Pass 2's chat UI calls `commitFact` with the message it wants to
@@ -125,6 +172,13 @@ interface GameStateValue {
    * across cold start would feel like ghost data.
    */
   recentlyDiscarded: Fact[];
+  /**
+   * Persistent high-score slice for the parody mini-games on the
+   * Apps tab. Survives `resetRun()` because these scores are meta
+   * progress, not case progress. Backed by its own AsyncStorage key
+   * so a score bump doesn't rewrite the whole CaseRun blob.
+   */
+  parody: ParodyScores;
   hydrate: () => Promise<void>;
   /** Toggle voice playback. Persists to AsyncStorage immediately. */
   setVoiceMuted: (muted: boolean) => Promise<void>;
@@ -132,6 +186,15 @@ interface GameStateValue {
   setSfxMuted: (muted: boolean) => Promise<void>;
   /** Toggle background music. Persists to AsyncStorage immediately. */
   setMusicMuted: (muted: boolean) => Promise<void>;
+  /**
+   * Record a parody mini-game result. No-op (returns `false`) if the
+   * supplied value isn't strictly higher than the current best —
+   * keeps the bookkeeping monotonic so callers can fire it after
+   * every game-over without worrying about regressions. Returns
+   * `true` and persists when the new value wins, so the UI can play
+   * a "new high" sting only on a real beat.
+   */
+  recordParodyScore: (game: ParodyGame, value: number) => Promise<boolean>;
   startNewRun: (forced?: KillerIdentity) => Promise<CaseRun>;
   /**
    * Player-paced clock tick.
@@ -504,6 +567,12 @@ let hydrationPromise: Promise<void> | null = null;
 const VOICE_MUTED_KEY = "catfish/prefs/voice_muted/v1";
 const SFX_MUTED_KEY = "catfish/prefs/sfx_muted/v1";
 const MUSIC_MUTED_KEY = "catfish/prefs/music_muted/v1";
+/**
+ * AsyncStorage row for the parody mini-game high scores. Versioned
+ * (`/v1`) so a future schema change (e.g. per-day Wordle history,
+ * leaderboards) can migrate forward without losing today's scores.
+ */
+const PARODY_SCORES_KEY = "catfish/prefs/parody/v1";
 
 async function loadBoolPref(key: string): Promise<boolean> {
   try {
@@ -529,6 +598,41 @@ async function loadVoiceMuted(): Promise<boolean> {
 
 async function saveVoiceMuted(muted: boolean): Promise<void> {
   await saveBoolPref(VOICE_MUTED_KEY, muted);
+}
+
+/**
+ * Load the parody score blob, defaulting any missing field to 0 so a
+ * forward-compatible new game added in a future task can hydrate
+ * cleanly without dropping the existing scores.
+ */
+async function loadParodyScores(): Promise<ParodyScores> {
+  try {
+    const raw = await AsyncStorage.getItem(PARODY_SCORES_KEY);
+    if (!raw) return { ...EMPTY_PARODY_SCORES };
+    const parsed = JSON.parse(raw) as Partial<ParodyScores>;
+    return {
+      wordLowBestStreak: clampNonNegInt(parsed.wordLowBestStreak),
+      safeSpotBestWave: clampNonNegInt(parsed.safeSpotBestWave),
+      egoTripHighScore: clampNonNegInt(parsed.egoTripHighScore),
+      sugarCoatHighClout: clampNonNegInt(parsed.sugarCoatHighClout),
+    };
+  } catch {
+    return { ...EMPTY_PARODY_SCORES };
+  }
+}
+
+async function saveParodyScores(scores: ParodyScores): Promise<void> {
+  try {
+    await AsyncStorage.setItem(PARODY_SCORES_KEY, JSON.stringify(scores));
+  } catch {
+    // Persistence failure is non-fatal — the in-memory score still
+    // shows the new high until the next cold start.
+  }
+}
+
+function clampNonNegInt(v: unknown): number {
+  if (typeof v !== "number" || !Number.isFinite(v) || v < 0) return 0;
+  return Math.floor(v);
 }
 
 /**
@@ -577,18 +681,21 @@ export const useGameState = create<GameStateValue>((set, get) => ({
   sfxMuted: false,
   musicMuted: false,
   recentlyDiscarded: [],
+  parody: { ...EMPTY_PARODY_SCORES },
 
   hydrate: async () => {
     if (hydrationPromise) return hydrationPromise;
     hydrationPromise = (async () => {
       // Load run + audio prefs in parallel — they live in different
       // AsyncStorage rows and have no ordering dependency.
-      const [existing, voiceMuted, sfxMuted, musicMuted] = await Promise.all([
-        loadActiveRun().then(migrateRun),
-        loadVoiceMuted(),
-        loadBoolPref(SFX_MUTED_KEY),
-        loadBoolPref(MUSIC_MUTED_KEY),
-      ]);
+      const [existing, voiceMuted, sfxMuted, musicMuted, parody] =
+        await Promise.all([
+          loadActiveRun().then(migrateRun),
+          loadVoiceMuted(),
+          loadBoolPref(SFX_MUTED_KEY),
+          loadBoolPref(MUSIC_MUTED_KEY),
+          loadParodyScores(),
+        ]);
       // Cold-start invariant: undo state is in-memory only, so a
       // dangling stash from a prior process is impossible. Still,
       // explicitly clearing here documents the contract.
@@ -600,6 +707,7 @@ export const useGameState = create<GameStateValue>((set, get) => ({
         sfxMuted,
         musicMuted,
         recentlyDiscarded: [],
+        parody,
       });
     })();
     return hydrationPromise;
@@ -620,6 +728,21 @@ export const useGameState = create<GameStateValue>((set, get) => ({
   setMusicMuted: async (muted) => {
     set({ musicMuted: muted });
     await saveBoolPref(MUSIC_MUTED_KEY, muted);
+  },
+
+  recordParodyScore: async (game, value) => {
+    // Coerce caller-supplied junk (NaN, negative, fractional) into
+    // the same shape the loader produces so the in-memory and
+    // on-disk views never disagree.
+    const safe = clampNonNegInt(value);
+    const prev = get().parody;
+    const key = parodyKeyFor(game);
+    const current = prev[key];
+    if (safe <= current) return false;
+    const next: ParodyScores = { ...prev, [key]: safe };
+    set({ parody: next });
+    await saveParodyScores(next);
+    return true;
   },
 
   startNewRun: async (forced) => {

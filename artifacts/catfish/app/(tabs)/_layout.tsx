@@ -2,8 +2,10 @@
  * Catfish tab layout.
  *
  * Pixel-art chrome doesn't fit iOS 26 liquid glass, so we always use the
- * classic Tabs renderer with hand-styled tints. Four tabs from the
- * source doc: Swipe / Matches / Journal / Profile.
+ * classic Tabs renderer with hand-styled tints. Five tabs:
+ * Swipe / Matches / Journal / Profile / Apps. The Apps tab is the
+ * parody-phone home screen with the four playable mini-games and the
+ * Lots 'o Fish meta splash.
  */
 
 import { Feather } from "@expo/vector-icons";
@@ -68,7 +70,10 @@ export default function TabLayout() {
         tabBarLabelStyle: {
           fontFamily: PIXEL_FONT,
           fontSize: 7,
-          letterSpacing: 1,
+          // Letter-spacing tightened from 1 → 0.5 to make room for the
+          // 5th "Apps" tab without truncating any label on narrower
+          // phones.
+          letterSpacing: 0.5,
           textTransform: "uppercase",
           marginTop: 2,
         },
@@ -137,6 +142,13 @@ export default function TabLayout() {
         options={{
           title: "Profile",
           tabBarIcon: ({ color }) => <Feather name="user" size={20} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="apps"
+        options={{
+          title: "Apps",
+          tabBarIcon: ({ color }) => <Feather name="grid" size={20} color={color} />,
         }}
       />
     </Tabs>

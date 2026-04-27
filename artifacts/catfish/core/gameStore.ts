@@ -621,13 +621,57 @@ async function loadParodyScores(): Promise<ParodyScores> {
   }
 }
 
-async function saveParodyScores(scores: ParodyScores): Promise<void> {
-  try {
-    await AsyncStorage.setItem(PARODY_SCORES_KEY, JSON.stringify(scores));
-  } catch {
-    // Persistence failure is non-fatal — the in-memory score still
-    // shows the new high until the next cold start.
-  }
+/**
+ * Tail of the in-flight parody-score write chain. Every save links
+ * onto this promise so two writes can never overlap on disk —
+ * `flushParodyScores` always waits for the prior link to finish before
+ * serializing and writing the next one.
+ *
+ * Exported (test-only) via `__getParodyWriteChain` so the regression
+ * test can `await` a settled chain instead of racing the event loop.
+ */
+let parodyWriteChain: Promise<void> = Promise.resolve();
+
+/**
+ * Serialize a parody-score persist. Two saves can never overlap —
+ * each link waits for the prior write to settle, then snapshots the
+ * latest in-memory `parody` slice via `getLatest` *right before*
+ * stringifying. That late read is the safety net: if a second
+ * `recordParodyScore` updated the store while an earlier write was
+ * still in flight, the earlier write's link picks up the merged
+ * state when it finally runs, so no field can be silently overwritten
+ * by a stale snapshot.
+ *
+ * Per-link `try`/`catch` keeps a single failed write from poisoning
+ * subsequent saves; the chain itself swallows rejections for the
+ * same reason.
+ */
+function flushParodyScores(
+  getLatest: () => ParodyScores,
+): Promise<void> {
+  const next = parodyWriteChain.then(async () => {
+    const snapshot = getLatest();
+    try {
+      await AsyncStorage.setItem(
+        PARODY_SCORES_KEY,
+        JSON.stringify(snapshot),
+      );
+    } catch {
+      // Persistence failure is non-fatal — the in-memory score still
+      // shows the new high until the next cold start.
+    }
+  });
+  parodyWriteChain = next.catch(() => undefined);
+  return next;
+}
+
+/**
+ * Test-only handle to the parody-write chain so the regression
+ * harness can wait for every queued save to settle before
+ * inspecting the on-disk blob. Not part of the public store API.
+ */
+export function __getParodyWriteChain(): Promise<void> {
+  return parodyWriteChain;
 }
 
 function clampNonNegInt(v: unknown): number {
@@ -740,8 +784,17 @@ export const useGameState = create<GameStateValue>((set, get) => ({
     const current = prev[key];
     if (safe <= current) return false;
     const next: ParodyScores = { ...prev, [key]: safe };
+    // Flip the in-memory state synchronously so subscribers (the
+    // parody UIs, any "new high" sting) re-render immediately —
+    // the disk write below is serialized through `flushParodyScores`
+    // and never blocks the visual update.
     set({ parody: next });
-    await saveParodyScores(next);
+    // Hand the persist to the serialized write chain. The closure
+    // re-reads `get().parody` at the moment its turn comes up so a
+    // sibling save queued behind a slow earlier write still merges
+    // every later high score, instead of clobbering them with a
+    // stale snapshot.
+    await flushParodyScores(() => get().parody);
     return true;
   },
 

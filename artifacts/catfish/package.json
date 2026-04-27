@@ -18,7 +18,8 @@
     "test:clue-graph": "tsx scripts/test-clue-graph.mts",
     "test:accusation-flow": "tsx scripts/test-accusation-flow.mts",
     "test:like-then-match": "tsx scripts/test-like-then-match.mts",
-    "test:deck-refill": "tsx scripts/test-deck-refill.mts"
+    "test:deck-refill": "tsx scripts/test-deck-refill.mts",
+    "test:parody-save-race": "tsx scripts/test-parody-save-race.mts"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

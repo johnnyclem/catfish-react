@@ -14,6 +14,7 @@
     "sfx:pregen": "tsx scripts/sfx-pregen.mts",
     "music:pregen": "tsx scripts/music-pregen.mts",
     "test:undo-queue": "tsx scripts/test-undo-queue.mts",
+    "test:expo-doctor-parser": "tsx scripts/test-expo-doctor-parser.mts",
     "test:clue-graph": "tsx scripts/test-clue-graph.mts",
     "test:accusation-flow": "tsx scripts/test-accusation-flow.mts",
     "test:like-then-match": "tsx scripts/test-like-then-match.mts",

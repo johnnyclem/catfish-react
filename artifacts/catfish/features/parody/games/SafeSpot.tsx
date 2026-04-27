@@ -117,6 +117,12 @@ export function SafeSpot({ onExit }: Props) {
   useEffect(() => {
     confirmingRestartRef.current = showRestartConfirm;
   }, [showRestartConfirm]);
+  // Fresh-start confirm — Task #49. Guards the FRESH START button on
+  // the READY card from accidentally wiping a same-day saved run.
+  // Only meaningful when `resumeSnapshotRef.current` is non-null;
+  // when there's nothing to discard the button reads "DEPLOY
+  // BOUNDARIES" and goes straight into PLAYING with no confirm.
+  const [showFreshStartConfirm, setShowFreshStartConfirm] = useState(false);
 
   const defendersRef = useRef<Defender[]>([]);
   const enemiesRef = useRef<Enemy[]>([]);
@@ -562,10 +568,14 @@ export function SafeSpot({ onExit }: Props) {
             <Pressable
               testID="safespot-start"
               onPress={() => {
-                // Fresh-start — discard any pending resume so the
-                // player isn't haunted by it after this run, and
-                // wipe the on-disk snapshot.
-                resumeSnapshotRef.current = null;
+                // Task #49 — when there's a same-day saved run to
+                // discard, route through a confirm prompt instead
+                // of wiping it inline. With no snapshot present the
+                // button is "DEPLOY BOUNDARIES" and just starts.
+                if (resumeSnapshotRef.current) {
+                  setShowFreshStartConfirm(true);
+                  return;
+                }
                 void saveSafeSpotSession(null);
                 reset();
                 setPhase("PLAYING");
@@ -590,6 +600,49 @@ export function SafeSpot({ onExit }: Props) {
                   ? "FRESH START"
                   : "DEPLOY BOUNDARIES"}
               </Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+
+      {showFreshStartConfirm && phase === "READY" ? (
+        <View style={styles.overlay}>
+          <View style={styles.readyCard}>
+            <Feather name="alert-triangle" size={36} color="#f97316" />
+            <Text style={styles.readyTitle}>END SAVED RUN?</Text>
+            <Text style={styles.readyBody}>
+              {`This will wipe your saved wave ${
+                resumeSnapshotRef.current?.wave ?? "—"
+              } progress.`}
+            </Text>
+            <Pressable
+              testID="safespot-fresh-confirm"
+              onPress={() => {
+                resumeSnapshotRef.current = null;
+                void saveSafeSpotSession(null);
+                reset();
+                setShowFreshStartConfirm(false);
+                setPhase("PLAYING");
+              }}
+              style={({ pressed }) => [
+                styles.primaryBtn,
+                { backgroundColor: "#f97316" },
+                pressed && { opacity: 0.7 },
+              ]}
+            >
+              <Text style={[styles.primaryBtnLabel, { color: "white" }]}>
+                START FRESH
+              </Text>
+            </Pressable>
+            <Pressable
+              testID="safespot-fresh-cancel"
+              onPress={() => setShowFreshStartConfirm(false)}
+              style={({ pressed }) => [
+                styles.secondaryBtn,
+                pressed && { opacity: 0.7 },
+              ]}
+            >
+              <Text style={styles.secondaryBtnLabel}>KEEP SAVED RUN</Text>
             </Pressable>
           </View>
         </View>

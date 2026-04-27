@@ -60,6 +60,11 @@ export function EgoTrip({ onExit }: Props) {
   const [score, setScore] = useState(0);
   const [showRestartConfirm, setShowRestartConfirm] = useState(false);
   const confirmingRestartRef = useRef(false);
+  // Fresh-start confirm — Task #49. Guards the FRESH START button on
+  // the READY card from accidentally wiping a same-day saved run.
+  // Only used when `resumeRef.current` is non-null; without a saved
+  // run the READY card has no FRESH START button at all.
+  const [showFreshStartConfirm, setShowFreshStartConfirm] = useState(false);
 
   // Per-frame mutable state — we render it via direct style writes
   // (translated through React state on every animation tick) but
@@ -426,10 +431,10 @@ export function EgoTrip({ onExit }: Props) {
                   testID="egotrip-fresh"
                   onPress={(e) => {
                     e.stopPropagation?.();
-                    resumeRef.current = null;
-                    void saveEgoTripSession(null);
-                    reset();
-                    setPhase("COUNTDOWN");
+                    // Task #49 — confirm before discarding a saved
+                    // same-day run. Without the prompt a stray tap
+                    // here throws away real progress with no undo.
+                    setShowFreshStartConfirm(true);
                   }}
                   style={({ pressed }) => [
                     styles.secondaryBtn,
@@ -448,6 +453,50 @@ export function EgoTrip({ onExit }: Props) {
         <View style={styles.overlay} pointerEvents="none">
           <Text style={styles.countdown}>{countdown}</Text>
         </View>
+      ) : null}
+
+      {showFreshStartConfirm && phase === "READY" && resumeRef.current ? (
+        <Pressable
+          style={styles.overlay}
+          onPress={(e) => e.stopPropagation?.()}
+        >
+          <View style={styles.card}>
+            <Text style={styles.cardHeadline}>END SAVED RUN?</Text>
+            <Text style={styles.cardBody}>
+              {`THIS WILL WIPE YOUR SAVED EGO ${resumeRef.current.score}.`}
+            </Text>
+            <Pressable
+              testID="egotrip-fresh-confirm"
+              onPress={(e) => {
+                e.stopPropagation?.();
+                resumeRef.current = null;
+                void saveEgoTripSession(null);
+                reset();
+                setShowFreshStartConfirm(false);
+                setPhase("COUNTDOWN");
+              }}
+              style={({ pressed }) => [
+                styles.primaryBtn,
+                pressed && { opacity: 0.7 },
+              ]}
+            >
+              <Text style={styles.primaryBtnLabel}>START FRESH</Text>
+            </Pressable>
+            <Pressable
+              testID="egotrip-fresh-cancel"
+              onPress={(e) => {
+                e.stopPropagation?.();
+                setShowFreshStartConfirm(false);
+              }}
+              style={({ pressed }) => [
+                styles.secondaryBtn,
+                pressed && { opacity: 0.7 },
+              ]}
+            >
+              <Text style={styles.secondaryBtnLabel}>KEEP SAVED RUN</Text>
+            </Pressable>
+          </View>
+        </Pressable>
       ) : null}
 
       {showRestartConfirm && phase === "PLAYING" ? (

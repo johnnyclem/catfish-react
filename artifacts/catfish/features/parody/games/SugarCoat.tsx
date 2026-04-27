@@ -184,6 +184,15 @@ export function SugarCoat({ onExit }: Props) {
   const [selected, setSelected] = useState<number | null>(null);
   const [phase, setPhase] = useState<"PLAYING" | "GAME_OVER">("PLAYING");
   const [showRestartConfirm, setShowRestartConfirm] = useState(false);
+  // Task #49 — dedicated "Start over" affordance for a saved board.
+  // Unlike the generic in-game restart (which is always available),
+  // this button only surfaces when the player landed on a board that
+  // was hydrated from a same-day snapshot, so it specifically warns
+  // about discarding *saved* progress (not the in-progress run a
+  // fresh restart would).
+  const wasRestoredRef = useRef<boolean>(initialSession != null);
+  const [, setForceRender] = useState(0);
+  const [showFreshStartConfirm, setShowFreshStartConfirm] = useState(false);
   const recordParodyScore = useGameState((s) => s.recordParodyScore);
   const saveSugarCoatSession = useGameState((s) => s.saveSugarCoatSession);
   const bestClout = useGameState((s) => s.parody.sugarCoatHighClout);
@@ -253,12 +262,21 @@ export function SugarCoat({ onExit }: Props) {
     pendingTimeoutsRef.current.clear();
     resolvingRef.current = false;
     setShowRestartConfirm(false);
+    setShowFreshStartConfirm(false);
     setBoard(freshBoard());
     setScore(0);
     setMoves(STARTING_MOVES);
     setSelected(null);
     setPhase("PLAYING");
     recordedRef.current = false;
+    // The new run is fresh, so the dedicated "Start over" affordance
+    // shouldn't reappear. `useRef` writes don't re-render, so force a
+    // sibling render via `setForceRender` so the header's restored-
+    // run pill drops out of the tree.
+    if (wasRestoredRef.current) {
+      wasRestoredRef.current = false;
+      setForceRender((n) => n + 1);
+    }
     // Replay button: discard any pending session so we don't
     // accidentally re-restore a stale board on the next cold start
     // (the next snapshot will be written after the player's first
@@ -384,6 +402,20 @@ export function SugarCoat({ onExit }: Props) {
             <Text style={styles.statLabel}>MOVES</Text>
             <Text style={styles.statValue}>{moves}</Text>
           </View>
+          {phase === "PLAYING" && wasRestoredRef.current ? (
+            <Pressable
+              testID="sugarcoat-fresh"
+              accessibilityLabel="Start over from saved board"
+              onPress={() => setShowFreshStartConfirm(true)}
+              hitSlop={10}
+              style={({ pressed }) => [
+                styles.freshBtn,
+                pressed && { opacity: 0.6 },
+              ]}
+            >
+              <Text style={styles.freshBtnLabel}>START OVER</Text>
+            </Pressable>
+          ) : null}
           {phase === "PLAYING" ? (
             <Pressable
               testID="sugarcoat-restart"
@@ -433,6 +465,35 @@ export function SugarCoat({ onExit }: Props) {
         <Text style={styles.footerLabel}>BEST CLOUT</Text>
         <Text style={styles.footerValue}>{Math.max(bestClout, score)}</Text>
       </View>
+
+      {showFreshStartConfirm && phase === "PLAYING" ? (
+        <View style={styles.overlay}>
+          <Text style={styles.confirmHeadline}>END SAVED RUN?</Text>
+          <Text style={styles.gameOverBody}>
+            This will wipe your saved board and start fresh.
+          </Text>
+          <Pressable
+            testID="sugarcoat-fresh-confirm"
+            onPress={reset}
+            style={({ pressed }) => [
+              styles.primaryBtn,
+              pressed && { opacity: 0.7 },
+            ]}
+          >
+            <Text style={styles.primaryBtnLabel}>START FRESH</Text>
+          </Pressable>
+          <Pressable
+            testID="sugarcoat-fresh-cancel"
+            onPress={() => setShowFreshStartConfirm(false)}
+            style={({ pressed }) => [
+              styles.secondaryBtn,
+              pressed && { opacity: 0.7 },
+            ]}
+          >
+            <Text style={styles.secondaryBtnLabel}>KEEP SAVED RUN</Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       {showRestartConfirm && phase === "PLAYING" ? (
         <View style={styles.overlay}>
@@ -532,6 +593,22 @@ const styles = StyleSheet.create({
     backgroundColor: "#18181b",
     alignItems: "center",
     justifyContent: "center",
+  },
+  freshBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#ec4899",
+    backgroundColor: "#18181b",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  freshBtnLabel: {
+    color: "#ec4899",
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 1.5,
   },
   confirmHeadline: {
     color: "white",

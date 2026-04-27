@@ -733,14 +733,45 @@ export function __getParodyWriteChain(): Promise<void> {
  */
 let parodySessionWriteChain: Promise<void> = Promise.resolve();
 
-async function loadParodySessions(): Promise<ParodySessions> {
+/**
+ * Result shape for `loadParodySessions`. `needsRewrite` is set when the
+ * on-disk blob carried a same-day-gated snapshot (Safe Spot, Ego Trip,
+ * or Sugar Coat) that the parser dropped because its `dateKey` no
+ * longer matches today (or the slot was structurally malformed). When
+ * true, `hydrate` immediately persists the cleaned `parsed` slice so
+ * the disk row stops carrying stale data forward indefinitely.
+ *
+ * WordLow's `wordLowStreak` is not date-gated, so it never triggers a
+ * rewrite on its own — and the post-hydrate flush still re-serializes
+ * the current streak verbatim, so the field is preserved.
+ */
+interface LoadedParodySessions {
+  parsed: ParodySessions;
+  needsRewrite: boolean;
+}
+
+async function loadParodySessions(): Promise<LoadedParodySessions> {
   try {
     const raw = await AsyncStorage.getItem(PARODY_SESSIONS_KEY);
-    if (!raw) return { ...EMPTY_PARODY_SESSIONS };
-    const parsed = JSON.parse(raw) as unknown;
-    return parseParodySessions(parsed);
+    if (!raw) return { parsed: { ...EMPTY_PARODY_SESSIONS }, needsRewrite: false };
+    const obj = JSON.parse(raw) as unknown;
+    const parsed = parseParodySessions(obj);
+    // Detect stale rows: any of the three same-day-gated slots that
+    // had data on disk but the parser dropped to null. This catches
+    // both the routine case (yesterday's blob) and the rare malformed
+    // snapshot — either way the disk row is out of sync with what the
+    // store is now serving, so we tell the caller to rewrite.
+    const r =
+      obj && typeof obj === "object"
+        ? (obj as Partial<ParodySessions>)
+        : ({} as Partial<ParodySessions>);
+    const needsRewrite =
+      (r.safeSpot != null && parsed.safeSpot === null) ||
+      (r.egoTrip != null && parsed.egoTrip === null) ||
+      (r.sugarCoat != null && parsed.sugarCoat === null);
+    return { parsed, needsRewrite };
   } catch {
-    return { ...EMPTY_PARODY_SESSIONS };
+    return { parsed: { ...EMPTY_PARODY_SESSIONS }, needsRewrite: false };
   }
 }
 
@@ -768,6 +799,17 @@ function flushParodySessions(getLatest: () => ParodySessions): Promise<void> {
  */
 export function __getParodySessionWriteChain(): Promise<void> {
   return parodySessionWriteChain;
+}
+
+/**
+ * Test-only escape hatch that clears the one-shot hydration promise so
+ * a single Node process can simulate multiple cold starts in sequence
+ * (the production runtime hydrates exactly once per app launch). Used
+ * by the parody-session regression suite to verify that `hydrate()`
+ * rewrites a stale on-disk blob.
+ */
+export function __resetHydrationForTests(): void {
+  hydrationPromise = null;
 }
 
 function clampNonNegInt(v: unknown): number {
@@ -835,7 +877,7 @@ export const useGameState = create<GameStateValue>((set, get) => ({
         sfxMuted,
         musicMuted,
         parody,
-        parodySessions,
+        sessionsLoaded,
       ] = await Promise.all([
         loadActiveRun().then(migrateRun),
         loadVoiceMuted(),
@@ -856,8 +898,19 @@ export const useGameState = create<GameStateValue>((set, get) => ({
         musicMuted,
         recentlyDiscarded: [],
         parody,
-        parodySessions,
+        parodySessions: sessionsLoaded.parsed,
       });
+      // If the on-disk blob was carrying same-day-gated snapshots
+      // that the parser just dropped (stale dateKey, malformed row),
+      // rewrite the blob now so the disk row stops accumulating
+      // stale slots indefinitely. Goes through the same serialized
+      // write chain as every other session save, so it can never
+      // race a concurrent `setWordLowStreak` / `saveXSession` call.
+      // WordLow's streak is preserved because the flush re-reads the
+      // current `parodySessions` slice (which kept the loaded value).
+      if (sessionsLoaded.needsRewrite) {
+        void flushParodySessions(() => get().parodySessions);
+      }
     })();
     return hydrationPromise;
   },

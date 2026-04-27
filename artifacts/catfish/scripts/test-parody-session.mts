@@ -69,6 +69,7 @@ const {
   useGameState,
   __getParodyWriteChain,
   __getParodySessionWriteChain,
+  __resetHydrationForTests,
 } = await import("../core/gameStore.ts");
 const { todayDateKey, parseParodySessions } = await import(
   "../core/parodySessions.ts"
@@ -429,6 +430,98 @@ console.log(
   );
   console.log(
     "PASS  test 7a: malformed SugarCoat board length is dropped on hydrate",
+  );
+}
+
+// --- Test 7b: hydrate auto-clears yesterday's saved snapshots from
+//     the on-disk blob (Task #50). Before the fix, `parseParodySessions`
+//     dropped stale slots in-memory but the disk row still carried the
+//     yesterday rows around forever — the blob only shrank when a
+//     fresh same-day snapshot for that game overwrote it. Now hydrate
+//     detects the staleness and rewrites the blob with the stale slots
+//     cleared. WordLow's streak must survive that cleanup pass because
+//     the streak isn't date-gated.
+{
+  stub.__reset();
+  const yesterdayBlob = {
+    wordLowStreak: 4,
+    safeSpot: {
+      dateKey: yesterday,
+      pom: 30,
+      sanity: 70,
+      wave: 2,
+      waveTick: 5,
+      defenders: [{ type: "fact", row: 0, col: 1, hp: 4 }],
+    },
+    egoTrip: { dateKey: yesterday, score: 18 },
+    sugarCoat: {
+      dateKey: yesterday,
+      board: Array.from({ length: 49 }, (_, i) =>
+        ["lie", "excuse", "spin"][i % 3],
+      ),
+      score: 60,
+      moves: 9,
+    },
+  };
+  await stub.default.setItem(SESSION_KEY, JSON.stringify(yesterdayBlob));
+
+  // Fresh "cold start": clear the in-memory slice and wipe the
+  // hydration one-shot so `hydrate()` actually re-runs against disk.
+  useGameState.setState({
+    parodySessions: {
+      wordLowStreak: 0,
+      safeSpot: null,
+      egoTrip: null,
+      sugarCoat: null,
+    },
+  });
+  __resetHydrationForTests();
+  await state().hydrate();
+  // The post-hydrate rewrite goes through the serialized session
+  // chain — wait for it to settle before reading disk.
+  await __getParodySessionWriteChain();
+
+  const onDisk = JSON.parse(stub.__getStored(SESSION_KEY) ?? "null");
+  assert(
+    onDisk != null,
+    "hydrate rewrote the parody-session blob to disk after dropping stale slots",
+  );
+  assert(
+    onDisk.safeSpot === null,
+    `stale safeSpot slot cleared from disk, saw ${JSON.stringify(onDisk.safeSpot)}`,
+  );
+  assert(
+    onDisk.egoTrip === null,
+    `stale egoTrip slot cleared from disk, saw ${JSON.stringify(onDisk.egoTrip)}`,
+  );
+  assert(
+    onDisk.sugarCoat === null,
+    `stale sugarCoat slot cleared from disk, saw ${JSON.stringify(onDisk.sugarCoat)}`,
+  );
+  assert(
+    onDisk.wordLowStreak === 4,
+    `WordLow streak preserved through cleanup, saw ${onDisk.wordLowStreak}`,
+  );
+  assert(
+    state().parodySessions.wordLowStreak === 4,
+    "in-memory WordLow streak still reflects disk after rewrite",
+  );
+
+  // A fresh hydrate against the just-rewritten blob must NOT trigger
+  // another rewrite (no stale slots left). We verify this by clearing
+  // the write log, hydrating again, and asserting no new disk write
+  // landed for the session key.
+  const writesBefore = stub.__writeLog(SESSION_KEY).length;
+  __resetHydrationForTests();
+  await state().hydrate();
+  await __getParodySessionWriteChain();
+  const writesAfter = stub.__writeLog(SESSION_KEY).length;
+  assert(
+    writesAfter === writesBefore,
+    `clean blob does not trigger a redundant rewrite, saw ${writesAfter - writesBefore} extra writes`,
+  );
+  console.log(
+    "PASS  test 7b: hydrate clears yesterday's saved runs from the on-disk blob",
   );
 }
 

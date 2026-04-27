@@ -48,6 +48,14 @@ import {
   SwipeRecord,
   ThreadId,
 } from "./models";
+import {
+  EgoTripSession,
+  EMPTY_PARODY_SESSIONS,
+  ParodySessions,
+  parseParodySessions,
+  SafeSpotSession,
+  SugarCoatSession,
+} from "./parodySessions";
 import { loadActiveRun, saveActiveRun } from "./repository";
 
 /**
@@ -179,6 +187,21 @@ interface GameStateValue {
    * so a score bump doesn't rewrite the whole CaseRun blob.
    */
   parody: ParodyScores;
+  /**
+   * Per-game session snapshots — Task #44. Holds WordLow's active
+   * win streak (which survives reload until a loss resets it) plus
+   * an in-progress run snapshot for each of the other three parody
+   * games (Safe Spot / Ego Trip / Sugar Coat). The non-WordLow slots
+   * are gated to the local calendar day on hydrate so a player who
+   * comes back the next day starts fresh — the snapshot was already
+   * written, but `parseParodySessions` drops it when its `dateKey`
+   * doesn't match today.
+   *
+   * Lives at the top of the store (not on `CaseRun`) for the same
+   * reason `parody` does: these are meta-progress slices that must
+   * outlive `resetRun()`.
+   */
+  parodySessions: ParodySessions;
   hydrate: () => Promise<void>;
   /** Toggle voice playback. Persists to AsyncStorage immediately. */
   setVoiceMuted: (muted: boolean) => Promise<void>;
@@ -195,6 +218,27 @@ interface GameStateValue {
    * a "new high" sting only on a real beat.
    */
   recordParodyScore: (game: ParodyGame, value: number) => Promise<boolean>;
+  /**
+   * Update WordLow's persisted active win streak — Task #44. Persists
+   * the new value to the parody-sessions blob via the same serialized
+   * write chain that protects the high-score blob, so a sequence of
+   * win→win→loss writes can never land out of order.
+   *
+   * No-op (returns without writing) if `value` is unchanged from the
+   * in-memory slot, so a re-render that re-fires the effect doesn't
+   * spam AsyncStorage.
+   */
+  setWordLowStreak: (value: number) => Promise<void>;
+  /**
+   * Stash an in-progress Safe Spot run so a cold start within the
+   * same calendar day can offer a RESUME affordance. Pass `null` to
+   * clear (game-over, fresh start). Same write-chain as above.
+   */
+  saveSafeSpotSession: (snap: SafeSpotSession | null) => Promise<void>;
+  /** Stash / clear an in-progress Ego Trip run. See `saveSafeSpotSession`. */
+  saveEgoTripSession: (snap: EgoTripSession | null) => Promise<void>;
+  /** Stash / clear an in-progress Sugar Coat run. See `saveSafeSpotSession`. */
+  saveSugarCoatSession: (snap: SugarCoatSession | null) => Promise<void>;
   startNewRun: (forced?: KillerIdentity) => Promise<CaseRun>;
   /**
    * Player-paced clock tick.
@@ -573,6 +617,13 @@ const MUSIC_MUTED_KEY = "catfish/prefs/music_muted/v1";
  * leaderboards) can migrate forward without losing today's scores.
  */
 const PARODY_SCORES_KEY = "catfish/prefs/parody/v1";
+/**
+ * AsyncStorage row for the parody session snapshots — Task #44.
+ * Separate from `PARODY_SCORES_KEY` so a session-snapshot write (much
+ * more frequent: per-swap in Sugar Coat, per-pillar in Ego Trip)
+ * doesn't rewrite the high-score blob on every keystroke.
+ */
+const PARODY_SESSIONS_KEY = "catfish/prefs/parody-session/v1";
 
 async function loadBoolPref(key: string): Promise<boolean> {
   try {
@@ -674,6 +725,51 @@ export function __getParodyWriteChain(): Promise<void> {
   return parodyWriteChain;
 }
 
+/**
+ * Same write-chain pattern as `flushParodyScores`, but for the
+ * session-snapshot blob. Independent chain (instead of multiplexing
+ * onto `parodyWriteChain`) so a long-running session save can't
+ * delay a high-score persist and vice-versa.
+ */
+let parodySessionWriteChain: Promise<void> = Promise.resolve();
+
+async function loadParodySessions(): Promise<ParodySessions> {
+  try {
+    const raw = await AsyncStorage.getItem(PARODY_SESSIONS_KEY);
+    if (!raw) return { ...EMPTY_PARODY_SESSIONS };
+    const parsed = JSON.parse(raw) as unknown;
+    return parseParodySessions(parsed);
+  } catch {
+    return { ...EMPTY_PARODY_SESSIONS };
+  }
+}
+
+function flushParodySessions(getLatest: () => ParodySessions): Promise<void> {
+  const next = parodySessionWriteChain.then(async () => {
+    const snapshot = getLatest();
+    try {
+      await AsyncStorage.setItem(
+        PARODY_SESSIONS_KEY,
+        JSON.stringify(snapshot),
+      );
+    } catch {
+      // Persistence failure is non-fatal — the in-memory snapshot still
+      // serves the active app session.
+    }
+  });
+  parodySessionWriteChain = next.catch(() => undefined);
+  return next;
+}
+
+/**
+ * Test-only handle to the parody-session write chain so the regression
+ * harness can wait for every queued save to settle before inspecting
+ * the on-disk blob. Mirrors `__getParodyWriteChain`.
+ */
+export function __getParodySessionWriteChain(): Promise<void> {
+  return parodySessionWriteChain;
+}
+
 function clampNonNegInt(v: unknown): number {
   if (typeof v !== "number" || !Number.isFinite(v) || v < 0) return 0;
   return Math.floor(v);
@@ -726,20 +822,28 @@ export const useGameState = create<GameStateValue>((set, get) => ({
   musicMuted: false,
   recentlyDiscarded: [],
   parody: { ...EMPTY_PARODY_SCORES },
+  parodySessions: { ...EMPTY_PARODY_SESSIONS },
 
   hydrate: async () => {
     if (hydrationPromise) return hydrationPromise;
     hydrationPromise = (async () => {
       // Load run + audio prefs in parallel — they live in different
       // AsyncStorage rows and have no ordering dependency.
-      const [existing, voiceMuted, sfxMuted, musicMuted, parody] =
-        await Promise.all([
-          loadActiveRun().then(migrateRun),
-          loadVoiceMuted(),
-          loadBoolPref(SFX_MUTED_KEY),
-          loadBoolPref(MUSIC_MUTED_KEY),
-          loadParodyScores(),
-        ]);
+      const [
+        existing,
+        voiceMuted,
+        sfxMuted,
+        musicMuted,
+        parody,
+        parodySessions,
+      ] = await Promise.all([
+        loadActiveRun().then(migrateRun),
+        loadVoiceMuted(),
+        loadBoolPref(SFX_MUTED_KEY),
+        loadBoolPref(MUSIC_MUTED_KEY),
+        loadParodyScores(),
+        loadParodySessions(),
+      ]);
       // Cold-start invariant: undo state is in-memory only, so a
       // dangling stash from a prior process is impossible. Still,
       // explicitly clearing here documents the contract.
@@ -752,6 +856,7 @@ export const useGameState = create<GameStateValue>((set, get) => ({
         musicMuted,
         recentlyDiscarded: [],
         parody,
+        parodySessions,
       });
     })();
     return hydrationPromise;
@@ -796,6 +901,41 @@ export const useGameState = create<GameStateValue>((set, get) => ({
     // stale snapshot.
     await flushParodyScores(() => get().parody);
     return true;
+  },
+
+  setWordLowStreak: async (value) => {
+    const safe = clampNonNegInt(value);
+    const prev = get().parodySessions;
+    if (prev.wordLowStreak === safe) return;
+    const next: ParodySessions = { ...prev, wordLowStreak: safe };
+    set({ parodySessions: next });
+    await flushParodySessions(() => get().parodySessions);
+  },
+
+  saveSafeSpotSession: async (snap) => {
+    const prev = get().parodySessions;
+    // Identity-equal slot — no-op so a save loop in the game can't
+    // accidentally rewrite the blob with the same data each frame.
+    if (prev.safeSpot === snap) return;
+    const next: ParodySessions = { ...prev, safeSpot: snap };
+    set({ parodySessions: next });
+    await flushParodySessions(() => get().parodySessions);
+  },
+
+  saveEgoTripSession: async (snap) => {
+    const prev = get().parodySessions;
+    if (prev.egoTrip === snap) return;
+    const next: ParodySessions = { ...prev, egoTrip: snap };
+    set({ parodySessions: next });
+    await flushParodySessions(() => get().parodySessions);
+  },
+
+  saveSugarCoatSession: async (snap) => {
+    const prev = get().parodySessions;
+    if (prev.sugarCoat === snap) return;
+    const next: ParodySessions = { ...prev, sugarCoat: snap };
+    set({ parodySessions: next });
+    await flushParodySessions(() => get().parodySessions);
   },
 
   startNewRun: async (forced) => {

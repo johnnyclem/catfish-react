@@ -28,12 +28,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { useGameState } from "@/core/gameStore";
+import { SugarCoatSession, todayDateKey } from "@/core/parodySessions";
 import { emitSfx } from "@/features/audio/audioEvents";
 
 interface Props {
   onExit: () => void;
 }
 
+// Board dimension. If you change this, update `SUGAR_COAT_BOARD_CELLS`
+// in `core/parodySessions.ts` in the same commit — the parser uses
+// that constant to reject malformed restored boards.
 const SIZE = 7;
 const STARTING_MOVES = 20;
 
@@ -164,16 +168,43 @@ function isAdjacent(a: number, b: number): boolean {
 }
 
 export function SugarCoat({ onExit }: Props) {
-  const [board, setBoard] = useState<GemKind[]>(() => freshBoard());
-  const [score, setScore] = useState(0);
-  const [moves, setMoves] = useState(STARTING_MOVES);
+  // Same-day session restore — Task #44. Unlike SafeSpot/EgoTrip,
+  // SugarCoat has no READY phase, so we restore *silently* on mount.
+  // The store's hydrate() has already loaded any same-day snapshot;
+  // a stale (non-today) one was dropped by the parser. We grab via
+  // `useGameState.getState()` rather than `useGameState((s) => …)`
+  // so subsequent persists from this same component don't trigger a
+  // re-render of these initial-state seeders.
+  const initialSession = useGameState.getState().parodySessions.sugarCoat;
+  const [board, setBoard] = useState<GemKind[]>(() =>
+    initialSession ? initialSession.board : freshBoard(),
+  );
+  const [score, setScore] = useState(initialSession?.score ?? 0);
+  const [moves, setMoves] = useState(initialSession?.moves ?? STARTING_MOVES);
   const [selected, setSelected] = useState<number | null>(null);
   const [phase, setPhase] = useState<"PLAYING" | "GAME_OVER">("PLAYING");
   const [showRestartConfirm, setShowRestartConfirm] = useState(false);
   const recordParodyScore = useGameState((s) => s.recordParodyScore);
+  const saveSugarCoatSession = useGameState((s) => s.saveSugarCoatSession);
   const bestClout = useGameState((s) => s.parody.sugarCoatHighClout);
   const recordedRef = useRef(false);
   const resolvingRef = useRef(false);
+  // Mirror score & moves into refs so the post-cascade scheduleTimeout
+  // can read the up-to-date values without recreating its closure.
+  // (`setScore`'s functional updater means the *state* is correct, but
+  // the inline `score` variable in the closure would still be stale.)
+  const scoreRef = useRef(score);
+  const movesRef = useRef(moves);
+  const boardRef = useRef(board);
+  useEffect(() => {
+    scoreRef.current = score;
+  }, [score]);
+  useEffect(() => {
+    movesRef.current = moves;
+  }, [moves]);
+  useEffect(() => {
+    boardRef.current = board;
+  }, [board]);
   // Track in-flight setTimeout handles so we can cancel them on
   // unmount — otherwise a player who exits to the home grid mid-swap
   // would trigger a setState on an unmounted component when the
@@ -204,8 +235,12 @@ export function SugarCoat({ onExit }: Props) {
       void recordParodyScore("sugarCoat", score).then((bumped) => {
         if (bumped) emitSfx("match");
       });
+      // The run is finished — drop the in-progress snapshot so a
+      // future cold-start doesn't silently restore a board with
+      // 0 moves left.
+      void saveSugarCoatSession(null);
     }
-  }, [phase, score, recordParodyScore]);
+  }, [phase, score, recordParodyScore, saveSugarCoatSession]);
 
   function reset() {
     // Cancel any in-flight resolve / game-over deferrals from the
@@ -224,6 +259,11 @@ export function SugarCoat({ onExit }: Props) {
     setSelected(null);
     setPhase("PLAYING");
     recordedRef.current = false;
+    // Replay button: discard any pending session so we don't
+    // accidentally re-restore a stale board on the next cold start
+    // (the next snapshot will be written after the player's first
+    // settled swap of the new run).
+    void saveSugarCoatSession(null);
   }
 
   /**
@@ -291,9 +331,32 @@ export function SugarCoat({ onExit }: Props) {
       }
     }
     // Tiny delay before accepting the next tap so the user can see
-    // the cleared chain.
+    // the cleared chain. We also use this same boundary to snapshot
+    // the *settled* post-cascade board — if we wrote it inside
+    // `applySwap` the board state hasn't propagated through React
+    // yet, and we'd persist the pre-cascade arrangement. By waiting
+    // 180ms (long enough for `setBoard` to flush), the next mount
+    // restores exactly what the player saw at the end of the swap.
+    //
+    // Skip the persist on a no-op swap (cleared === 0) — the board,
+    // score, and remaining moves are unchanged, so writing would
+    // just churn AsyncStorage.
     scheduleTimeout(() => {
       resolvingRef.current = false;
+      if (cleared > 0 && movesRef.current > 0) {
+        // Read everything from refs — state setters from `applySwap`
+        // and the `setMoves(remaining)` above are queued through
+        // React; the matching `useEffect` mirror-into-ref runs after
+        // commit, so by the time this 180ms timeout fires the refs
+        // hold the freshly-rendered values.
+        const snap: SugarCoatSession = {
+          dateKey: todayDateKey(),
+          board: [...boardRef.current],
+          score: scoreRef.current,
+          moves: movesRef.current,
+        };
+        void saveSugarCoatSession(snap);
+      }
     }, 180);
   }
 

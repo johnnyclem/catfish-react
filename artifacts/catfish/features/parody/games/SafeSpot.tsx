@@ -24,6 +24,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { useGameState } from "@/core/gameStore";
+import {
+  SafeSpotDefenderSnapshot,
+  SafeSpotSession,
+  todayDateKey,
+} from "@/core/parodySessions";
 import { emitSfx } from "@/features/audio/audioEvents";
 
 interface Props {
@@ -124,7 +129,38 @@ export function SafeSpot({ onExit }: Props) {
   const lastFrameRef = useRef(0);
   const [, setRenderTick] = useState(0);
   const recordParodyScore = useGameState((s) => s.recordParodyScore);
+  const saveSafeSpotSession = useGameState((s) => s.saveSafeSpotSession);
   const bestWave = useGameState((s) => s.parody.safeSpotBestWave);
+  // Snapshot the same-day session ONCE on mount — Task #44. The READY
+  // overlay reads this to decide whether to show a RESUME affordance.
+  // We grab it via `useRef` (not a live store subscription) so an
+  // in-game `saveSafeSpotSession(snap)` doesn't re-render the READY
+  // card mid-play and reset its button state.
+  const hydratedSession = useGameState.getState().parodySessions.safeSpot;
+  const resumeSnapshotRef = useRef<SafeSpotSession | null>(hydratedSession);
+
+  /**
+   * Persist the current run snapshot. Called from the coarse events
+   * that move the player's progress forward (defender placement,
+   * wave change). Skipping the per-tick mutations keeps AsyncStorage
+   * write traffic to roughly one write per defender + one per wave.
+   */
+  const snapshotNow = useCallback(() => {
+    const snap: SafeSpotSession = {
+      dateKey: todayDateKey(),
+      pom: pomRef.current,
+      sanity: sanityRef.current,
+      wave: waveRef.current,
+      waveTick: tickRef.current,
+      defenders: defendersRef.current.map<SafeSpotDefenderSnapshot>((d) => ({
+        type: d.type,
+        row: d.row,
+        col: d.col,
+        hp: d.hp,
+      })),
+    };
+    void saveSafeSpotSession(snap);
+  }, [saveSafeSpotSession]);
 
   const reset = useCallback(() => {
     defendersRef.current = [];
@@ -140,6 +176,34 @@ export function SafeSpot({ onExit }: Props) {
     setSelectedTool(null);
   }, []);
 
+  /**
+   * Restore an in-progress run from the same-day snapshot — Task #44.
+   * Defenders are recreated; enemies/projectiles intentionally are
+   * not, so the player isn't ambushed by a wall of attackers the
+   * instant the screen reappears. The wave clock is rewound to the
+   * snapshot's `waveTick` so the next wave milestone fires at the
+   * right moment, not 30s later than expected.
+   */
+  const resumeFromSnapshot = useCallback((snap: SafeSpotSession) => {
+    enemiesRef.current = [];
+    projectilesRef.current = [];
+    tickRef.current = snap.waveTick;
+    waveRef.current = snap.wave;
+    sanityRef.current = snap.sanity;
+    pomRef.current = snap.pom;
+    defendersRef.current = snap.defenders.map((d) => ({
+      uid: newUid(),
+      type: d.type,
+      row: d.row,
+      col: d.col,
+      hp: d.hp,
+    }));
+    setPom(snap.pom);
+    setSanity(snap.sanity);
+    setWave(snap.wave);
+    setSelectedTool(null);
+  }, []);
+
   const stepLogic = useCallback(() => {
     tickRef.current += 1;
     const t = tickRef.current;
@@ -150,6 +214,10 @@ export function SafeSpot({ onExit }: Props) {
       waveRef.current = newWave;
       setWave(newWave);
       emitSfx("match");
+      // Snapshot on each wave milestone so a cold-start lands the
+      // player back on the wave they earned, not the wave they
+      // happened to be mid-tick of when AsyncStorage last wrote.
+      snapshotNow();
     }
 
     // Spawn — frequency rises slightly per wave.
@@ -250,9 +318,13 @@ export function SafeSpot({ onExit }: Props) {
       void recordParodyScore("safeSpot", waveRef.current).then((bumped) => {
         if (bumped) emitSfx("match");
       });
+      // Game-over voids the in-progress snapshot — the run is finished,
+      // not paused, so a "RESUME" affordance on next launch would lie
+      // about progress that no longer exists.
+      void saveSafeSpotSession(null);
       setPhase("GAME_OVER");
     }
-  }, [recordParodyScore]);
+  }, [recordParodyScore, saveSafeSpotSession, snapshotNow]);
 
   const tick = useCallback(
     (time: number) => {
@@ -294,6 +366,9 @@ export function SafeSpot({ onExit }: Props) {
     pomRef.current -= tool.cost;
     setPom(pomRef.current);
     emitSfx("swipe_pass");
+    // Coarse-grained snapshot — defender placement is the player's
+    // most concrete progress, so it's worth a write each time.
+    snapshotNow();
   }
 
   return (
@@ -457,20 +532,63 @@ export function SafeSpot({ onExit }: Props) {
             <Text style={styles.readyBody}>
               Best wave: {bestWave}
             </Text>
+            {/* Same-day RESUME — Task #44. Only rendered when there's
+                an in-progress snapshot whose `dateKey` matched today
+                at hydrate time. The snapshot ref is cleared after
+                use (or after Deploy Boundaries) so the affordance
+                doesn't reappear once the player has committed to
+                either resuming or starting fresh. */}
+            {resumeSnapshotRef.current ? (
+              <Pressable
+                testID="safespot-resume"
+                onPress={() => {
+                  const snap = resumeSnapshotRef.current;
+                  if (!snap) return;
+                  resumeFromSnapshot(snap);
+                  resumeSnapshotRef.current = null;
+                  setPhase("PLAYING");
+                }}
+                style={({ pressed }) => [
+                  styles.primaryBtn,
+                  { backgroundColor: "#3b82f6" },
+                  pressed && { opacity: 0.7 },
+                ]}
+              >
+                <Text style={[styles.primaryBtnLabel, { color: "white" }]}>
+                  {`RESUME · WAVE ${resumeSnapshotRef.current.wave}`}
+                </Text>
+              </Pressable>
+            ) : null}
             <Pressable
               testID="safespot-start"
               onPress={() => {
+                // Fresh-start — discard any pending resume so the
+                // player isn't haunted by it after this run, and
+                // wipe the on-disk snapshot.
+                resumeSnapshotRef.current = null;
+                void saveSafeSpotSession(null);
                 reset();
                 setPhase("PLAYING");
               }}
               style={({ pressed }) => [
-                styles.primaryBtn,
-                { backgroundColor: "#3b82f6" },
+                resumeSnapshotRef.current ? styles.secondaryBtn : styles.primaryBtn,
+                resumeSnapshotRef.current
+                  ? null
+                  : { backgroundColor: "#3b82f6" },
                 pressed && { opacity: 0.7 },
               ]}
             >
-              <Text style={[styles.primaryBtnLabel, { color: "white" }]}>
-                DEPLOY BOUNDARIES
+              <Text
+                style={[
+                  resumeSnapshotRef.current
+                    ? styles.secondaryBtnLabel
+                    : styles.primaryBtnLabel,
+                  resumeSnapshotRef.current ? null : { color: "white" },
+                ]}
+              >
+                {resumeSnapshotRef.current
+                  ? "FRESH START"
+                  : "DEPLOY BOUNDARIES"}
               </Text>
             </Pressable>
           </View>

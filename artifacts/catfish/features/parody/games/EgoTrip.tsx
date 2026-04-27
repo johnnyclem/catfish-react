@@ -30,6 +30,7 @@ import {
 } from "react-native";
 
 import { useGameState } from "@/core/gameStore";
+import { EgoTripSession, todayDateKey } from "@/core/parodySessions";
 import { emitSfx } from "@/features/audio/audioEvents";
 
 interface Props {
@@ -85,11 +86,30 @@ export function EgoTrip({ onExit }: Props) {
   }, [showRestartConfirm]);
 
   const recordParodyScore = useGameState((s) => s.recordParodyScore);
+  const saveEgoTripSession = useGameState((s) => s.saveEgoTripSession);
   const bestEgo = useGameState((s) => s.parody.egoTripHighScore);
   const bestEgoRef = useRef(bestEgo);
   useEffect(() => {
     bestEgoRef.current = bestEgo;
   }, [bestEgo]);
+  // Same-day session for Task #44. Snapshot is taken at mount —
+  // the READY card uses it to render a RESUME affordance, after
+  // which the ref is cleared so the player isn't re-prompted.
+  // We don't carry physics (bird Y / velocity) across launches —
+  // restoring mid-flight would feel like teleporting; restoring at
+  // the score with a fresh, mid-field bird is the kind player
+  // experience.
+  const hydratedEgoSession = useGameState.getState().parodySessions.egoTrip;
+  const resumeRef = useRef<EgoTripSession | null>(hydratedEgoSession);
+  // Score the player resumed at, queued so the COUNTDOWN→PLAYING
+  // transition can re-apply it AFTER `reset()` zeros things out.
+  // We can't just stuff the score into `scoreRef` at button-press
+  // time because the countdown handler unconditionally calls
+  // `reset()` before flipping to PLAYING — that's load-bearing for
+  // physics (the bird needs to be re-centered and the pillar list
+  // must be empty), so the cleanest fix is to re-apply the score
+  // after reset, not skip reset.
+  const pendingResumeScoreRef = useRef<number | null>(null);
 
   // Force re-render at 60fps so absolute positions follow the refs.
   const [, setRenderTick] = useState(0);
@@ -185,6 +205,15 @@ export function EgoTrip({ onExit }: Props) {
         if (!p.passed && pRight < birdLeft) {
           scoreRef.current += 1;
           setScore(scoreRef.current);
+          // Snapshot every passed pillar — that's the player's only
+          // unit of progress here, and the rate is naturally low
+          // (~1 write per ~2s of survival) so AsyncStorage stays
+          // happy. We capture the score only; physics intentionally
+          // resets to a mid-field bird on resume.
+          void saveEgoTripSession({
+            dateKey: todayDateKey(),
+            score: scoreRef.current,
+          });
           return { ...p, passed: true };
         }
         return p;
@@ -215,6 +244,9 @@ export function EgoTrip({ onExit }: Props) {
         if (bumped) emitSfx("match");
       });
     }
+    // The run is over — the in-progress snapshot would now mislead
+    // the next launch into offering a "resume" of a finished run.
+    void saveEgoTripSession(null);
     setPhase("GAME_OVER");
   }
 
@@ -235,6 +267,17 @@ export function EgoTrip({ onExit }: Props) {
       if (n <= 0) {
         clearInterval(id);
         reset();
+        // If the player resumed, re-apply their score after reset()
+        // wipes it. Without this the resumed score would silently
+        // be lost the moment the countdown completes — a regression
+        // the unit test for the store wouldn't catch because the
+        // store *does* hold the right value; only the in-game
+        // counter forgets.
+        if (pendingResumeScoreRef.current != null) {
+          scoreRef.current = pendingResumeScoreRef.current;
+          setScore(pendingResumeScoreRef.current);
+          pendingResumeScoreRef.current = null;
+        }
         setPhase("PLAYING");
       } else {
         setCountdown(n);
@@ -247,6 +290,10 @@ export function EgoTrip({ onExit }: Props) {
     // Swallow taps on the field while the restart confirmation is up
     // so the user doesn't accidentally flap or skip the prompt.
     if (showRestartConfirm) return;
+    // When a resume offer is on screen, tap-to-flap is suppressed
+    // so the player can hit the explicit RESUME / FRESH START
+    // buttons without accidentally starting a fresh run.
+    if (phase === "READY" && resumeRef.current) return;
     if (phase === "READY" || phase === "GAME_OVER") {
       reset();
       setPhase("COUNTDOWN");
@@ -343,8 +390,56 @@ export function EgoTrip({ onExit }: Props) {
         <View style={styles.overlay}>
           <View style={styles.card}>
             <Text style={styles.cardHeadline}>EGO TRIP</Text>
-            <Text style={styles.cardBody}>TAP TO FLAP</Text>
+            <Text style={styles.cardBody}>
+              {resumeRef.current ? "PICK UP WHERE YOU LEFT OFF?" : "TAP TO FLAP"}
+            </Text>
             <Text style={styles.cardMeta}>BEST: {bestEgo}</Text>
+            {/* Same-day RESUME — Task #44. Resuming preloads the
+                score; physics start fresh mid-field via `reset()`,
+                which feels less jarring than re-spawning the bird at
+                some past Y/velocity. */}
+            {resumeRef.current ? (
+              <>
+                <Pressable
+                  testID="egotrip-resume"
+                  onPress={(e) => {
+                    e.stopPropagation?.();
+                    const snap = resumeRef.current;
+                    if (!snap) return;
+                    // Queue the resumed score; the COUNTDOWN→PLAYING
+                    // transition's `reset()` would clobber it if we
+                    // applied it inline here.
+                    pendingResumeScoreRef.current = snap.score;
+                    resumeRef.current = null;
+                    setPhase("COUNTDOWN");
+                  }}
+                  style={({ pressed }) => [
+                    styles.primaryBtn,
+                    pressed && { opacity: 0.7 },
+                  ]}
+                >
+                  <Text style={styles.primaryBtnLabel}>
+                    {`RESUME · ${resumeRef.current.score}`}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  testID="egotrip-fresh"
+                  onPress={(e) => {
+                    e.stopPropagation?.();
+                    resumeRef.current = null;
+                    void saveEgoTripSession(null);
+                    reset();
+                    setPhase("COUNTDOWN");
+                  }}
+                  style={({ pressed }) => [
+                    styles.secondaryBtn,
+                    pressed && { opacity: 0.7 },
+                  ]}
+                >
+                  <Text style={styles.secondaryBtnLabel}>FRESH START</Text>
+                </Pressable>
+              </>
+            ) : null}
           </View>
         </View>
       ) : null}

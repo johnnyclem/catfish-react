@@ -52,10 +52,15 @@ function dateSeed(offset = 0): number {
 }
 
 export function WordLow({ onExit }: Props) {
-  // Streak counter is local to this playthrough — once the player
-  // exits the app it resets. The persistent best is recorded after
-  // every win so a hot streak survives even if the player loses
-  // their next round.
+  // Streak counter survives a cold start — see Task #44. The store's
+  // `parodySessions.wordLowStreak` is the source of truth across
+  // reloads; we mirror it into a per-mount ref so the in-game wins/
+  // loses arithmetic stays cheap (no async getter on every win) and
+  // so the displayed streak doesn't lag the underlying ref.
+  //
+  // The persistent BEST is still recorded via `recordParodyScore`
+  // after every win, so a hot streak's high-water mark survives even
+  // if the next round resets the active streak to 0.
   const [targetWord, setTargetWord] = useState<string>(
     () => BUZZWORDS[dateSeed()] ?? "GHOST",
   );
@@ -66,20 +71,41 @@ export function WordLow({ onExit }: Props) {
     "PLAYING",
   );
   const [showRestartConfirm, setShowRestartConfirm] = useState(false);
-  const streakRef = useRef(0);
   const recordParodyScore = useGameState((s) => s.recordParodyScore);
+  const setWordLowStreak = useGameState((s) => s.setWordLowStreak);
   const bestStreak = useGameState((s) => s.parody.wordLowBestStreak);
+  const persistedStreak = useGameState(
+    (s) => s.parodySessions.wordLowStreak,
+  );
+  // Seed `streakRef` from the persisted slot once on mount. We do
+  // NOT re-sync on every render — once the game is alive, the local
+  // ref is the authoritative running counter (the store mirrors it
+  // on win/loss). Re-syncing would clobber an in-flight streak any
+  // time the store's session blob updates from a sibling save.
+  const streakRef = useRef(persistedStreak);
+  // A small `streakDisplay` state mirrors the ref for the win-overlay
+  // text; we don't read the store directly there because the persist
+  // call is async and the overlay would briefly show the pre-bump
+  // value on the very first render after a win.
+  const [streakDisplay, setStreakDisplay] = useState(persistedStreak);
 
   useEffect(() => {
     if (gameState === "WON") {
       streakRef.current += 1;
-      void recordParodyScore("wordLow", streakRef.current);
+      const nextStreak = streakRef.current;
+      setStreakDisplay(nextStreak);
+      void recordParodyScore("wordLow", nextStreak);
+      void setWordLowStreak(nextStreak);
       emitSfx("match");
     } else if (gameState === "LOST") {
       streakRef.current = 0;
+      setStreakDisplay(0);
+      void setWordLowStreak(0);
       emitSfx("lose");
     }
-  }, [gameState, recordParodyScore]);
+    // setWordLowStreak / recordParodyScore are stable Zustand selectors,
+    // but include them so the lint rule is satisfied.
+  }, [gameState, recordParodyScore, setWordLowStreak]);
 
   function onKeyPress(key: string) {
     if (gameState !== "PLAYING") return;
@@ -271,7 +297,7 @@ export function WordLow({ onExit }: Props) {
           </Text>
           {gameState === "WON" ? (
             <Text style={styles.overlayMeta}>
-              {`Streak: ${streakRef.current}  ·  Best: ${Math.max(streakRef.current, bestStreak)}`}
+              {`Streak: ${streakDisplay}  ·  Best: ${Math.max(streakDisplay, bestStreak)}`}
             </Text>
           ) : null}
           <Pressable

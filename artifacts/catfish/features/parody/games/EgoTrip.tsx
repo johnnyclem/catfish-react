@@ -133,6 +133,12 @@ export function EgoTrip({ onExit }: Props) {
         fieldH - BIRD_SIZE,
       );
       crash();
+      // Keep the rAF chain alive — once phase flips to GAME_OVER the
+      // early-return at the top of `tick` will idle the loop. If we
+      // returned here without scheduling, the loop would die and the
+      // player's RETRY would re-enter PLAYING with no driver, freezing
+      // the bird mid-air.
+      rafRef.current = requestAnimationFrame(tick);
       return;
     }
 
@@ -180,6 +186,10 @@ export function EgoTrip({ onExit }: Props) {
 
     if (didCrash) {
       crash();
+      // Keep the rAF chain alive — see comment on the floor/ceiling
+      // crash path above. Without this, the loop would die and RETRY
+      // would never re-drive physics after a pillar collision.
+      rafRef.current = requestAnimationFrame(tick);
       return;
     }
 

@@ -6,17 +6,26 @@
  * Game Center shortcut, and the Lots 'o Fish icon — both of which
  * route to the same destinations as their grid counterparts.
  *
+ * Each parody-app tile renders its own code-drawn icon (no Feather
+ * fallback, no SVG/PNG asset) so the grid reads as a cohesive set of
+ * pixel-noir app icons in the Lots 'o Fish style.
+ *
  * The home grid is stateless: tile taps fire the parent's
  * `onOpenApp` callback with one of the `ParodyAppId` values, and the
  * Apps tab owns the actual screen routing.
  */
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import type { ComponentType } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { cfPalette } from "@/constants/colors";
 
+import { EgoTripIcon } from "./EgoTripIcon";
 import { LotsOfFishIcon } from "./LotsOfFishIcon";
+import { SafeSpotIcon } from "./SafeSpotIcon";
+import { SugarCoatIcon } from "./SugarCoatIcon";
+import { WordLowIcon } from "./WordLowIcon";
 
 export type ParodyAppId =
   | "egoTrip"
@@ -33,46 +42,16 @@ interface Props {
 interface AppTileSpec {
   id: ParodyAppId;
   name: string;
-  /** Feather icon name, or `null` to render the custom LotsOfFish art. */
-  icon: React.ComponentProps<typeof Feather>["name"] | null;
-  gradient: readonly [string, string] | null;
-  iconColor?: string;
-  /** Flat (no gradient) tile background — used by Word-Low. */
-  flatBg?: string;
+  /** Custom code-drawn icon component for this tile. */
+  Icon: ComponentType<{ size: number }>;
 }
 
 const APPS: AppTileSpec[] = [
-  {
-    id: "egoTrip",
-    name: "Ego Trip",
-    icon: "trending-up",
-    gradient: ["#fb923c", "#ec4899"],
-  },
-  {
-    id: "sugarCoat",
-    name: "Sugar Coat",
-    icon: "gift",
-    gradient: ["#ec4899", "#9333ea"],
-  },
-  {
-    id: "safeSpot",
-    name: "Safe Spot",
-    icon: "shield",
-    gradient: ["#3b82f6", "#4f46e5"],
-  },
-  {
-    id: "wordLow",
-    name: "Word-Low",
-    icon: "type",
-    gradient: null,
-    flatBg: "#27272a",
-  },
-  {
-    id: "lotsOfFish",
-    name: "Lots 'o Fish",
-    icon: null,
-    gradient: null,
-  },
+  { id: "egoTrip", name: "Ego Trip", Icon: EgoTripIcon },
+  { id: "sugarCoat", name: "Sugar Coat", Icon: SugarCoatIcon },
+  { id: "safeSpot", name: "Safe Spot", Icon: SafeSpotIcon },
+  { id: "wordLow", name: "Word-Low", Icon: WordLowIcon },
+  { id: "lotsOfFish", name: "Lots 'o Fish", Icon: LotsOfFishIcon },
 ];
 
 export function HomeGrid({ onOpenApp }: Props) {
@@ -143,6 +122,7 @@ interface TileProps {
 }
 
 function AppTile({ spec, onPress }: TileProps) {
+  const Icon = spec.Icon;
   return (
     <Pressable
       testID={`parody-app-${spec.id}`}
@@ -159,31 +139,7 @@ function AppTile({ spec, onPress }: TileProps) {
               pressed && { transform: [{ scale: 0.92 }] },
             ]}
           >
-            {spec.id === "lotsOfFish" ? (
-              <LotsOfFishIcon size={56} />
-            ) : spec.gradient ? (
-              <LinearGradient
-                colors={spec.gradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.tileGradient}
-              >
-                {spec.icon ? (
-                  <Feather name={spec.icon} size={28} color="white" />
-                ) : null}
-              </LinearGradient>
-            ) : (
-              <View
-                style={[
-                  styles.tileGradient,
-                  { backgroundColor: spec.flatBg ?? "#27272a" },
-                ]}
-              >
-                {spec.icon ? (
-                  <Feather name={spec.icon} size={28} color="white" />
-                ) : null}
-              </View>
-            )}
+            <Icon size={TILE_SIZE} />
           </View>
           <Text style={styles.tileLabel} numberOfLines={1}>
             {spec.name}
@@ -219,13 +175,6 @@ const styles = StyleSheet.create({
   tileFrame: {
     width: TILE_SIZE,
     height: TILE_SIZE,
-  },
-  tileGradient: {
-    width: TILE_SIZE,
-    height: TILE_SIZE,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
   },
   tileLabel: {
     color: "rgba(255, 255, 255, 0.85)",

@@ -103,7 +103,7 @@ export function WordLow({ onExit }: Props) {
     }
   }
 
-  function tryAgain() {
+  function replay() {
     const nextOffset = seedOffset + 1;
     setSeedOffset(nextOffset);
     setTargetWord(BUZZWORDS[dateSeed(nextOffset)] ?? "GHOST");
@@ -227,14 +227,14 @@ export function WordLow({ onExit }: Props) {
             </Text>
           ) : null}
           <Pressable
-            testID="wordlow-tryagain"
-            onPress={tryAgain}
+            testID="wordlow-replay"
+            onPress={replay}
             style={({ pressed }) => [
               styles.primaryBtn,
               pressed && { opacity: 0.7 },
             ]}
           >
-            <Text style={styles.primaryBtnLabel}>TRY AGAIN</Text>
+            <Text style={styles.primaryBtnLabel}>REPLAY</Text>
           </Pressable>
           <Pressable
             testID="wordlow-home"

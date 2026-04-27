@@ -353,14 +353,14 @@ export function SugarCoat({ onExit }: Props) {
             Final: {score} · Best: {Math.max(bestClout, score)}
           </Text>
           <Pressable
-            testID="sugarcoat-retry"
+            testID="sugarcoat-replay"
             onPress={reset}
             style={({ pressed }) => [
               styles.primaryBtn,
               pressed && { opacity: 0.7 },
             ]}
           >
-            <Text style={styles.primaryBtnLabel}>RETRY</Text>
+            <Text style={styles.primaryBtnLabel}>REPLAY</Text>
           </Pressable>
           <Pressable
             testID="sugarcoat-home"

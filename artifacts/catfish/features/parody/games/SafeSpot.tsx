@@ -459,7 +459,7 @@ export function SafeSpot({ onExit }: Props) {
             Wave: {wave} · Best: {Math.max(bestWave, wave)}
           </Text>
           <Pressable
-            testID="safespot-retry"
+            testID="safespot-replay"
             onPress={() => {
               reset();
               setPhase("PLAYING");
@@ -469,7 +469,7 @@ export function SafeSpot({ onExit }: Props) {
               pressed && { opacity: 0.7 },
             ]}
           >
-            <Text style={styles.primaryBtnLabel}>RETRY</Text>
+            <Text style={styles.primaryBtnLabel}>REPLAY</Text>
           </Pressable>
           <Pressable
             testID="safespot-home"

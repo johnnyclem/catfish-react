@@ -334,7 +334,7 @@ export function EgoTrip({ onExit }: Props) {
             Ego: {score} · Best: {Math.max(bestEgo, score)}
           </Text>
           <Pressable
-            testID="egotrip-retry"
+            testID="egotrip-replay"
             onPress={(e) => {
               e.stopPropagation?.();
               reset();
@@ -345,7 +345,7 @@ export function EgoTrip({ onExit }: Props) {
               pressed && { opacity: 0.7 },
             ]}
           >
-            <Text style={styles.primaryBtnLabel}>RETRY</Text>
+            <Text style={styles.primaryBtnLabel}>REPLAY</Text>
           </Pressable>
           <Pressable
             testID="egotrip-home"

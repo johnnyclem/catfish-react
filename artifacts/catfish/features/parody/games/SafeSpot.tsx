@@ -107,6 +107,12 @@ export function SafeSpot({ onExit }: Props) {
     phaseRef.current = phase;
   }, [phase]);
 
+  const [showRestartConfirm, setShowRestartConfirm] = useState(false);
+  const confirmingRestartRef = useRef(false);
+  useEffect(() => {
+    confirmingRestartRef.current = showRestartConfirm;
+  }, [showRestartConfirm]);
+
   const defendersRef = useRef<Defender[]>([]);
   const enemiesRef = useRef<Enemy[]>([]);
   const projectilesRef = useRef<Projectile[]>([]);
@@ -250,12 +256,17 @@ export function SafeSpot({ onExit }: Props) {
 
   const tick = useCallback(
     (time: number) => {
-      if (phaseRef.current === "PLAYING") {
+      if (phaseRef.current === "PLAYING" && !confirmingRestartRef.current) {
         if (time - lastFrameRef.current >= FRAME_MS) {
           lastFrameRef.current = time;
           stepLogic();
           setRenderTick((v) => v + 1);
         }
+      } else {
+        // While paused (e.g. restart confirmation visible), keep the
+        // last-frame timestamp current so we don't fast-forward a
+        // backlog of ticks the moment the player cancels.
+        lastFrameRef.current = time;
       }
       rafRef.current = requestAnimationFrame(tick);
     },
@@ -307,6 +318,20 @@ export function SafeSpot({ onExit }: Props) {
           <Text style={styles.headerLabel}>POM</Text>
           <Text style={styles.headerValue}>{pom}</Text>
         </View>
+        {phase === "PLAYING" ? (
+          <Pressable
+            testID="safespot-restart"
+            accessibilityLabel="Restart run"
+            onPress={() => setShowRestartConfirm(true)}
+            hitSlop={10}
+            style={({ pressed }) => [
+              styles.restartBtn,
+              pressed && { opacity: 0.6 },
+            ]}
+          >
+            <Feather name="rotate-ccw" size={16} color="#a1a1aa" />
+          </Pressable>
+        ) : null}
       </View>
 
       <View style={styles.field}>
@@ -452,6 +477,45 @@ export function SafeSpot({ onExit }: Props) {
         </View>
       ) : null}
 
+      {showRestartConfirm && phase === "PLAYING" ? (
+        <View style={styles.overlay}>
+          <View style={styles.readyCard}>
+            <Feather name="rotate-ccw" size={36} color="#3b82f6" />
+            <Text style={styles.readyTitle}>RESTART RUN?</Text>
+            <Text style={styles.readyBody}>
+              Defenders, POM, and wave reset.
+            </Text>
+            <Pressable
+              testID="safespot-restart-confirm"
+              onPress={() => {
+                setShowRestartConfirm(false);
+                reset();
+                setPhase("PLAYING");
+              }}
+              style={({ pressed }) => [
+                styles.primaryBtn,
+                { backgroundColor: "#3b82f6" },
+                pressed && { opacity: 0.7 },
+              ]}
+            >
+              <Text style={[styles.primaryBtnLabel, { color: "white" }]}>
+                RESTART
+              </Text>
+            </Pressable>
+            <Pressable
+              testID="safespot-restart-cancel"
+              onPress={() => setShowRestartConfirm(false)}
+              style={({ pressed }) => [
+                styles.secondaryBtn,
+                pressed && { opacity: 0.7 },
+              ]}
+            >
+              <Text style={styles.secondaryBtnLabel}>KEEP PLAYING</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+
       {phase === "GAME_OVER" ? (
         <View style={styles.overlay}>
           <Text style={styles.gameOverHeadline}>DRAINED</Text>
@@ -525,6 +589,16 @@ const styles = StyleSheet.create({
   },
   headerRight: {
     alignItems: "flex-end",
+  },
+  restartBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#27272a",
+    backgroundColor: "#18181b",
+    alignItems: "center",
+    justifyContent: "center",
   },
   headerLabel: {
     color: "#52525b",

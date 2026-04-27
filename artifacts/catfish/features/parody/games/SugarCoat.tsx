@@ -169,6 +169,7 @@ export function SugarCoat({ onExit }: Props) {
   const [moves, setMoves] = useState(STARTING_MOVES);
   const [selected, setSelected] = useState<number | null>(null);
   const [phase, setPhase] = useState<"PLAYING" | "GAME_OVER">("PLAYING");
+  const [showRestartConfirm, setShowRestartConfirm] = useState(false);
   const recordParodyScore = useGameState((s) => s.recordParodyScore);
   const bestClout = useGameState((s) => s.parody.sugarCoatHighClout);
   const recordedRef = useRef(false);
@@ -207,6 +208,16 @@ export function SugarCoat({ onExit }: Props) {
   }, [phase, score, recordParodyScore]);
 
   function reset() {
+    // Cancel any in-flight resolve / game-over deferrals from the
+    // previous run. Without this, a restart triggered inside the 250ms
+    // game-over deferral window (or the 180ms resolve window) would
+    // let a stale setTimeout fire on the fresh board, immediately
+    // flipping the new run to GAME_OVER or leaving `resolvingRef`
+    // stuck true.
+    for (const h of pendingTimeoutsRef.current) clearTimeout(h);
+    pendingTimeoutsRef.current.clear();
+    resolvingRef.current = false;
+    setShowRestartConfirm(false);
     setBoard(freshBoard());
     setScore(0);
     setMoves(STARTING_MOVES);
@@ -310,6 +321,20 @@ export function SugarCoat({ onExit }: Props) {
             <Text style={styles.statLabel}>MOVES</Text>
             <Text style={styles.statValue}>{moves}</Text>
           </View>
+          {phase === "PLAYING" ? (
+            <Pressable
+              testID="sugarcoat-restart"
+              accessibilityLabel="Restart run"
+              onPress={() => setShowRestartConfirm(true)}
+              hitSlop={10}
+              style={({ pressed }) => [
+                styles.restartBtn,
+                pressed && { opacity: 0.6 },
+              ]}
+            >
+              <Feather name="rotate-ccw" size={14} color="#a1a1aa" />
+            </Pressable>
+          ) : null}
         </View>
       </View>
 
@@ -345,6 +370,35 @@ export function SugarCoat({ onExit }: Props) {
         <Text style={styles.footerLabel}>BEST CLOUT</Text>
         <Text style={styles.footerValue}>{Math.max(bestClout, score)}</Text>
       </View>
+
+      {showRestartConfirm && phase === "PLAYING" ? (
+        <View style={styles.overlay}>
+          <Text style={styles.confirmHeadline}>RESTART RUN?</Text>
+          <Text style={styles.gameOverBody}>
+            Board, CLOUT, and moves reset.
+          </Text>
+          <Pressable
+            testID="sugarcoat-restart-confirm"
+            onPress={reset}
+            style={({ pressed }) => [
+              styles.primaryBtn,
+              pressed && { opacity: 0.7 },
+            ]}
+          >
+            <Text style={styles.primaryBtnLabel}>RESTART</Text>
+          </Pressable>
+          <Pressable
+            testID="sugarcoat-restart-cancel"
+            onPress={() => setShowRestartConfirm(false)}
+            style={({ pressed }) => [
+              styles.secondaryBtn,
+              pressed && { opacity: 0.7 },
+            ]}
+          >
+            <Text style={styles.secondaryBtnLabel}>KEEP PLAYING</Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       {phase === "GAME_OVER" ? (
         <View style={styles.overlay}>
@@ -403,7 +457,28 @@ const styles = StyleSheet.create({
   },
   headerRight: {
     flexDirection: "row",
+    alignItems: "center",
     gap: 16,
+  },
+  restartBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#27272a",
+    backgroundColor: "#18181b",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  confirmHeadline: {
+    color: "white",
+    fontSize: 28,
+    fontWeight: "900",
+    fontStyle: "italic",
+    letterSpacing: 1,
+    marginBottom: 14,
+    textAlign: "center",
+    textTransform: "uppercase",
   },
   statBlock: {
     alignItems: "flex-end",

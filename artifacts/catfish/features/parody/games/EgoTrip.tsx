@@ -19,6 +19,7 @@
  *     new high score (only when strictly higher than the previous
  *     best, so re-clearing the same score doesn't re-fire).
  */
+import { Feather } from "@expo/vector-icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   LayoutChangeEvent,
@@ -56,6 +57,8 @@ export function EgoTrip({ onExit }: Props) {
   const [phase, setPhase] = useState<Phase>("READY");
   const [countdown, setCountdown] = useState(3);
   const [score, setScore] = useState(0);
+  const [showRestartConfirm, setShowRestartConfirm] = useState(false);
+  const confirmingRestartRef = useRef(false);
 
   // Per-frame mutable state — we render it via direct style writes
   // (translated through React state on every animation tick) but
@@ -77,6 +80,9 @@ export function EgoTrip({ onExit }: Props) {
   useEffect(() => {
     phaseRef.current = phase;
   }, [phase]);
+  useEffect(() => {
+    confirmingRestartRef.current = showRestartConfirm;
+  }, [showRestartConfirm]);
 
   const recordParodyScore = useGameState((s) => s.recordParodyScore);
   const bestEgo = useGameState((s) => s.parody.egoTripHighScore);
@@ -109,7 +115,7 @@ export function EgoTrip({ onExit }: Props) {
   }, []);
 
   const tick = useCallback((time: number) => {
-    if (phaseRef.current !== "PLAYING") {
+    if (phaseRef.current !== "PLAYING" || confirmingRestartRef.current) {
       rafRef.current = requestAnimationFrame(tick);
       return;
     }
@@ -238,6 +244,9 @@ export function EgoTrip({ onExit }: Props) {
   }, [phase, reset]);
 
   function handleTap() {
+    // Swallow taps on the field while the restart confirmation is up
+    // so the user doesn't accidentally flap or skip the prompt.
+    if (showRestartConfirm) return;
     if (phase === "READY" || phase === "GAME_OVER") {
       reset();
       setPhase("COUNTDOWN");
@@ -259,9 +268,28 @@ export function EgoTrip({ onExit }: Props) {
       {/* Sky gradient as flat colors — keeps the file dependency-free */}
       <View style={[StyleSheet.absoluteFill, styles.sky]} />
 
-      <View style={styles.scoreBar} pointerEvents="none">
+      <View style={styles.scoreBar} pointerEvents="box-none">
         <Text style={styles.scoreText}>EGO: {score}</Text>
-        <Text style={styles.bestText}>BEST: {Math.max(bestEgo, score)}</Text>
+        <View style={styles.scoreBarRight} pointerEvents="box-none">
+          <Text style={styles.bestText}>BEST: {Math.max(bestEgo, score)}</Text>
+          {phase === "PLAYING" ? (
+            <Pressable
+              testID="egotrip-restart"
+              accessibilityLabel="Restart run"
+              hitSlop={10}
+              onPress={(e) => {
+                e.stopPropagation?.();
+                setShowRestartConfirm(true);
+              }}
+              style={({ pressed }) => [
+                styles.restartBtn,
+                pressed && { opacity: 0.6 },
+              ]}
+            >
+              <Feather name="rotate-ccw" size={14} color="white" />
+            </Pressable>
+          ) : null}
+        </View>
       </View>
 
       {pillarsRef.current.map((p) => (
@@ -325,6 +353,46 @@ export function EgoTrip({ onExit }: Props) {
         <View style={styles.overlay} pointerEvents="none">
           <Text style={styles.countdown}>{countdown}</Text>
         </View>
+      ) : null}
+
+      {showRestartConfirm && phase === "PLAYING" ? (
+        <Pressable
+          style={styles.overlay}
+          onPress={(e) => e.stopPropagation?.()}
+        >
+          <View style={styles.card}>
+            <Text style={styles.cardHeadline}>RESTART RUN?</Text>
+            <Text style={styles.cardBody}>SCORE AND PILLARS RESET.</Text>
+            <Pressable
+              testID="egotrip-restart-confirm"
+              onPress={(e) => {
+                e.stopPropagation?.();
+                setShowRestartConfirm(false);
+                reset();
+                setPhase("COUNTDOWN");
+              }}
+              style={({ pressed }) => [
+                styles.primaryBtn,
+                pressed && { opacity: 0.7 },
+              ]}
+            >
+              <Text style={styles.primaryBtnLabel}>RESTART</Text>
+            </Pressable>
+            <Pressable
+              testID="egotrip-restart-cancel"
+              onPress={(e) => {
+                e.stopPropagation?.();
+                setShowRestartConfirm(false);
+              }}
+              style={({ pressed }) => [
+                styles.secondaryBtn,
+                pressed && { opacity: 0.7 },
+              ]}
+            >
+              <Text style={styles.secondaryBtnLabel}>KEEP PLAYING</Text>
+            </Pressable>
+          </View>
+        </Pressable>
       ) : null}
 
       {phase === "GAME_OVER" ? (
@@ -396,6 +464,21 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 1,
+  },
+  scoreBarRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  restartBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.3)",
+    backgroundColor: "rgba(0, 0, 0, 0.4)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   pillarLabel: {
     position: "absolute",

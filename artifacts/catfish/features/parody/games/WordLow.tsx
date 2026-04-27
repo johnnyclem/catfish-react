@@ -17,6 +17,7 @@
  *   - SFX: `swipe_pass` on a key tap, `match` on a win, `lose` on
  *     loss — all through the existing `audioEvents.emitSfx` bus.
  */
+import { Feather } from "@expo/vector-icons";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
@@ -64,6 +65,7 @@ export function WordLow({ onExit }: Props) {
   const [gameState, setGameState] = useState<"PLAYING" | "WON" | "LOST">(
     "PLAYING",
   );
+  const [showRestartConfirm, setShowRestartConfirm] = useState(false);
   const streakRef = useRef(0);
   const recordParodyScore = useGameState((s) => s.recordParodyScore);
   const bestStreak = useGameState((s) => s.parody.wordLowBestStreak);
@@ -104,6 +106,7 @@ export function WordLow({ onExit }: Props) {
   }
 
   function replay() {
+    setShowRestartConfirm(false);
     const nextOffset = seedOffset + 1;
     setSeedOffset(nextOffset);
     setTargetWord(BUZZWORDS[dateSeed(nextOffset)] ?? "GHOST");
@@ -125,7 +128,23 @@ export function WordLow({ onExit }: Props) {
       <View pointerEvents="none" style={styles.smoke} />
       <View style={styles.header}>
         <Text style={styles.title}>Word-Low</Text>
-        <Text style={styles.subtitle}>POSER CHECK: ON</Text>
+        <View style={styles.headerRight}>
+          <Text style={styles.subtitle}>POSER CHECK: ON</Text>
+          {gameState === "PLAYING" ? (
+            <Pressable
+              testID="wordlow-restart"
+              accessibilityLabel="Restart run"
+              onPress={() => setShowRestartConfirm(true)}
+              hitSlop={10}
+              style={({ pressed }) => [
+                styles.restartBtn,
+                pressed && { opacity: 0.6 },
+              ]}
+            >
+              <Feather name="rotate-ccw" size={14} color="#a1a1aa" />
+            </Pressable>
+          ) : null}
+        </View>
       </View>
 
       <ScrollView
@@ -205,6 +224,35 @@ export function WordLow({ onExit }: Props) {
           </View>
         ))}
       </View>
+
+      {showRestartConfirm && gameState === "PLAYING" ? (
+        <View style={styles.overlay}>
+          <Text style={styles.confirmHeadline}>RESTART RUN?</Text>
+          <Text style={styles.overlayBody}>
+            You'll lose this board and pick up a fresh word.
+          </Text>
+          <Pressable
+            testID="wordlow-restart-confirm"
+            onPress={replay}
+            style={({ pressed }) => [
+              styles.primaryBtn,
+              pressed && { opacity: 0.7 },
+            ]}
+          >
+            <Text style={styles.primaryBtnLabel}>RESTART</Text>
+          </Pressable>
+          <Pressable
+            testID="wordlow-restart-cancel"
+            onPress={() => setShowRestartConfirm(false)}
+            style={({ pressed }) => [
+              styles.secondaryBtn,
+              pressed && { opacity: 0.7 },
+            ]}
+          >
+            <Text style={styles.secondaryBtnLabel}>KEEP PLAYING</Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       {gameState !== "PLAYING" ? (
         <View style={styles.overlay}>
@@ -318,6 +366,31 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: "700",
     letterSpacing: 1.5,
+  },
+  headerRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  restartBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#27272a",
+    backgroundColor: "#18181b",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  confirmHeadline: {
+    color: "white",
+    fontSize: 28,
+    fontWeight: "900",
+    fontStyle: "italic",
+    letterSpacing: 1,
+    marginBottom: 14,
+    textTransform: "uppercase",
+    textAlign: "center",
   },
   gridArea: {
     paddingVertical: 4,

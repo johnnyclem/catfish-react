@@ -10,6 +10,7 @@
  */
 import { spawn } from "node:child_process";
 import { enforceExpoVersions } from "./check-expo-versions.mjs";
+import { enforceExpoDoctor } from "./check-expo-doctor.mjs";
 
 const PORT = process.env.PORT || "8000";
 
@@ -17,6 +18,12 @@ const PORT = process.env.PORT || "8000";
 // mismatch — those mismatches only show up as a yellow warning otherwise and
 // can ship straight to real devices (see audio crash, Apr 2026).
 await enforceExpoVersions({ context: "dev server startup" });
+
+// Also block on the broader battery of `expo-doctor` checks (missing native
+// peer deps, app config issues, autolinking metadata drift, etc.). Cached
+// against package.json/app.json/lockfile so it only really runs when those
+// inputs change.
+await enforceExpoDoctor({ context: "dev server startup" });
 
 const env = {
   ...process.env,

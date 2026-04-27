@@ -516,6 +516,13 @@ async function main() {
   const { enforceExpoVersions } = await import("./check-expo-versions.mjs");
   await enforceExpoVersions({ context: "static build" });
 
+  // Also run the broader `expo-doctor` battery (missing native peer deps,
+  // autolinking metadata drift, app config issues, etc.). Cached on success
+  // against package.json/app.json/lockfile so repeat builds don't pay the
+  // ~30s cost when nothing relevant changed.
+  const { enforceExpoDoctor } = await import("./check-expo-doctor.mjs");
+  await enforceExpoDoctor({ context: "static build" });
+
   const domain = getDeploymentDomain();
   const expoPublicReplId = getExpoPublicReplId();
   const baseUrl = `https://${domain}`;

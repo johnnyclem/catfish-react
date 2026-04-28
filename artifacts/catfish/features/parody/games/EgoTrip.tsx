@@ -45,6 +45,34 @@ const PILLAR_WIDTH = 60;
 const SPAWN_INTERVAL_MS = 1800;
 const BIRD_SIZE = 36;
 
+/**
+ * Test-only deterministic mode (set by the e2e suite before mount):
+ *   globalThis.__CATFISH_EGOTRIP_TEST__ = true
+ *
+ * When set, gravity is suppressed (bird floats) and every pillar pair is
+ * spawned with its gap centered on the bird so the run scores reliably
+ * without input. This is the minimum hook needed to drive a real
+ * score-then-resume UI path in headless Chrome — the bird crashes on a
+ * single missed flap, which is too twitchy to test live without it.
+ *
+ * Hardened so it CANNOT activate outside development builds:
+ *   - The `if (!__DEV__) return false` guard short-circuits in any
+ *     production bundle (Metro inlines `__DEV__` to `false` at build
+ *     time, so the entire test branch is dead code in shipped builds).
+ *   - No UI surface ever sets the flag.
+ *   - The flag is only ever set by the Playwright suite, which runs
+ *     against the dev server.
+ *
+ * Removing this short-circuit removes test-only behaviour only.
+ */
+declare const __DEV__: boolean;
+function isEgoTripTestMode(): boolean {
+  if (typeof __DEV__ !== "undefined" && !__DEV__) return false;
+  if (typeof globalThis === "undefined") return false;
+  return (globalThis as { __CATFISH_EGOTRIP_TEST__?: unknown })
+    .__CATFISH_EGOTRIP_TEST__ === true;
+}
+
 interface Pillar {
   id: number;
   x: number;
@@ -151,8 +179,13 @@ export function EgoTrip({ onExit }: Props) {
       return;
     }
 
-    velocityRef.current += GRAVITY;
-    birdYRef.current += velocityRef.current;
+    const testMode = isEgoTripTestMode();
+    if (!testMode) {
+      velocityRef.current += GRAVITY;
+      birdYRef.current += velocityRef.current;
+    }
+    // In test mode the bird floats — gravity is suppressed and we never
+    // mutate Y, so floor/ceiling collisions can't fire.
 
     // Floor / ceiling collide → burnout
     if (
@@ -177,8 +210,17 @@ export function EgoTrip({ onExit }: Props) {
     if (time - lastSpawnRef.current > SPAWN_INTERVAL_MS) {
       const minTop = 50;
       const maxTop = Math.max(minTop + 1, fieldH - PILLAR_GAP - 50);
-      const topHeight =
-        minTop + Math.floor(Math.random() * (maxTop - minTop));
+      // In test mode, align the gap so the bird passes through dead-center
+      // every time. Production code path is unchanged.
+      const topHeight = testMode
+        ? Math.min(
+            maxTop,
+            Math.max(
+              minTop,
+              Math.round(birdYRef.current + BIRD_SIZE / 2 - PILLAR_GAP / 2),
+            ),
+          )
+        : minTop + Math.floor(Math.random() * (maxTop - minTop));
       pillarsRef.current = [
         ...pillarsRef.current,
         { id: time, x: fieldW, topHeight, passed: false },

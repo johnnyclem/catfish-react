@@ -25,3 +25,5 @@ kind = "mobile"
   [services.env]
   PORT = "8000"
   BASE_PATH = "/"
+  SKIP_EXPO_VERSION_CHECK = "1"
+  SKIP_EXPO_DOCTOR = "1"

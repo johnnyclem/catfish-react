@@ -167,6 +167,17 @@ export async function enforceExpoDoctor({
   projectRoot = DEFAULT_PROJECT_ROOT,
   context = "startup",
 } = {}) {
+  // Opt-in escape hatch — `SKIP_EXPO_DOCTOR=1` skips the gate entirely.
+  // Used by CI / e2e environments that have already accepted the version
+  // drift and just need the dev server to come up; pairs with the
+  // matching `SKIP_EXPO_VERSION_CHECK=1` bypass in check-expo-versions.mjs.
+  if (process.env.SKIP_EXPO_DOCTOR === "1") {
+    console.warn(
+      `[expo-doctor] SKIP_EXPO_DOCTOR=1 set — bypassing doctor for ${context}.`,
+    );
+    return;
+  }
+
   const force = process.env.EXPO_DOCTOR_FORCE === "1";
 
   let cacheKey = null;

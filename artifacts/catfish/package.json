@@ -21,7 +21,9 @@
     "test:deck-refill": "tsx scripts/test-deck-refill.mts",
     "test:parody-save-race": "tsx scripts/test-parody-save-race.mts",
     "test:parody-session": "tsx scripts/test-parody-session.mts",
-    "test:parody-fresh-start": "tsx scripts/test-parody-fresh-start.mts"
+    "test:parody-fresh-start": "tsx scripts/test-parody-fresh-start.mts",
+    "test:e2e:install": "playwright install --with-deps chromium",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
@@ -29,6 +31,7 @@
     "@expo/cli": "54.0.23",
     "@expo/ngrok": "^4.1.0",
     "@expo/vector-icons": "^15.0.3",
+    "@playwright/test": "^1.49.1",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@stardazed/streams-text-encoding": "^1.0.2",
     "@tanstack/react-query": "catalog:",

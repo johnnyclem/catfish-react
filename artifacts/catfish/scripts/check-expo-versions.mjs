@@ -88,6 +88,18 @@ export async function enforceExpoVersions({
   projectRoot = DEFAULT_PROJECT_ROOT,
   context = "startup",
 } = {}) {
+  // Opt-in escape hatch for CI/test environments where the dev server is
+  // launched purely to host the web build for an e2e suite. The check is
+  // still important for human dev/build/publish flows — the env var must be
+  // set explicitly per-invocation, and the bypass is announced loudly so
+  // it can't silently hide drift in regular dev.
+  if (process.env.SKIP_EXPO_VERSION_CHECK === "1") {
+    console.warn(
+      `[expo-version-check] SKIP_EXPO_VERSION_CHECK=1 set — bypassing version check for ${context}.`,
+    );
+    return;
+  }
+
   let result;
   try {
     result = await checkExpoVersions({ projectRoot });

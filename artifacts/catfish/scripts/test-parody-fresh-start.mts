@@ -1,9 +1,10 @@
 /**
  * Regression coverage for the FRESH START confirm prompt added in
- * Task #49 (and locked in by Task #52). Before #49, the SafeSpot
- * and EgoTrip READY cards' "FRESH START" button wiped the same-day
+ * Task #49 (and locked in by Task #52 for SafeSpot/EgoTrip and
+ * Task #53 for SugarCoat). Before #49, three parody mini-games'
+ * "start over from a saved board" affordance wiped the same-day
  * saved snapshot inline on the very first tap — a single stray tap
- * threw away real progress with no undo. The fix routes the press
+ * threw away real progress with no undo. The fix routes each press
  * through a confirm overlay so wiping requires a deliberate second
  * confirmation.
  *
@@ -15,23 +16,24 @@
  * `test-parody-session.mts` test 7) we cover the behavior in two
  * layers:
  *
- *   1. STATE-MACHINE MIRROR — model the exact READY-card press
- *      handlers as plain functions and assert the right side
- *      effects fire for each button. If someone changes the contract
- *      here without updating the mirror, the mirror will drift and
- *      a follow-up reviewer will catch it. If they change the mirror
- *      to silently re-introduce the inline wipe, the assertions
- *      below will trip.
+ *   1. STATE-MACHINE MIRROR — model the exact press handlers as
+ *      plain functions and assert the right side effects fire for
+ *      each button. If someone changes the contract here without
+ *      updating the mirror, the mirror will drift and a follow-up
+ *      reviewer will catch it. If they change the mirror to
+ *      silently re-introduce the inline wipe, the assertions below
+ *      will trip.
  *
  *   2. SOURCE-SHAPE GUARDS — read the actual `.tsx` files and
  *      assert that the FRESH START press handlers route through
  *      `setShowFreshStartConfirm(true)` rather than an inline
- *      `saveSafeSpotSession(null)` / `saveEgoTripSession(null)`
- *      wipe, AND that the confirm/cancel testIDs the mirror tests
- *      against actually exist in the rendered tree. This is what
- *      catches "someone simplifying the FRESH START handler back
- *      to its old wipe-immediately shape" — the specific regression
- *      the task description calls out.
+ *      `saveSafeSpotSession(null)` / `saveEgoTripSession(null)` /
+ *      `saveSugarCoatSession(null)` wipe, AND that the
+ *      confirm/cancel testIDs the mirror tests against actually
+ *      exist in the rendered tree. This is what catches "someone
+ *      simplifying the FRESH START handler back to its old
+ *      wipe-immediately shape" — the specific regression the task
+ *      description calls out.
  *
  * Asserts (in order):
  *   1. SafeSpot — same-day snapshot present: FRESH START opens
@@ -51,6 +53,18 @@
  *   6. EgoTrip.tsx source guards: same as #5 for EgoTrip's
  *      egotrip-fresh / egotrip-fresh-confirm / egotrip-fresh-cancel
  *      testIDs.
+ *   7. SugarCoat — same-day snapshot restored: sugarcoat-fresh
+ *      opens confirm; sugarcoat-fresh-cancel dismisses without
+ *      clearing; sugarcoat-fresh-confirm wipes the snapshot, resets
+ *      the board/score/moves, and drops the START OVER affordance
+ *      out of the header (because the new run isn't a restored one).
+ *   8. SugarCoat.tsx source guards: confirm overlay testIDs exist;
+ *      the START OVER button is gated on `wasRestoredRef.current`;
+ *      the sugarcoat-fresh press handler routes through the confirm
+ *      state and does NOT wipe the session inline; the confirm
+ *      handler routes through `reset`, which is the one place
+ *      `saveSugarCoatSession(null)` is allowed to fire from this
+ *      flow.
  */
 
 import { readFileSync } from "node:fs";
@@ -70,6 +84,10 @@ const SAFE_SPOT_SRC = readFileSync(
 );
 const EGO_TRIP_SRC = readFileSync(
   new URL("../features/parody/games/EgoTrip.tsx", import.meta.url),
+  "utf8",
+);
+const SUGAR_COAT_SRC = readFileSync(
+  new URL("../features/parody/games/SugarCoat.tsx", import.meta.url),
   "utf8",
 );
 void here; // referenced for pathing context above; kept for clarity.
@@ -549,6 +567,272 @@ void here; // referenced for pathing context above; kept for clarity.
   );
   console.log(
     "PASS  test 6: EgoTrip.tsx source guards — confirm overlay wired correctly; inline-wipe foot-gun cannot be re-introduced",
+  );
+}
+
+// =====================================================================
+// Test 7 — SugarCoat header START OVER button with a same-day saved
+// board restored on mount.
+// =====================================================================
+//
+// Mirror of SugarCoat's sugarcoat-fresh / sugarcoat-fresh-confirm /
+// sugarcoat-fresh-cancel handlers. Key differences vs SafeSpot/EgoTrip:
+//
+//   - SugarCoat has no READY phase. The game starts in PLAYING and the
+//     header's START OVER pill is gated on `wasRestoredRef.current`
+//     (only meaningful when this run was hydrated from a same-day
+//     snapshot). After a successful confirm, the run is fresh, the
+//     ref flips to false, and the pill drops out of the tree.
+//   - The confirm button uses `onPress={reset}` (a function reference,
+//     not an inline lambda). The `reset()` body is what actually clears
+//     the snapshot via `saveSugarCoatSession(null)` — so the mirror
+//     models `pressSugarcoatFreshConfirm` as "call reset()".
+{
+  type Snap = { dateKey: string; board: string[]; score: number; moves: number };
+  const initialSnap: Snap = {
+    dateKey: "20260427",
+    board: new Array(49).fill("lie"),
+    score: 240,
+    moves: 11,
+  };
+
+  const calls = { saveSnap: [] as Array<Snap | null>, freshBoard: 0 };
+  const state = {
+    phase: "PLAYING" as "PLAYING" | "GAME_OVER",
+    showFreshStartConfirm: false,
+    wasRestored: true,
+    board: initialSnap.board.slice(),
+    score: initialSnap.score,
+    moves: initialSnap.moves,
+  };
+  function saveSugarCoatSession(snap: Snap | null) {
+    calls.saveSnap.push(snap);
+  }
+  function makeFreshBoard(): string[] {
+    calls.freshBoard += 1;
+    return new Array(49).fill("excuse");
+  }
+
+  function pressSugarcoatFresh() {
+    // Mirrors the SugarCoat.tsx press handler — must NOT wipe inline.
+    state.showFreshStartConfirm = true;
+  }
+  function pressSugarcoatFreshConfirm() {
+    // Mirrors `reset()` in SugarCoat.tsx — the confirm Pressable's
+    // onPress is `reset` itself, so the wipe + board reset happen
+    // here (and only here, in the FRESH START flow).
+    state.showFreshStartConfirm = false;
+    state.board = makeFreshBoard();
+    state.score = 0;
+    state.moves = 20;
+    state.phase = "PLAYING";
+    if (state.wasRestored) {
+      state.wasRestored = false;
+    }
+    saveSugarCoatSession(null);
+  }
+  function pressSugarcoatFreshCancel() {
+    state.showFreshStartConfirm = false;
+  }
+
+  // Tap START OVER — should open the confirm, NOT wipe.
+  pressSugarcoatFresh();
+  assert(
+    state.showFreshStartConfirm === true,
+    "SugarCoat: START OVER opens the confirm overlay when a saved board was restored",
+  );
+  assert(
+    state.wasRestored === true,
+    "SugarCoat: wasRestoredRef stays true while confirm is open (so the START OVER pill stays visible behind the overlay)",
+  );
+  assert(
+    state.score === initialSnap.score && state.moves === initialSnap.moves,
+    `SugarCoat: score/moves unchanged by the START OVER tap, saw score=${state.score} moves=${state.moves}`,
+  );
+  assert(
+    calls.saveSnap.length === 0 && calls.freshBoard === 0,
+    `SugarCoat: no save/board-reset side effects from START OVER tap, saw saves=${calls.saveSnap.length} freshBoards=${calls.freshBoard}`,
+  );
+
+  // Tap KEEP SAVED RUN — dismisses, snapshot intact.
+  pressSugarcoatFreshCancel();
+  assert(
+    state.showFreshStartConfirm === false,
+    "SugarCoat: KEEP SAVED RUN dismisses the confirm overlay",
+  );
+  assert(
+    calls.saveSnap.length === 0,
+    `SugarCoat: KEEP SAVED RUN does not call saveSugarCoatSession, saw ${calls.saveSnap.length} calls`,
+  );
+  assert(
+    state.wasRestored === true,
+    "SugarCoat: KEEP SAVED RUN keeps wasRestoredRef true so the pill remains",
+  );
+  assert(
+    state.score === initialSnap.score && state.moves === initialSnap.moves,
+    `SugarCoat: KEEP SAVED RUN leaves score/moves intact, saw score=${state.score} moves=${state.moves}`,
+  );
+
+  // Re-open and confirm START FRESH — wipes, resets, drops the pill.
+  pressSugarcoatFresh();
+  assert(
+    state.showFreshStartConfirm === true,
+    "SugarCoat: START OVER re-opens confirm after a cancel",
+  );
+  pressSugarcoatFreshConfirm();
+  assert(
+    calls.saveSnap.length === 1 && calls.saveSnap[0] === null,
+    `SugarCoat: START FRESH calls saveSugarCoatSession(null) exactly once, saw ${JSON.stringify(calls.saveSnap)}`,
+  );
+  assert(
+    calls.freshBoard === 1,
+    `SugarCoat: START FRESH rebuilds the board exactly once, saw ${calls.freshBoard}`,
+  );
+  assert(
+    state.score === 0 && state.moves === 20,
+    `SugarCoat: START FRESH resets score to 0 and moves to STARTING_MOVES, saw score=${state.score} moves=${state.moves}`,
+  );
+  assert(
+    state.wasRestored === false,
+    "SugarCoat: START FRESH flips wasRestoredRef to false so the START OVER pill drops out of the header",
+  );
+  assert(
+    state.showFreshStartConfirm === false,
+    "SugarCoat: START FRESH closes the confirm overlay",
+  );
+  assert(
+    state.phase === "PLAYING",
+    `SugarCoat: phase remains PLAYING after the fresh-start (no READY transition), saw ${state.phase}`,
+  );
+  console.log(
+    "PASS  test 7: SugarCoat START OVER routes through confirm; START FRESH wipes; KEEP SAVED RUN preserves",
+  );
+}
+
+// =====================================================================
+// Test 8 — SugarCoat.tsx source-shape guards. Locks in the actual
+// component shape so a future refactor can't silently re-introduce
+// the inline-wipe foot-gun.
+// =====================================================================
+{
+  // Required testIDs must be present in the rendered tree.
+  for (const id of [
+    "sugarcoat-fresh",
+    "sugarcoat-fresh-confirm",
+    "sugarcoat-fresh-cancel",
+  ]) {
+    assert(
+      SUGAR_COAT_SRC.includes(`testID="${id}"`),
+      `SugarCoat.tsx must render a Pressable with testID="${id}"`,
+    );
+  }
+
+  // The sugarcoat-fresh button must only render when the current run
+  // was hydrated from a saved snapshot — there's no point offering
+  // "start over from the saved board" when nothing was restored. The
+  // header gates it on `phase === "PLAYING" && wasRestoredRef.current`.
+  const freshIdx = SUGAR_COAT_SRC.indexOf('testID="sugarcoat-fresh"');
+  assert(
+    freshIdx >= 0,
+    "SugarCoat.tsx: locate the sugarcoat-fresh Pressable",
+  );
+  // Look back from the testID to find the nearest gating ternary opener
+  // and assert it references `wasRestoredRef.current`.
+  const beforeFresh = SUGAR_COAT_SRC.slice(0, freshIdx);
+  assert(
+    /wasRestoredRef\.current[^?]*\?[\s\S]*$/.test(beforeFresh),
+    "SugarCoat.tsx: sugarcoat-fresh button must be gated on `wasRestoredRef.current` so it never renders without a restored saved run",
+  );
+
+  // The sugarcoat-fresh handler must route through the confirm state
+  // and must NOT wipe the session inline.
+  const freshBlock = SUGAR_COAT_SRC.slice(freshIdx, freshIdx + 800);
+  assert(
+    /setShowFreshStartConfirm\(true\)/.test(freshBlock),
+    "SugarCoat.tsx: sugarcoat-fresh handler must call setShowFreshStartConfirm(true)",
+  );
+  assert(
+    !/saveSugarCoatSession\(\s*null\s*\)/.test(freshBlock),
+    "SugarCoat.tsx: sugarcoat-fresh handler must NOT call saveSugarCoatSession(null) inline — that's the pre-fix foot-gun",
+  );
+  assert(
+    !/wasRestoredRef\.current\s*=\s*false/.test(freshBlock),
+    "SugarCoat.tsx: sugarcoat-fresh handler must NOT flip wasRestoredRef inline — only the confirm flow (via reset) should",
+  );
+  assert(
+    !/setBoard\(/.test(freshBlock),
+    "SugarCoat.tsx: sugarcoat-fresh handler must NOT rebuild the board inline — only the confirm flow (via reset) should",
+  );
+
+  // The confirm Pressable's onPress is `reset` (a function reference,
+  // not an inline lambda). Asserting on that exact shape pins down the
+  // wiring so a refactor that inlines a partial wipe would trip.
+  const confirmIdx = SUGAR_COAT_SRC.indexOf(
+    'testID="sugarcoat-fresh-confirm"',
+  );
+  const confirmBlock = SUGAR_COAT_SRC.slice(confirmIdx, confirmIdx + 600);
+  assert(
+    /onPress=\{reset\}/.test(confirmBlock),
+    "SugarCoat.tsx: sugarcoat-fresh-confirm must wire onPress to the `reset` function reference (not a partial inline handler)",
+  );
+
+  // The `reset` function itself is the one place the fresh-start
+  // wipe + overlay close are allowed to happen. Carve it out and
+  // assert the contract holds.
+  const resetMatch = SUGAR_COAT_SRC.match(
+    /function reset\(\)\s*\{([\s\S]*?)\n\s{2}\}/,
+  );
+  assert(
+    resetMatch != null,
+    "SugarCoat.tsx: locate the top-level `function reset()` body",
+  );
+  const resetBody = resetMatch[1] ?? "";
+  assert(
+    /saveSugarCoatSession\(\s*null\s*\)/.test(resetBody),
+    "SugarCoat.tsx: reset() must call saveSugarCoatSession(null) so START FRESH actually wipes the saved snapshot",
+  );
+  assert(
+    /setShowFreshStartConfirm\(false\)/.test(resetBody),
+    "SugarCoat.tsx: reset() must close the FRESH START confirm overlay",
+  );
+  assert(
+    /wasRestoredRef\.current\s*=\s*false/.test(resetBody),
+    "SugarCoat.tsx: reset() must flip wasRestoredRef to false so the START OVER pill drops out of the header on the new run",
+  );
+  assert(
+    /setBoard\(\s*freshBoard\(\)\s*\)/.test(resetBody),
+    "SugarCoat.tsx: reset() must seed a fresh board",
+  );
+  assert(
+    /setScore\(\s*0\s*\)/.test(resetBody) &&
+      /setMoves\(\s*STARTING_MOVES\s*\)/.test(resetBody),
+    "SugarCoat.tsx: reset() must reset score to 0 and moves to STARTING_MOVES",
+  );
+
+  // The cancel handler must close the overlay only — no wipe, no
+  // ref nulling, no board reset.
+  const cancelIdx = SUGAR_COAT_SRC.indexOf(
+    'testID="sugarcoat-fresh-cancel"',
+  );
+  const cancelBlock = SUGAR_COAT_SRC.slice(cancelIdx, cancelIdx + 400);
+  assert(
+    /setShowFreshStartConfirm\(false\)/.test(cancelBlock),
+    "SugarCoat.tsx: sugarcoat-fresh-cancel must close the confirm overlay",
+  );
+  assert(
+    !/saveSugarCoatSession\(\s*null\s*\)/.test(cancelBlock),
+    "SugarCoat.tsx: sugarcoat-fresh-cancel must NOT clear the saved session",
+  );
+  assert(
+    !/wasRestoredRef\.current\s*=\s*false/.test(cancelBlock),
+    "SugarCoat.tsx: sugarcoat-fresh-cancel must NOT flip wasRestoredRef",
+  );
+  assert(
+    !/setBoard\(/.test(cancelBlock),
+    "SugarCoat.tsx: sugarcoat-fresh-cancel must NOT rebuild the board",
+  );
+  console.log(
+    "PASS  test 8: SugarCoat.tsx source guards — confirm overlay wired correctly; inline-wipe foot-gun cannot be re-introduced",
   );
 }
 

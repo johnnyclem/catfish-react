@@ -73,6 +73,31 @@ Each parody game (WordLow / SafeSpot / EgoTrip / SugarCoat) saves its in-progres
 - `SugarCoat.tsx` — silently restores the same-day board/score/moves on mount (no READY phase). Snapshots after each *settled* swap (post-cascade, via the existing 180ms resolve boundary using a `boardRef` mirror); skips no-op swaps. Game-over and Replay both clear the snapshot.
 - `pnpm --filter @workspace/catfish test:parody-session` — exercises hydrate's date gate (stale snapshots dropped, WordLow streak preserved), same-day round-trip for all three game snapshots, the independent write chains, the serialized session-save chain, sibling-clear isolation, and a regression check that `recordParodyScore` still updates memory synchronously.
 
+### Expo SDK version drift
+
+`scripts/check-expo-versions.mjs` runs as part of `pnpm --filter @workspace/catfish run dev`
+and refuses to start the dev server when any installed Expo package falls
+outside the band the SDK expects. To re-run the check on demand and fix any
+drift:
+
+1. `pnpm --filter @workspace/catfish exec expo install --check` — list any
+   mismatches.
+2. `pnpm --filter @workspace/catfish exec expo install --fix` — pin each
+   mismatched package to the SDK-recommended version.
+   - The workspace pnpm config sets `minimumReleaseAge: 1440` (24h
+     embargo on brand-new releases). If `--fix` errors with
+     `ERR_PNPM_NO_MATURE_MATCHING_VERSION`, append the embargo bypass for
+     this one install only (scoped to the catfish package), e.g.:
+     `pnpm --filter @workspace/catfish --config.minimumReleaseAge=0 add -D expo@~X.Y.Z ...`
+     for devDependencies (the bulk of `expo-*` packages live there) and the
+     same flag without `-D` for runtime dependencies.
+3. Commit the resulting `package.json` / `pnpm-lock.yaml` changes.
+
+Do NOT set `SKIP_EXPO_VERSION_CHECK=1` (or the matching `SKIP_EXPO_DOCTOR=1`)
+in `.replit-artifact/artifact.toml` to paper over a real mismatch — the dev
+server runs both gates green by default and the env-var bypass exists only
+for CI/e2e flows that host the prebuilt web bundle.
+
 ### Replit preview iframe
 
 The `artifacts/catfish: expo` workflow runs Metro on local port `8000`, which

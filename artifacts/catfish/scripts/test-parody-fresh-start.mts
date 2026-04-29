@@ -8,6 +8,18 @@
  * through a confirm overlay so wiping requires a deliberate second
  * confirmation.
  *
+ * Task #56 extracted the duplicated state machine into a shared
+ * hook (`useFreshStartConfirm`) + overlay component
+ * (`FreshStartConfirmOverlay`) so a future fourth/fifth parody
+ * mini-game can't copy-paste the pre-#49 inline-wipe shape. The
+ * source-shape guards in this file have been refactored in step:
+ * the inline-wipe regression is now caught by guarding the SHARED
+ * HOOK in one place rather than re-stating the same shape across
+ * three per-game blocks. Each game's source still gets a small
+ * guard that pins it to the hook+overlay (so a fourth game added
+ * via copy-paste would have to opt OUT of the shared shape, not
+ * IN to the safe one).
+ *
  * Run via:
  *   pnpm --filter @workspace/catfish test:parody-fresh-start
  *
@@ -24,16 +36,14 @@
  *      silently re-introduce the inline wipe, the assertions below
  *      will trip.
  *
- *   2. SOURCE-SHAPE GUARDS — read the actual `.tsx` files and
- *      assert that the FRESH START press handlers route through
- *      `setShowFreshStartConfirm(true)` rather than an inline
- *      `saveSafeSpotSession(null)` / `saveEgoTripSession(null)` /
- *      `saveSugarCoatSession(null)` wipe, AND that the
- *      confirm/cancel testIDs the mirror tests against actually
- *      exist in the rendered tree. This is what catches "someone
- *      simplifying the FRESH START handler back to its old
- *      wipe-immediately shape" — the specific regression the task
- *      description calls out.
+ *   2. SOURCE-SHAPE GUARDS — read the actual `.ts(x)` files and
+ *      assert that the shared hook contains the saveSession(null)
+ *      wipe step + onAfterWipe follow-up + overlay close, AND that
+ *      each per-game source uses the shared hook + overlay (rather
+ *      than re-implementing its own state). This is what catches
+ *      "someone simplifying the FRESH START handler back to its
+ *      old wipe-immediately shape" — the specific regression the
+ *      Task #49/#52/#53/#56 chain locks down.
  *
  * Asserts (in order):
  *   1. SafeSpot — same-day snapshot present: FRESH START opens
@@ -47,24 +57,25 @@
  *      countdown.
  *   4. EgoTrip — no snapshot: the FRESH START button is not
  *      rendered at all (the READY card collapses to "TAP TO FLAP").
- *   5. SafeSpot.tsx source guards: confirm overlay testIDs exist;
- *      the FRESH START press handler routes through the confirm
- *      state and does NOT wipe the session inline.
- *   6. EgoTrip.tsx source guards: same as #5 for EgoTrip's
- *      egotrip-fresh / egotrip-fresh-confirm / egotrip-fresh-cancel
- *      testIDs.
- *   7. SugarCoat — same-day snapshot restored: sugarcoat-fresh
+ *   5. SugarCoat — same-day snapshot restored: sugarcoat-fresh
  *      opens confirm; sugarcoat-fresh-cancel dismisses without
  *      clearing; sugarcoat-fresh-confirm wipes the snapshot, resets
  *      the board/score/moves, and drops the START OVER affordance
  *      out of the header (because the new run isn't a restored one).
- *   8. SugarCoat.tsx source guards: confirm overlay testIDs exist;
- *      the START OVER button is gated on `wasRestoredRef.current`;
- *      the sugarcoat-fresh press handler routes through the confirm
- *      state and does NOT wipe the session inline; the confirm
- *      handler routes through `reset`, which is the one place
- *      `saveSugarCoatSession(null)` is allowed to fire from this
- *      flow.
+ *   6. SHARED HOOK source guard — `useFreshStartConfirm.ts` calls
+ *      `saveSession(null)` exactly once inside `confirmFreshStart`,
+ *      runs the optional `onAfterWipe` follow-up, and closes the
+ *      overlay. Pinning these three steps in one place is what
+ *      makes the inline-wipe foot-gun mechanically un-reintroducible
+ *      for any future parody mini-game.
+ *   7. SHARED OVERLAY source guard — `FreshStartConfirmOverlay.tsx`
+ *      renders the `${game}-fresh-confirm` / `${game}-fresh-cancel`
+ *      testIDs the per-game tests above pin against, and the cancel
+ *      button must NOT trigger any wipe path.
+ *   8. PER-GAME wiring guards — each of SafeSpot.tsx / EgoTrip.tsx /
+ *      SugarCoat.tsx imports the shared hook + overlay, invokes
+ *      them, gates the FRESH START button correctly, and contains
+ *      no inline `saveXSession(null)` near the FRESH START button.
  */
 
 import { readFileSync } from "node:fs";
@@ -90,28 +101,44 @@ const SUGAR_COAT_SRC = readFileSync(
   new URL("../features/parody/games/SugarCoat.tsx", import.meta.url),
   "utf8",
 );
+const FRESH_HOOK_SRC = readFileSync(
+  new URL(
+    "../features/parody/sessions/useFreshStartConfirm.ts",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const FRESH_OVERLAY_SRC = readFileSync(
+  new URL(
+    "../features/parody/sessions/FreshStartConfirmOverlay.tsx",
+    import.meta.url,
+  ),
+  "utf8",
+);
 void here; // referenced for pathing context above; kept for clarity.
 
 // =====================================================================
 // Test 1 — SafeSpot READY card with a same-day snapshot present.
 // =====================================================================
 //
-// Mirror of the SafeSpot READY card's FRESH START / confirm overlay
-// state machine. Mirrors the exact branching from `SafeSpot.tsx`:
+// State-machine mirror of the SafeSpot READY card's FRESH START /
+// confirm overlay flow. The mirror is independent of the actual
+// component implementation: it models the user-visible contract.
+// A future refactor that re-introduces the inline-wipe foot-gun
+// would have to update the mirror to keep it green, which a
+// reviewer would catch.
 //
 //   safespot-start press:
-//     if (resumeSnapshotRef.current) -> setShowFreshStartConfirm(true)
+//     if (resumeSnapshotRef.current) -> openFreshConfirm
 //     else -> saveSafeSpotSession(null); reset(); setPhase("PLAYING")
 //
-//   safespot-fresh-confirm press:
-//     resumeSnapshotRef.current = null
+//   safespot-fresh-confirm press (via shared hook):
 //     saveSafeSpotSession(null)
-//     reset()
-//     setShowFreshStartConfirm(false)
-//     setPhase("PLAYING")
+//     onAfterWipe -> resumeSnapshotRef = null; reset(); setPhase("PLAYING")
+//     closeFreshConfirm
 //
-//   safespot-fresh-cancel press:
-//     setShowFreshStartConfirm(false)
+//   safespot-fresh-cancel press (via shared hook):
+//     closeFreshConfirm
 //     (snapshot left alone, phase stays READY)
 {
   type Snap = { dateKey: string; wave: number };
@@ -140,11 +167,13 @@ void here; // referenced for pathing context above; kept for clarity.
     state.phase = "PLAYING";
   }
   function pressSafespotFreshConfirm() {
-    state.resumeSnapshot = null;
+    // Mirror of `useFreshStartConfirm.confirmFreshStart` wired with
+    // SafeSpot's onAfterWipe: wipe -> after-wipe -> close.
     saveSafeSpotSession(null);
+    state.resumeSnapshot = null;
     reset();
-    state.showFreshStartConfirm = false;
     state.phase = "PLAYING";
+    state.showFreshStartConfirm = false;
   }
   function pressSafespotFreshCancel() {
     state.showFreshStartConfirm = false;
@@ -290,11 +319,13 @@ void here; // referenced for pathing context above; kept for clarity.
     state.showFreshStartConfirm = true;
   }
   function pressEgotripFreshConfirm() {
-    state.resume = null;
+    // Mirror of `useFreshStartConfirm.confirmFreshStart` wired with
+    // EgoTrip's onAfterWipe: wipe -> after-wipe -> close.
     saveEgoTripSession(null);
+    state.resume = null;
     reset();
-    state.showFreshStartConfirm = false;
     state.phase = "COUNTDOWN";
+    state.showFreshStartConfirm = false;
   }
   function pressEgotripFreshCancel() {
     state.showFreshStartConfirm = false;
@@ -364,229 +395,31 @@ void here; // referenced for pathing context above; kept for clarity.
 // rendered at all (the READY card collapses to "TAP TO FLAP" and the
 // outer Pressable handles play). So there's no FRESH START handler
 // to invoke; we just assert the `egotrip-fresh` testID is conditional
-// on `resumeRef.current` in the source. The source guard is in test 6.
+// on `resumeRef.current` in the source. The source guard is in test 8.
 // =====================================================================
 {
   // Sanity: with no snapshot, EgoTrip's source renders the resume
   // block (which contains both `egotrip-resume` and `egotrip-fresh`)
-  // ONLY when `resumeRef.current` is truthy. We verify that in test 6.
+  // ONLY when `resumeRef.current` is truthy. We verify that in test 8.
   console.log(
-    "PASS  test 4: EgoTrip (no snapshot) renders no FRESH START button — covered by source guard in test 6",
+    "PASS  test 4: EgoTrip (no snapshot) renders no FRESH START button — covered by source guard in test 8",
   );
 }
 
 // =====================================================================
-// Test 5 — SafeSpot.tsx source-shape guards. Locks in the actual
-// component shape so a future refactor can't silently re-introduce
-// the inline-wipe foot-gun.
-// =====================================================================
-{
-  // Required testIDs must be present in the rendered tree.
-  for (const id of [
-    "safespot-start",
-    "safespot-fresh-confirm",
-    "safespot-fresh-cancel",
-  ]) {
-    assert(
-      SAFE_SPOT_SRC.includes(`testID="${id}"`),
-      `SafeSpot.tsx must render a Pressable with testID="${id}"`,
-    );
-  }
-
-  // Carve out the safespot-start onPress handler body and assert it
-  // routes through the confirm prompt for the snapshot branch.
-  const startPressIdx = SAFE_SPOT_SRC.indexOf('testID="safespot-start"');
-  assert(
-    startPressIdx >= 0,
-    "SafeSpot.tsx: locate the safespot-start Pressable",
-  );
-  const startBlock = SAFE_SPOT_SRC.slice(
-    startPressIdx,
-    startPressIdx + 1200,
-  );
-  assert(
-    /if\s*\(\s*resumeSnapshotRef\.current\s*\)/.test(startBlock),
-    "SafeSpot.tsx: safespot-start handler must guard on `resumeSnapshotRef.current` before doing anything destructive",
-  );
-  assert(
-    /setShowFreshStartConfirm\(true\)/.test(startBlock),
-    "SafeSpot.tsx: safespot-start handler must call setShowFreshStartConfirm(true) inside the snapshot branch (the foot-gun guard)",
-  );
-
-  // The snapshot-branch must NOT call `saveSafeSpotSession(null)`
-  // before the `setShowFreshStartConfirm(true)` line — that would be
-  // the exact regression the task is locking against. We carve out
-  // just the if-branch and assert the wipe call doesn't appear in it.
-  const ifMatch = startBlock.match(
-    /if\s*\(\s*resumeSnapshotRef\.current\s*\)\s*\{([\s\S]*?)\}/,
-  );
-  assert(
-    ifMatch != null,
-    "SafeSpot.tsx: safespot-start handler must contain an `if (resumeSnapshotRef.current) { ... }` block",
-  );
-  const ifBody = ifMatch[1] ?? "";
-  assert(
-    !/saveSafeSpotSession\(\s*null\s*\)/.test(ifBody),
-    "SafeSpot.tsx: safespot-start's snapshot branch must NOT call saveSafeSpotSession(null) inline — that's the pre-fix foot-gun",
-  );
-  assert(
-    /setShowFreshStartConfirm\(true\)/.test(ifBody),
-    "SafeSpot.tsx: safespot-start's snapshot branch must call setShowFreshStartConfirm(true)",
-  );
-  assert(
-    /return\s*;/.test(ifBody),
-    "SafeSpot.tsx: safespot-start's snapshot branch must return after opening the confirm so the wipe path doesn't fall through",
-  );
-
-  // Sanity-check the confirm and cancel handlers do the right thing.
-  const confirmIdx = SAFE_SPOT_SRC.indexOf(
-    'testID="safespot-fresh-confirm"',
-  );
-  const confirmBlock = SAFE_SPOT_SRC.slice(confirmIdx, confirmIdx + 800);
-  assert(
-    /resumeSnapshotRef\.current\s*=\s*null/.test(confirmBlock),
-    "SafeSpot.tsx: safespot-fresh-confirm must clear the resume snapshot ref",
-  );
-  assert(
-    /saveSafeSpotSession\(\s*null\s*\)/.test(confirmBlock),
-    "SafeSpot.tsx: safespot-fresh-confirm must call saveSafeSpotSession(null)",
-  );
-  assert(
-    /setPhase\(\s*"PLAYING"\s*\)/.test(confirmBlock),
-    "SafeSpot.tsx: safespot-fresh-confirm must transition phase to PLAYING",
-  );
-
-  const cancelIdx = SAFE_SPOT_SRC.indexOf(
-    'testID="safespot-fresh-cancel"',
-  );
-  const cancelBlock = SAFE_SPOT_SRC.slice(cancelIdx, cancelIdx + 400);
-  assert(
-    /setShowFreshStartConfirm\(false\)/.test(cancelBlock),
-    "SafeSpot.tsx: safespot-fresh-cancel must close the confirm overlay",
-  );
-  assert(
-    !/saveSafeSpotSession\(\s*null\s*\)/.test(cancelBlock),
-    "SafeSpot.tsx: safespot-fresh-cancel must NOT clear the saved session",
-  );
-  assert(
-    !/resumeSnapshotRef\.current\s*=\s*null/.test(cancelBlock),
-    "SafeSpot.tsx: safespot-fresh-cancel must NOT null the resume snapshot ref",
-  );
-  console.log(
-    "PASS  test 5: SafeSpot.tsx source guards — confirm overlay wired correctly; inline-wipe foot-gun cannot be re-introduced",
-  );
-}
-
-// =====================================================================
-// Test 6 — EgoTrip.tsx source-shape guards.
-// =====================================================================
-{
-  for (const id of [
-    "egotrip-fresh",
-    "egotrip-fresh-confirm",
-    "egotrip-fresh-cancel",
-  ]) {
-    assert(
-      EGO_TRIP_SRC.includes(`testID="${id}"`),
-      `EgoTrip.tsx must render a Pressable with testID="${id}"`,
-    );
-  }
-
-  // The egotrip-fresh button must only exist inside the resume
-  // block (`{resumeRef.current ? ( ... ) : null}`) — without a
-  // saved run there's nothing to FRESH-START away from. We assert
-  // this by locating the resume block opener and verifying the
-  // `egotrip-fresh` testID lives inside it (i.e. between the
-  // opener and its matching `: null}` terminator).
-  const resumeOpener = EGO_TRIP_SRC.indexOf("{resumeRef.current ? (");
-  assert(
-    resumeOpener >= 0,
-    "EgoTrip.tsx: locate the `{resumeRef.current ? ( ... ) : null}` block that gates the resume affordance",
-  );
-  const freshIdx = EGO_TRIP_SRC.indexOf('testID="egotrip-fresh"');
-  assert(
-    freshIdx > resumeOpener,
-    "EgoTrip.tsx: egotrip-fresh button must live inside the `resumeRef.current ?` gate (so it never renders without a saved run)",
-  );
-
-  // The egotrip-fresh handler must route through the confirm state
-  // and must NOT wipe the session inline.
-  const freshBlock = EGO_TRIP_SRC.slice(freshIdx, freshIdx + 800);
-  assert(
-    /setShowFreshStartConfirm\(true\)/.test(freshBlock),
-    "EgoTrip.tsx: egotrip-fresh handler must call setShowFreshStartConfirm(true)",
-  );
-  assert(
-    !/saveEgoTripSession\(\s*null\s*\)/.test(freshBlock),
-    "EgoTrip.tsx: egotrip-fresh handler must NOT call saveEgoTripSession(null) inline — that's the pre-fix foot-gun",
-  );
-  assert(
-    !/resumeRef\.current\s*=\s*null/.test(freshBlock),
-    "EgoTrip.tsx: egotrip-fresh handler must NOT null resumeRef.current inline",
-  );
-  assert(
-    !/setPhase\(\s*"COUNTDOWN"\s*\)/.test(freshBlock),
-    "EgoTrip.tsx: egotrip-fresh handler must NOT advance phase inline — only the confirm should",
-  );
-
-  // Confirm handler clears + starts; cancel handler dismisses only.
-  const confirmIdx = EGO_TRIP_SRC.indexOf(
-    'testID="egotrip-fresh-confirm"',
-  );
-  const confirmBlock = EGO_TRIP_SRC.slice(confirmIdx, confirmIdx + 800);
-  assert(
-    /resumeRef\.current\s*=\s*null/.test(confirmBlock),
-    "EgoTrip.tsx: egotrip-fresh-confirm must null the resume ref",
-  );
-  assert(
-    /saveEgoTripSession\(\s*null\s*\)/.test(confirmBlock),
-    "EgoTrip.tsx: egotrip-fresh-confirm must call saveEgoTripSession(null)",
-  );
-  assert(
-    /setPhase\(\s*"COUNTDOWN"\s*\)/.test(confirmBlock),
-    "EgoTrip.tsx: egotrip-fresh-confirm must transition phase to COUNTDOWN",
-  );
-  assert(
-    /setShowFreshStartConfirm\(false\)/.test(confirmBlock),
-    "EgoTrip.tsx: egotrip-fresh-confirm must close the confirm overlay",
-  );
-
-  const cancelIdx = EGO_TRIP_SRC.indexOf('testID="egotrip-fresh-cancel"');
-  const cancelBlock = EGO_TRIP_SRC.slice(cancelIdx, cancelIdx + 400);
-  assert(
-    /setShowFreshStartConfirm\(false\)/.test(cancelBlock),
-    "EgoTrip.tsx: egotrip-fresh-cancel must close the confirm overlay",
-  );
-  assert(
-    !/saveEgoTripSession\(\s*null\s*\)/.test(cancelBlock),
-    "EgoTrip.tsx: egotrip-fresh-cancel must NOT clear the saved session",
-  );
-  assert(
-    !/resumeRef\.current\s*=\s*null/.test(cancelBlock),
-    "EgoTrip.tsx: egotrip-fresh-cancel must NOT null the resume ref",
-  );
-  console.log(
-    "PASS  test 6: EgoTrip.tsx source guards — confirm overlay wired correctly; inline-wipe foot-gun cannot be re-introduced",
-  );
-}
-
-// =====================================================================
-// Test 7 — SugarCoat header START OVER button with a same-day saved
-// board restored on mount.
+// Test 5 — SugarCoat START OVER button with a same-day saved board
+// restored on mount. Mirror of sugarcoat-fresh / -confirm / -cancel.
 // =====================================================================
 //
-// Mirror of SugarCoat's sugarcoat-fresh / sugarcoat-fresh-confirm /
-// sugarcoat-fresh-cancel handlers. Key differences vs SafeSpot/EgoTrip:
+// Key differences vs SafeSpot/EgoTrip:
 //
 //   - SugarCoat has no READY phase. The game starts in PLAYING and the
 //     header's START OVER pill is gated on `wasRestoredRef.current`
 //     (only meaningful when this run was hydrated from a same-day
 //     snapshot). After a successful confirm, the run is fresh, the
 //     ref flips to false, and the pill drops out of the tree.
-//   - The confirm button uses `onPress={reset}` (a function reference,
-//     not an inline lambda). The `reset()` body is what actually clears
-//     the snapshot via `saveSugarCoatSession(null)` — so the mirror
-//     models `pressSugarcoatFreshConfirm` as "call reset()".
+//   - SugarCoat's `onAfterWipe` is the entire `reset()` function
+//     (board re-seed, score zero, moves reset, wasRestoredRef flip).
 {
   type Snap = { dateKey: string; board: string[]; score: number; moves: number };
   const initialSnap: Snap = {
@@ -618,18 +451,16 @@ void here; // referenced for pathing context above; kept for clarity.
     state.showFreshStartConfirm = true;
   }
   function pressSugarcoatFreshConfirm() {
-    // Mirrors `reset()` in SugarCoat.tsx — the confirm Pressable's
-    // onPress is `reset` itself, so the wipe + board reset happen
-    // here (and only here, in the FRESH START flow).
-    state.showFreshStartConfirm = false;
+    // Mirror of `useFreshStartConfirm.confirmFreshStart` wired with
+    // SugarCoat's onAfterWipe = reset: wipe -> reset -> close.
+    saveSugarCoatSession(null);
+    // reset() body — pure state reset (no save).
     state.board = makeFreshBoard();
     state.score = 0;
     state.moves = 20;
     state.phase = "PLAYING";
-    if (state.wasRestored) {
-      state.wasRestored = false;
-    }
-    saveSugarCoatSession(null);
+    if (state.wasRestored) state.wasRestored = false;
+    state.showFreshStartConfirm = false;
   }
   function pressSugarcoatFreshCancel() {
     state.showFreshStartConfirm = false;
@@ -705,134 +536,393 @@ void here; // referenced for pathing context above; kept for clarity.
     `SugarCoat: phase remains PLAYING after the fresh-start (no READY transition), saw ${state.phase}`,
   );
   console.log(
-    "PASS  test 7: SugarCoat START OVER routes through confirm; START FRESH wipes; KEEP SAVED RUN preserves",
+    "PASS  test 5: SugarCoat START OVER routes through confirm; START FRESH wipes; KEEP SAVED RUN preserves",
   );
 }
 
 // =====================================================================
-// Test 8 — SugarCoat.tsx source-shape guards. Locks in the actual
-// component shape so a future refactor can't silently re-introduce
-// the inline-wipe foot-gun.
+// Test 6 — SHARED HOOK source guard. Pins the wipe + after-wipe +
+// overlay-close contract to one place (`useFreshStartConfirm.ts`)
+// so a future fourth/fifth parody mini-game inherits the safe shape
+// automatically. This is the test that catches "someone simplifying
+// the FRESH START handler back to the inline-wipe shape" — by
+// shifting the regression to the hook itself, we no longer need to
+// re-state the same guards across three per-game blocks.
 // =====================================================================
 {
-  // Required testIDs must be present in the rendered tree.
-  for (const id of [
-    "sugarcoat-fresh",
-    "sugarcoat-fresh-confirm",
-    "sugarcoat-fresh-cancel",
-  ]) {
-    assert(
-      SUGAR_COAT_SRC.includes(`testID="${id}"`),
-      `SugarCoat.tsx must render a Pressable with testID="${id}"`,
-    );
-  }
-
-  // The sugarcoat-fresh button must only render when the current run
-  // was hydrated from a saved snapshot — there's no point offering
-  // "start over from the saved board" when nothing was restored. The
-  // header gates it on `phase === "PLAYING" && wasRestoredRef.current`.
-  const freshIdx = SUGAR_COAT_SRC.indexOf('testID="sugarcoat-fresh"');
+  // The hook must export `useFreshStartConfirm` so per-game callers
+  // can route through it. Renaming the export would require a
+  // coordinated update everywhere, surfacing the change in review.
   assert(
-    freshIdx >= 0,
-    "SugarCoat.tsx: locate the sugarcoat-fresh Pressable",
-  );
-  // Look back from the testID to find the nearest gating ternary opener
-  // and assert it references `wasRestoredRef.current`.
-  const beforeFresh = SUGAR_COAT_SRC.slice(0, freshIdx);
-  assert(
-    /wasRestoredRef\.current[^?]*\?[\s\S]*$/.test(beforeFresh),
-    "SugarCoat.tsx: sugarcoat-fresh button must be gated on `wasRestoredRef.current` so it never renders without a restored saved run",
+    /export\s+function\s+useFreshStartConfirm\b/.test(FRESH_HOOK_SRC),
+    "useFreshStartConfirm.ts: must export `useFreshStartConfirm` function",
   );
 
-  // The sugarcoat-fresh handler must route through the confirm state
-  // and must NOT wipe the session inline.
-  const freshBlock = SUGAR_COAT_SRC.slice(freshIdx, freshIdx + 800);
-  assert(
-    /setShowFreshStartConfirm\(true\)/.test(freshBlock),
-    "SugarCoat.tsx: sugarcoat-fresh handler must call setShowFreshStartConfirm(true)",
+  // Carve out the `confirmFreshStart` body — this is the one place
+  // the wipe is allowed to fire. Match the useCallback init form.
+  const confirmMatch = FRESH_HOOK_SRC.match(
+    /const\s+confirmFreshStart\s*=\s*useCallback\(\s*\(\s*\)\s*=>\s*\{([\s\S]*?)\n\s{2}\},\s*\[\s*\]\s*\)/,
   );
   assert(
-    !/saveSugarCoatSession\(\s*null\s*\)/.test(freshBlock),
-    "SugarCoat.tsx: sugarcoat-fresh handler must NOT call saveSugarCoatSession(null) inline — that's the pre-fix foot-gun",
+    confirmMatch != null,
+    "useFreshStartConfirm.ts: locate the `const confirmFreshStart = useCallback(() => { ... }, [])` body",
   );
+  const confirmBody = confirmMatch[1] ?? "";
+
+  // The wipe call: saveSession(null) must fire inside confirmFreshStart.
+  // We allow either `saveSession(null)` (direct prop) or
+  // `saveSessionRef.current(null)` (ref-mirrored, current impl) so an
+  // internal-only refactor to drop the ref doesn't churn this test.
   assert(
-    !/wasRestoredRef\.current\s*=\s*false/.test(freshBlock),
-    "SugarCoat.tsx: sugarcoat-fresh handler must NOT flip wasRestoredRef inline — only the confirm flow (via reset) should",
-  );
-  assert(
-    !/setBoard\(/.test(freshBlock),
-    "SugarCoat.tsx: sugarcoat-fresh handler must NOT rebuild the board inline — only the confirm flow (via reset) should",
+    /save(?:Session|SessionRef\.current)\(\s*null\s*\)/.test(confirmBody),
+    "useFreshStartConfirm.ts: confirmFreshStart must call saveSession(null) (or saveSessionRef.current(null)) — this is THE pinned wipe step",
   );
 
-  // The confirm Pressable's onPress is `reset` (a function reference,
-  // not an inline lambda). Asserting on that exact shape pins down the
-  // wiring so a refactor that inlines a partial wipe would trip.
-  const confirmIdx = SUGAR_COAT_SRC.indexOf(
-    'testID="sugarcoat-fresh-confirm"',
+  // The after-wipe step must run AFTER the wipe (so per-game cleanup
+  // sees an already-cleared snapshot) and BEFORE the overlay close
+  // (so anything synchronous it does has a chance to reflect).
+  const wipeIdx = confirmBody.search(
+    /save(?:Session|SessionRef\.current)\(\s*null\s*\)/,
   );
-  const confirmBlock = SUGAR_COAT_SRC.slice(confirmIdx, confirmIdx + 600);
+  const afterWipeIdx = confirmBody.search(
+    /onAfterWipe(?:Ref\.current)?\??\.\(\)|onAfterWipe(?:Ref\.current)?\?\.\(\)/,
+  );
+  // The above regex is finicky; simplify: assert we call onAfterWipe
+  // (with optional `Ref.current` and optional chaining) somewhere in
+  // the body, and ensure it's after the wipe.
+  const afterWipeMatch = confirmBody.match(
+    /onAfterWipe(?:Ref\.current)?\??\.\(\s*\)/,
+  );
   assert(
-    /onPress=\{reset\}/.test(confirmBlock),
-    "SugarCoat.tsx: sugarcoat-fresh-confirm must wire onPress to the `reset` function reference (not a partial inline handler)",
+    afterWipeMatch != null,
+    "useFreshStartConfirm.ts: confirmFreshStart must call the optional `onAfterWipe` follow-up (allows `onAfterWipeRef.current?.()` form)",
+  );
+  const afterWipeAt = confirmBody.indexOf(afterWipeMatch[0]);
+  assert(
+    wipeIdx >= 0 && afterWipeAt > wipeIdx,
+    "useFreshStartConfirm.ts: `onAfterWipe` must run AFTER the saveSession(null) wipe (so per-game cleanup observes a cleared snapshot)",
+  );
+  void afterWipeIdx;
+
+  // The overlay must close at the end so the per-game caller doesn't
+  // have to remember to do it. Allow either `setShowFreshStartConfirm
+  // (false)` directly or via a wrapper.
+  assert(
+    /setShowFreshStartConfirm\(\s*false\s*\)/.test(confirmBody),
+    "useFreshStartConfirm.ts: confirmFreshStart must close the overlay via setShowFreshStartConfirm(false)",
   );
 
-  // The `reset` function itself is the one place the fresh-start
-  // wipe + overlay close are allowed to happen. Carve it out and
-  // assert the contract holds.
-  const resetMatch = SUGAR_COAT_SRC.match(
-    /function reset\(\)\s*\{([\s\S]*?)\n\s{2}\}/,
+  // The cancel handler must close the overlay only — no wipe path.
+  const cancelMatch = FRESH_HOOK_SRC.match(
+    /const\s+cancelFreshStart\s*=\s*useCallback\(\s*\(\s*\)\s*=>\s*\{([\s\S]*?)\n\s{2}\},\s*\[\s*\]\s*\)/,
   );
   assert(
-    resetMatch != null,
-    "SugarCoat.tsx: locate the top-level `function reset()` body",
+    cancelMatch != null,
+    "useFreshStartConfirm.ts: locate the `const cancelFreshStart = useCallback(() => { ... }, [])` body",
   );
-  const resetBody = resetMatch[1] ?? "";
+  const cancelBody = cancelMatch[1] ?? "";
   assert(
-    /saveSugarCoatSession\(\s*null\s*\)/.test(resetBody),
-    "SugarCoat.tsx: reset() must call saveSugarCoatSession(null) so START FRESH actually wipes the saved snapshot",
-  );
-  assert(
-    /setShowFreshStartConfirm\(false\)/.test(resetBody),
-    "SugarCoat.tsx: reset() must close the FRESH START confirm overlay",
+    /setShowFreshStartConfirm\(\s*false\s*\)/.test(cancelBody),
+    "useFreshStartConfirm.ts: cancelFreshStart must close the overlay",
   );
   assert(
-    /wasRestoredRef\.current\s*=\s*false/.test(resetBody),
-    "SugarCoat.tsx: reset() must flip wasRestoredRef to false so the START OVER pill drops out of the header on the new run",
+    !/save(?:Session|SessionRef\.current)\(\s*null\s*\)/.test(cancelBody),
+    "useFreshStartConfirm.ts: cancelFreshStart must NOT call saveSession(null) — only confirmFreshStart wipes",
   );
   assert(
-    /setBoard\(\s*freshBoard\(\)\s*\)/.test(resetBody),
-    "SugarCoat.tsx: reset() must seed a fresh board",
-  );
-  assert(
-    /setScore\(\s*0\s*\)/.test(resetBody) &&
-      /setMoves\(\s*STARTING_MOVES\s*\)/.test(resetBody),
-    "SugarCoat.tsx: reset() must reset score to 0 and moves to STARTING_MOVES",
+    !/onAfterWipe/.test(cancelBody),
+    "useFreshStartConfirm.ts: cancelFreshStart must NOT run the after-wipe follow-up",
   );
 
-  // The cancel handler must close the overlay only — no wipe, no
-  // ref nulling, no board reset.
-  const cancelIdx = SUGAR_COAT_SRC.indexOf(
-    'testID="sugarcoat-fresh-cancel"',
-  );
-  const cancelBlock = SUGAR_COAT_SRC.slice(cancelIdx, cancelIdx + 400);
-  assert(
-    /setShowFreshStartConfirm\(false\)/.test(cancelBlock),
-    "SugarCoat.tsx: sugarcoat-fresh-cancel must close the confirm overlay",
+  // The request handler must open the overlay only — no wipe path.
+  const requestMatch = FRESH_HOOK_SRC.match(
+    /const\s+requestFreshStart\s*=\s*useCallback\(\s*\(\s*\)\s*=>\s*\{([\s\S]*?)\n\s{2}\},\s*\[\s*\]\s*\)/,
   );
   assert(
-    !/saveSugarCoatSession\(\s*null\s*\)/.test(cancelBlock),
-    "SugarCoat.tsx: sugarcoat-fresh-cancel must NOT clear the saved session",
+    requestMatch != null,
+    "useFreshStartConfirm.ts: locate the `const requestFreshStart = useCallback(() => { ... }, [])` body",
+  );
+  const requestBody = requestMatch[1] ?? "";
+  assert(
+    /setShowFreshStartConfirm\(\s*true\s*\)/.test(requestBody),
+    "useFreshStartConfirm.ts: requestFreshStart must open the overlay",
   );
   assert(
-    !/wasRestoredRef\.current\s*=\s*false/.test(cancelBlock),
-    "SugarCoat.tsx: sugarcoat-fresh-cancel must NOT flip wasRestoredRef",
-  );
-  assert(
-    !/setBoard\(/.test(cancelBlock),
-    "SugarCoat.tsx: sugarcoat-fresh-cancel must NOT rebuild the board",
+    !/save(?:Session|SessionRef\.current)\(\s*null\s*\)/.test(requestBody),
+    "useFreshStartConfirm.ts: requestFreshStart must NOT call saveSession(null) — opening the prompt is not the wipe step",
   );
   console.log(
-    "PASS  test 8: SugarCoat.tsx source guards — confirm overlay wired correctly; inline-wipe foot-gun cannot be re-introduced",
+    "PASS  test 6: useFreshStartConfirm.ts source guard — wipe + after-wipe + overlay-close pinned in one place; inline-wipe foot-gun mechanically un-reintroducible",
+  );
+}
+
+// =====================================================================
+// Test 7 — SHARED OVERLAY source guard. Locks the testID convention
+// and the cancel-button shape (no wipe path inside the overlay
+// itself) so a per-game mirror test that asserts on `${game}-fresh-
+// confirm` / `${game}-fresh-cancel` keeps working.
+// =====================================================================
+{
+  // The overlay must accept a `game` prop typed as the FreshStartGameId
+  // literal union and use it to drive both testIDs. The literal type
+  // is the structural prompt to add a fourth entry whenever a fourth
+  // parody mini-game shows up.
+  assert(
+    /export\s+type\s+FreshStartGameId\s*=\s*[^;]*"safespot"[\s\S]*?"egotrip"[\s\S]*?"sugarcoat"/.test(
+      FRESH_OVERLAY_SRC,
+    ),
+    "FreshStartConfirmOverlay.tsx: FreshStartGameId literal union must include all three current parody mini-games",
+  );
+  assert(
+    /testID=\{`\$\{game\}-fresh-confirm`\}/.test(FRESH_OVERLAY_SRC),
+    "FreshStartConfirmOverlay.tsx: confirm Pressable must use testID=`${game}-fresh-confirm` so per-game tests can pin against it",
+  );
+  assert(
+    /testID=\{`\$\{game\}-fresh-cancel`\}/.test(FRESH_OVERLAY_SRC),
+    "FreshStartConfirmOverlay.tsx: cancel Pressable must use testID=`${game}-fresh-cancel` so per-game tests can pin against it",
+  );
+
+  // Carve out the cancel Pressable's onPress — it must call onCancel
+  // (the dismiss-only handler) and must NOT call onConfirm.
+  const cancelIdx = FRESH_OVERLAY_SRC.indexOf(
+    "testID={`${game}-fresh-cancel`}",
+  );
+  assert(
+    cancelIdx >= 0,
+    "FreshStartConfirmOverlay.tsx: locate the cancel Pressable",
+  );
+  const cancelBlock = FRESH_OVERLAY_SRC.slice(cancelIdx, cancelIdx + 400);
+  assert(
+    /onCancel\(\s*\)/.test(cancelBlock),
+    "FreshStartConfirmOverlay.tsx: cancel Pressable must invoke onCancel()",
+  );
+  assert(
+    !/onConfirm\(\s*\)/.test(cancelBlock),
+    "FreshStartConfirmOverlay.tsx: cancel Pressable must NOT invoke onConfirm — that's the wipe path",
+  );
+  console.log(
+    "PASS  test 7: FreshStartConfirmOverlay.tsx source guard — game-prefixed testIDs + cancel never invokes onConfirm",
+  );
+}
+
+// =====================================================================
+// Test 8 — Per-game wiring guards. Each parody mini-game must
+// import the shared hook + overlay, invoke the hook, render the
+// overlay with the right `game` prop, gate the FRESH START button
+// correctly, and contain no inline `saveXSession(null)` near the
+// FRESH START button (the pre-#49 foot-gun).
+// =====================================================================
+{
+  type GameSpec = {
+    name: string;
+    src: string;
+    saveCallName: string;
+    /** testID of the per-game FRESH START button. */
+    freshBtnTestId: string;
+    /** Minimum extra structural guards specific to this game. */
+    extra: () => void;
+  };
+  const games: GameSpec[] = [
+    {
+      name: "SafeSpot.tsx",
+      src: SAFE_SPOT_SRC,
+      saveCallName: "saveSafeSpotSession",
+      freshBtnTestId: "safespot-start",
+      extra: () => {
+        // The safespot-start onPress must guard on
+        // `resumeSnapshotRef.current` and route the snapshot branch
+        // through `fresh.requestFreshStart` (NOT a direct wipe).
+        const startIdx = SAFE_SPOT_SRC.indexOf('testID="safespot-start"');
+        const startBlock = SAFE_SPOT_SRC.slice(startIdx, startIdx + 1400);
+        assert(
+          /if\s*\(\s*resumeSnapshotRef\.current\s*\)/.test(startBlock),
+          "SafeSpot.tsx: safespot-start handler must guard on `resumeSnapshotRef.current` before doing anything destructive",
+        );
+        const ifMatch = startBlock.match(
+          /if\s*\(\s*resumeSnapshotRef\.current\s*\)\s*\{([\s\S]*?)\}/,
+        );
+        assert(
+          ifMatch != null,
+          "SafeSpot.tsx: safespot-start handler must contain an `if (resumeSnapshotRef.current) { ... }` block",
+        );
+        const ifBody = ifMatch[1] ?? "";
+        assert(
+          /fresh\.requestFreshStart\(\s*\)/.test(ifBody),
+          "SafeSpot.tsx: safespot-start's snapshot branch must call fresh.requestFreshStart() to open the shared confirm overlay",
+        );
+        assert(
+          !/saveSafeSpotSession\(\s*null\s*\)/.test(ifBody),
+          "SafeSpot.tsx: safespot-start's snapshot branch must NOT call saveSafeSpotSession(null) inline — that's the pre-fix foot-gun",
+        );
+        assert(
+          /return\s*;/.test(ifBody),
+          "SafeSpot.tsx: safespot-start's snapshot branch must return after opening the confirm so the wipe path doesn't fall through",
+        );
+      },
+    },
+    {
+      name: "EgoTrip.tsx",
+      src: EGO_TRIP_SRC,
+      saveCallName: "saveEgoTripSession",
+      freshBtnTestId: "egotrip-fresh",
+      extra: () => {
+        // The egotrip-fresh button must only exist inside the resume
+        // block (`{resumeRef.current ? ( ... ) : null}`) — without a
+        // saved run there's nothing to FRESH-START away from.
+        const resumeOpener = EGO_TRIP_SRC.indexOf("{resumeRef.current ? (");
+        assert(
+          resumeOpener >= 0,
+          "EgoTrip.tsx: locate the `{resumeRef.current ? ( ... ) : null}` block that gates the resume affordance",
+        );
+        const freshIdx = EGO_TRIP_SRC.indexOf('testID="egotrip-fresh"');
+        assert(
+          freshIdx > resumeOpener,
+          "EgoTrip.tsx: egotrip-fresh button must live inside the `resumeRef.current ?` gate (so it never renders without a saved run)",
+        );
+
+        const freshBlock = EGO_TRIP_SRC.slice(freshIdx, freshIdx + 800);
+        assert(
+          /fresh\.requestFreshStart\(\s*\)/.test(freshBlock),
+          "EgoTrip.tsx: egotrip-fresh handler must call fresh.requestFreshStart() to open the shared confirm overlay",
+        );
+        assert(
+          !/saveEgoTripSession\(\s*null\s*\)/.test(freshBlock),
+          "EgoTrip.tsx: egotrip-fresh handler must NOT call saveEgoTripSession(null) inline — that's the pre-fix foot-gun",
+        );
+        assert(
+          !/resumeRef\.current\s*=\s*null/.test(freshBlock),
+          "EgoTrip.tsx: egotrip-fresh handler must NOT null resumeRef.current inline",
+        );
+        assert(
+          !/setPhase\(\s*"COUNTDOWN"\s*\)/.test(freshBlock),
+          "EgoTrip.tsx: egotrip-fresh handler must NOT advance phase inline — only the confirm should",
+        );
+      },
+    },
+    {
+      name: "SugarCoat.tsx",
+      src: SUGAR_COAT_SRC,
+      saveCallName: "saveSugarCoatSession",
+      freshBtnTestId: "sugarcoat-fresh",
+      extra: () => {
+        // The sugarcoat-fresh button must only render when the current
+        // run was hydrated from a saved snapshot.
+        const freshIdx = SUGAR_COAT_SRC.indexOf('testID="sugarcoat-fresh"');
+        assert(
+          freshIdx >= 0,
+          "SugarCoat.tsx: locate the sugarcoat-fresh Pressable",
+        );
+        const beforeFresh = SUGAR_COAT_SRC.slice(0, freshIdx);
+        assert(
+          /wasRestoredRef\.current[^?]*\?[\s\S]*$/.test(beforeFresh),
+          "SugarCoat.tsx: sugarcoat-fresh button must be gated on `wasRestoredRef.current` so it never renders without a restored saved run",
+        );
+
+        const freshBlock = SUGAR_COAT_SRC.slice(freshIdx, freshIdx + 600);
+        assert(
+          /onPress=\{fresh\.requestFreshStart\}/.test(freshBlock),
+          "SugarCoat.tsx: sugarcoat-fresh must wire onPress to `fresh.requestFreshStart` (the shared hook's open handler)",
+        );
+        assert(
+          !/saveSugarCoatSession\(\s*null\s*\)/.test(freshBlock),
+          "SugarCoat.tsx: sugarcoat-fresh handler must NOT call saveSugarCoatSession(null) inline — that's the pre-fix foot-gun",
+        );
+        assert(
+          !/setBoard\(/.test(freshBlock),
+          "SugarCoat.tsx: sugarcoat-fresh handler must NOT rebuild the board inline — only the confirm flow (via reset) should",
+        );
+
+        // SugarCoat's `reset()` is now pure: it must NOT call
+        // `saveSugarCoatSession(null)` itself (the shared hook owns
+        // the wipe). This locks down the Task #56 refactor so a
+        // future maintainer can't quietly merge the wipe back into
+        // reset and double-fire the save.
+        const resetMatch = SUGAR_COAT_SRC.match(
+          /const\s+reset\s*=\s*useCallback\(\(\s*\)\s*=>\s*\{([\s\S]*?)\n\s{2}\},\s*\[\s*\]\s*\)/,
+        );
+        assert(
+          resetMatch != null,
+          "SugarCoat.tsx: locate the `const reset = useCallback(() => { ... }, [])` body",
+        );
+        const resetBody = resetMatch[1] ?? "";
+        assert(
+          !/saveSugarCoatSession\(\s*null\s*\)/.test(resetBody),
+          "SugarCoat.tsx: reset() must NOT call saveSugarCoatSession(null) — the shared hook owns the wipe",
+        );
+        assert(
+          /setBoard\(\s*freshBoard\(\)\s*\)/.test(resetBody),
+          "SugarCoat.tsx: reset() must seed a fresh board",
+        );
+        assert(
+          /setScore\(\s*0\s*\)/.test(resetBody) &&
+            /setMoves\(\s*STARTING_MOVES\s*\)/.test(resetBody),
+          "SugarCoat.tsx: reset() must reset score to 0 and moves to STARTING_MOVES",
+        );
+        assert(
+          /wasRestoredRef\.current\s*=\s*false/.test(resetBody),
+          "SugarCoat.tsx: reset() must flip wasRestoredRef to false so the START OVER pill drops out of the header on the new run",
+        );
+      },
+    },
+  ];
+
+  for (const g of games) {
+    // Each game must import the shared hook + overlay so the type
+    // checker keeps the wiring honest.
+    assert(
+      /import\s*\{\s*useFreshStartConfirm\s*\}\s*from\s*["']@\/features\/parody\/sessions\/useFreshStartConfirm["']/.test(
+        g.src,
+      ),
+      `${g.name}: must import useFreshStartConfirm from @/features/parody/sessions/useFreshStartConfirm`,
+    );
+    assert(
+      /import\s*\{\s*FreshStartConfirmOverlay\s*\}\s*from\s*["']@\/features\/parody\/sessions\/FreshStartConfirmOverlay["']/.test(
+        g.src,
+      ),
+      `${g.name}: must import FreshStartConfirmOverlay from @/features/parody/sessions/FreshStartConfirmOverlay`,
+    );
+
+    // Each game must invoke the hook with the per-game saveSession.
+    // Allow whitespace/newlines so the matcher isn't brittle to formatting.
+    const hookCallRe = new RegExp(
+      `useFreshStartConfirm[\\s\\S]{0,200}saveSession:\\s*${g.saveCallName}`,
+    );
+    assert(
+      hookCallRe.test(g.src),
+      `${g.name}: must call useFreshStartConfirm({ saveSession: ${g.saveCallName}, ... })`,
+    );
+
+    // The overlay must be rendered with this game's id so the testIDs
+    // it renders match the per-game mirror tests above.
+    const gameId = g.freshBtnTestId.split("-")[0];
+    const overlayRe = new RegExp(
+      `<FreshStartConfirmOverlay[\\s\\S]{0,400}game=["']${gameId}["']`,
+    );
+    assert(
+      overlayRe.test(g.src),
+      `${g.name}: must render <FreshStartConfirmOverlay game="${gameId}" ... />`,
+    );
+
+    // No game's source should still carry its own `useState` for the
+    // confirm overlay — that's exactly the duplicated state Task #56
+    // is consolidating away. The shared hook owns it now.
+    assert(
+      !/useState[^;]*showFreshStartConfirm/.test(g.src),
+      `${g.name}: must not declare a local useState for showFreshStartConfirm — that state lives in useFreshStartConfirm now`,
+    );
+
+    // No `setShowFreshStartConfirm(true|false)` call should exist in
+    // the per-game source — those are owned by the hook.
+    assert(
+      !/setShowFreshStartConfirm\(\s*(?:true|false)\s*\)/.test(g.src),
+      `${g.name}: must not call setShowFreshStartConfirm directly — route through fresh.requestFreshStart / fresh.cancelFreshStart / fresh.confirmFreshStart instead`,
+    );
+
+    // Per-game extra structural guards.
+    g.extra();
+  }
+  console.log(
+    "PASS  test 8: per-game wiring guards — SafeSpot/EgoTrip/SugarCoat all import + use the shared hook + overlay; inline-wipe foot-gun cannot be re-introduced",
   );
 }
 

@@ -24,12 +24,14 @@
  * a real swap.
  */
 import { Feather } from "@expo/vector-icons";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { useGameState } from "@/core/gameStore";
 import { SugarCoatSession, todayDateKey } from "@/core/parodySessions";
 import { emitSfx } from "@/features/audio/audioEvents";
+import { FreshStartConfirmOverlay } from "@/features/parody/sessions/FreshStartConfirmOverlay";
+import { useFreshStartConfirm } from "@/features/parody/sessions/useFreshStartConfirm";
 
 interface Props {
   onExit: () => void;
@@ -192,7 +194,6 @@ export function SugarCoat({ onExit }: Props) {
   // fresh restart would).
   const wasRestoredRef = useRef<boolean>(initialSession != null);
   const [, setForceRender] = useState(0);
-  const [showFreshStartConfirm, setShowFreshStartConfirm] = useState(false);
   const recordParodyScore = useGameState((s) => s.recordParodyScore);
   const saveSugarCoatSession = useGameState((s) => s.saveSugarCoatSession);
   const bestClout = useGameState((s) => s.parody.sugarCoatHighClout);
@@ -251,7 +252,15 @@ export function SugarCoat({ onExit }: Props) {
     }
   }, [phase, score, recordParodyScore, saveSugarCoatSession]);
 
-  function reset() {
+  // Pure state reset — Task #56. Previously this also called
+  // `void saveSugarCoatSession(null)` and `setShowFreshStartConfirm
+  // (false)`; both responsibilities have moved out (the shared
+  // `useFreshStartConfirm` hook owns the wipe + overlay close, and
+  // the in-game restart-confirm caller now wipes explicitly before
+  // calling reset). Keeping reset pure means each caller spells out
+  // its own wipe semantics, which is what makes the FRESH START flow
+  // mechanically `save-once`.
+  const reset = useCallback(() => {
     // Cancel any in-flight resolve / game-over deferrals from the
     // previous run. Without this, a restart triggered inside the 250ms
     // game-over deferral window (or the 180ms resolve window) would
@@ -262,7 +271,6 @@ export function SugarCoat({ onExit }: Props) {
     pendingTimeoutsRef.current.clear();
     resolvingRef.current = false;
     setShowRestartConfirm(false);
-    setShowFreshStartConfirm(false);
     setBoard(freshBoard());
     setScore(0);
     setMoves(STARTING_MOVES);
@@ -277,12 +285,19 @@ export function SugarCoat({ onExit }: Props) {
       wasRestoredRef.current = false;
       setForceRender((n) => n + 1);
     }
-    // Replay button: discard any pending session so we don't
-    // accidentally re-restore a stale board on the next cold start
-    // (the next snapshot will be written after the player's first
-    // settled swap of the new run).
-    void saveSugarCoatSession(null);
-  }
+  }, []);
+
+  // Fresh-start confirm — Task #49 / #56. The shared hook owns the
+  // overlay state, the press handlers, and the
+  // `saveSugarCoatSession(null)` wipe step. SugarCoat's after-wipe
+  // step is the entire `reset()` (board re-seed, score zero, moves
+  // reset, wasRestoredRef flip). Routing through the hook means the
+  // wipe lives in exactly one place per game and a future fourth
+  // parody mini-game can't copy-paste a buggy variant.
+  const fresh = useFreshStartConfirm<SugarCoatSession>({
+    saveSession: saveSugarCoatSession,
+    onAfterWipe: reset,
+  });
 
   /**
    * Apply a swap, then resolve cascading matches. Returns the total
@@ -406,7 +421,7 @@ export function SugarCoat({ onExit }: Props) {
             <Pressable
               testID="sugarcoat-fresh"
               accessibilityLabel="Start over from saved board"
-              onPress={() => setShowFreshStartConfirm(true)}
+              onPress={fresh.requestFreshStart}
               hitSlop={10}
               style={({ pressed }) => [
                 styles.freshBtn,
@@ -466,34 +481,13 @@ export function SugarCoat({ onExit }: Props) {
         <Text style={styles.footerValue}>{Math.max(bestClout, score)}</Text>
       </View>
 
-      {showFreshStartConfirm && phase === "PLAYING" ? (
-        <View style={styles.overlay}>
-          <Text style={styles.confirmHeadline}>END SAVED RUN?</Text>
-          <Text style={styles.gameOverBody}>
-            This will wipe your saved board and start fresh.
-          </Text>
-          <Pressable
-            testID="sugarcoat-fresh-confirm"
-            onPress={reset}
-            style={({ pressed }) => [
-              styles.primaryBtn,
-              pressed && { opacity: 0.7 },
-            ]}
-          >
-            <Text style={styles.primaryBtnLabel}>START FRESH</Text>
-          </Pressable>
-          <Pressable
-            testID="sugarcoat-fresh-cancel"
-            onPress={() => setShowFreshStartConfirm(false)}
-            style={({ pressed }) => [
-              styles.secondaryBtn,
-              pressed && { opacity: 0.7 },
-            ]}
-          >
-            <Text style={styles.secondaryBtnLabel}>KEEP SAVED RUN</Text>
-          </Pressable>
-        </View>
-      ) : null}
+      <FreshStartConfirmOverlay
+        game="sugarcoat"
+        visible={fresh.showFreshStartConfirm && phase === "PLAYING"}
+        message="This will wipe your saved board and start fresh."
+        onConfirm={fresh.confirmFreshStart}
+        onCancel={fresh.cancelFreshStart}
+      />
 
       {showRestartConfirm && phase === "PLAYING" ? (
         <View style={styles.overlay}>
@@ -503,7 +497,14 @@ export function SugarCoat({ onExit }: Props) {
           </Text>
           <Pressable
             testID="sugarcoat-restart-confirm"
-            onPress={reset}
+            onPress={() => {
+              // Task #56 — `reset()` is now pure, so the restart flow
+              // wipes the saved snapshot explicitly here. Without this
+              // the next cold start could silently re-restore the
+              // pre-restart board.
+              void saveSugarCoatSession(null);
+              reset();
+            }}
             style={({ pressed }) => [
               styles.primaryBtn,
               pressed && { opacity: 0.7 },

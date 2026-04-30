@@ -29,7 +29,7 @@ function RootLayoutNav() {
         }}
       >
         <Stack.Screen name="index" />
-        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="home" />
         <Stack.Screen
           name="chat/[threadId]"
           options={{ animation: "slide_from_right" }}

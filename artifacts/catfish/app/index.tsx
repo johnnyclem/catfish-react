@@ -33,7 +33,10 @@ export default function TitleScreen() {
   const bottomPad = Math.max(insets.bottom, 16);
 
   const enterCase = () => {
-    router.replace("/(tabs)");
+    // Land the player on the parody phone home grid; from there the
+    // dating app is one tile away. Routing to /home (the new shell)
+    // replaces the legacy /(tabs) entry from the pre-#59 layout.
+    router.replace("/home" as never);
   };
 
   const handleNewCase = async () => {

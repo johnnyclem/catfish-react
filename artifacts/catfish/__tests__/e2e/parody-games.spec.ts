@@ -80,6 +80,10 @@ function todayDateKey(now: Date = new Date()): string {
  * choose the "fresh" path so the suite is reproducible: on a cold start
  * we tap "Start New Case"; on a warm start we tap "New Case (Reset)" then
  * "Start New Case".
+ *
+ * Task #59 made the parody phone home grid the post-title destination,
+ * so once the launch CTAs are dismissed we wait on a known home-grid
+ * tile (Lots 'o Fish) instead of the deprecated root tab bar.
  */
 async function bootIntoApp(page: Page): Promise<void> {
   await page.goto("/", { waitUntil: "domcontentloaded" });
@@ -95,15 +99,12 @@ async function bootIntoApp(page: Page): Promise<void> {
   if (await start.isVisible().catch(() => false)) {
     await start.click();
   }
-  // Wait for the 5-tab bar — the "Apps" label is unique on the tab bar.
-  await expect(page.getByText("Apps").first()).toBeVisible({
+  // Wait for the parody phone home grid — the Lots 'o Fish tile is
+  // unique to the grid, has a stable test ID, and is always rendered
+  // when the shell mounts.
+  await expect(page.getByTestId("parody-app-lotsOfFish")).toBeVisible({
     timeout: 30_000,
   });
-}
-
-/** Tap the bottom "Apps" tab (label is uppercased via CSS, but textContent is mixed case). */
-async function openAppsTab(page: Page): Promise<void> {
-  await page.getByText("Apps").first().click();
 }
 
 /** Tap the home indicator at the bottom of an open mini-game. */
@@ -203,7 +204,8 @@ test.describe("parody mini-games — persistence", () => {
     const page = sharedPage;
     const target = todaysWordLowTarget();
 
-    await openAppsTab(page);
+    // The parody phone home grid IS the post-title surface now —
+    // no Apps tab to open first.
     await page.getByTestId("parody-app-wordLow").click();
 
     for (const letter of target) {
@@ -220,10 +222,12 @@ test.describe("parody mini-games — persistence", () => {
     if (await cont.isVisible().catch(() => false)) {
       await cont.click();
     }
-    await expect(page.getByText("Apps").first()).toBeVisible({
+    // After reload + Continue Case the player lands back on the parody
+    // phone home grid — wait for the dock-mounted Game Center shortcut
+    // before drilling into it.
+    await expect(page.getByTestId("parody-dock-gamecenter")).toBeVisible({
       timeout: 30_000,
     });
-    await openAppsTab(page);
 
     // Game Center → Word-Low row → "Best Streak" should read 1.
     await page.getByTestId("parody-dock-gamecenter").click();

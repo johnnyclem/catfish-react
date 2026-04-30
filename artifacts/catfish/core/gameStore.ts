@@ -182,6 +182,17 @@ interface GameStateValue {
    */
   recentlyDiscarded: Fact[];
   /**
+   * Per-session count of facts captured since the player last opened
+   * the Journal app from the parody phone home grid. Drives the red
+   * notification badge on the Journal tile so the player can see
+   * "you have new evidence to triage" at a glance from the home
+   * screen. Cleared to zero by `markJournalVisited` (called the
+   * moment the Journal app is opened from the shell). Not persisted
+   * — a per-session counter is enough; survival across cold start
+   * isn't required and would feel like ghost data.
+   */
+  journalNewSinceLastVisit: number;
+  /**
    * Persistent high-score slice for the parody mini-games on the
    * Apps tab. Survives `resetRun()` because these scores are meta
    * progress, not case progress. Backed by its own AsyncStorage key
@@ -291,6 +302,13 @@ interface GameStateValue {
   commitFact: (input: CommitFactInput) => Promise<Fact | null>;
   /** Discard a previously captured Fact. */
   removeFact: (factId: FactId) => Promise<void>;
+  /**
+   * Reset the per-session "new facts captured since the player last
+   * opened the Journal" counter back to zero. The phone-home shell
+   * fires this whenever the player opens the Journal app surface so
+   * the home-grid badge clears the moment the player engages with it.
+   */
+  markJournalVisited: () => void;
   /**
    * Idempotent — pushes the opening suspect turn for a thread that the
    * player has never opened. Safe to call on every focus.
@@ -915,6 +933,7 @@ export const useGameState = create<GameStateValue>((set, get) => ({
   sfxMuted: false,
   musicMuted: false,
   recentlyDiscarded: [],
+  journalNewSinceLastVisit: 0,
   parody: { ...EMPTY_PARODY_SCORES },
   parodySessions: { ...EMPTY_PARODY_SESSIONS },
 
@@ -1048,7 +1067,11 @@ export const useGameState = create<GameStateValue>((set, get) => ({
     // Starting a fresh run forfeits any pending undos — facts stashed
     // against the previous run must not be restorable into the new one.
     cancelAllDiscardTimers();
-    set({ run: next, recentlyDiscarded: [] });
+    // Reset the per-session journal-new counter — the freshly seeded
+    // run's authored facts are not "new evidence to triage", they're
+    // the starting case file. The counter only tracks player-captured
+    // facts going forward.
+    set({ run: next, recentlyDiscarded: [], journalNewSinceLastVisit: 0 });
     await saveActiveRun(next);
     return next;
   },
@@ -1355,9 +1378,21 @@ export const useGameState = create<GameStateValue>((set, get) => ({
     };
 
     const next: CaseRun = { ...prev, facts: [...prev.facts, fact] };
-    set({ run: next });
+    // Bump the per-session "captured since last journal visit" counter
+    // so the parody home grid's Journal tile can surface a red badge
+    // pointing the player at fresh evidence to triage. Cleared by
+    // `markJournalVisited` the moment the Journal app is opened.
+    set({
+      run: next,
+      journalNewSinceLastVisit: get().journalNewSinceLastVisit + 1,
+    });
     await saveActiveRun(next);
     return fact;
+  },
+
+  markJournalVisited: () => {
+    if (get().journalNewSinceLastVisit === 0) return;
+    set({ journalNewSinceLastVisit: 0 });
   },
 
   removeFact: async (factId) => {
@@ -1772,7 +1807,7 @@ export const useGameState = create<GameStateValue>((set, get) => ({
   },
   resetRun: async () => {
     cancelAllDiscardTimers();
-    set({ run: null, recentlyDiscarded: [] });
+    set({ run: null, recentlyDiscarded: [], journalNewSinceLastVisit: 0 });
     await saveActiveRun(null);
   },
 }));

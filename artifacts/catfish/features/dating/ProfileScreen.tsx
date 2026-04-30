@@ -1,20 +1,16 @@
 /**
- * Tab 4 — Profile placeholder + DEBUG menu.
+ * Lots 'o Fish — Profile screen.
  *
- * Pass 1 surface includes a debug section that exposes the only two
- * destructive operations the engine supports today:
- *  - Force a specific KillerIdentity for the next run
- *  - Reset the active run
- *
- * The killer identity for the *current* run is intentionally never
- * displayed (would spoil the case). Forcing only takes effect on the
- * next "New Case" — confirmed inline.
+ * Lifted from `app/(tabs)/profile.tsx` when Task #59 dropped the root
+ * tab bar. Same controls (debug menu, audio toggles, killer-force) —
+ * the only differences are: it no longer adds a top safe-area inset
+ * (the parody phone shell handles that), and the "Reset Active Run"
+ * action routes back to "/" (title screen) instead of "/(tabs)".
  */
 
 import { router } from "expo-router";
 import { useState } from "react";
-import { Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import { AssetImage } from "@/components/AssetImage";
 import {
@@ -28,8 +24,7 @@ import { useGameState } from "@/core/gameStore";
 import { ALL_KILLERS, KillerIdentity } from "@/core/models";
 import { getIdentityModule } from "@/core/identities";
 
-export default function ProfileTab() {
-  const insets = useSafeAreaInsets();
+export function ProfileScreen() {
   const run = useGameState((s) => s.run);
   const startNewRun = useGameState((s) => s.startNewRun);
   const resetRun = useGameState((s) => s.resetRun);
@@ -41,8 +36,6 @@ export default function ProfileTab() {
   const setMusicMuted = useGameState((s) => s.setMusicMuted);
   const [debugMessage, setDebugMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-
-  const topPad = Math.max(insets.top, Platform.OS === "web" ? 24 : 12);
 
   const handleForce = async (identity: KillerIdentity) => {
     if (busy) return;
@@ -63,6 +56,9 @@ export default function ProfileTab() {
     try {
       await resetRun();
       setDebugMessage("Active run cleared. Returning to title…");
+      // Bounce back to the title screen — without a run, the phone
+      // home shell has nothing to power its dating-app surface and
+      // the title is the only place to start a new case.
       setTimeout(() => router.replace("/"), 600);
     } finally {
       setBusy(false);
@@ -72,10 +68,7 @@ export default function ProfileTab() {
   return (
     <ScrollView
       style={styles.root}
-      contentContainerStyle={[
-        styles.content,
-        { paddingTop: topPad, paddingBottom: Platform.OS === "web" ? 100 : 24 },
-      ]}
+      contentContainerStyle={[styles.content, { paddingBottom: 24 }]}
     >
       <ScanlineOverlay />
 
@@ -293,6 +286,7 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 18,
+    paddingTop: 12,
   },
   profileCard: {
     flexDirection: "row",
@@ -314,13 +308,6 @@ const styles = StyleSheet.create({
   audioCard: {
     marginTop: 14,
     padding: 14,
-  },
-  voiceToggle: {
-    marginTop: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderWidth: 2,
-    alignItems: "center",
   },
   audioToggleRow: {
     flexDirection: "row",

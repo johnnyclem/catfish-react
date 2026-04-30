@@ -1,25 +1,16 @@
 /**
- * Tab 3 — Journal.
+ * Journal screen body.
  *
- * Pass 3 surface: shows the case file the player has built up by
- * long-pressing chat messages to extract Facts. Facts are grouped
- * under the suspect they came from. Empty state explains the gesture
- * so it's discoverable before Pass 2's chat UI ships.
- *
- * Capture itself lives in `features/journal/MessageFactGesture.tsx`,
- * which Pass 2's chat UI wraps around each message bubble. The gesture
- * calls into `useGameState().commitFact`, which persists Facts to
- * AsyncStorage so the case file survives a cold start.
- *
- * Once a player has captured a lot of Facts the raw stack becomes
- * hard to scan, so the tab also exposes a per-suspect chip filter and
- * a sort toggle (newest first vs by day captured). These are purely
- * view-side — no schema changes.
+ * Lifted from `app/(tabs)/journal.tsx` when Task #59 dropped the root
+ * tab bar and made the parody phone home grid the main interface.
+ * Same data-shaping (per-suspect grouping, sort + filter, captured-
+ * fact undo banner, accusation entry point) — the only chrome change
+ * is that we no longer pad the top inset ourselves; the parody phone
+ * shell that hosts us already does.
  */
 
 import { useMemo, useState } from "react";
 import { Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   NeonButton,
@@ -44,11 +35,9 @@ interface CandidateGroup {
   facts: Fact[];
 }
 
-export default function JournalTab() {
-  const insets = useSafeAreaInsets();
+export function JournalScreen() {
   const run = useGameState((s) => s.run);
   const removeFact = useGameState((s) => s.removeFact);
-  const topPad = Math.max(insets.top, Platform.OS === "web" ? 24 : 12);
 
   const [selectedSuspectId, setSelectedSuspectId] =
     useState<CandidateId | null>(null);
@@ -63,8 +52,6 @@ export default function JournalTab() {
     [run?.facts],
   );
 
-  // All groups *before* the suspect filter is applied — used both to
-  // power the chip row and to detect when filtering hid everything.
   const allGroups = useMemo<CandidateGroup[]>(() => {
     if (!run) return [];
     const byCandidate = new Map<CandidateId, Fact[]>();
@@ -79,13 +66,12 @@ export default function JournalTab() {
     const out: CandidateGroup[] = [];
     for (const [cid, facts] of byCandidate.entries()) {
       const candidate = run.deck.find((c) => c.id === cid);
-      if (!candidate) continue; // Stale capture — skip silently.
+      if (!candidate) continue;
       out.push({ candidate, facts });
     }
     return out;
   }, [run, committed]);
 
-  // Apply the active sort + suspect filter on top of the raw groups.
   const groups = useMemo<CandidateGroup[]>(() => {
     const filtered =
       selectedSuspectId == null
@@ -99,9 +85,6 @@ export default function JournalTab() {
           (b.capturedAt ?? "").localeCompare(a.capturedAt ?? ""),
         );
       } else {
-        // "By day captured" — chronological: earliest day first, and
-        // within a single day fall back to capturedAt ascending so the
-        // order inside a day stays stable.
         facts.sort((a, b) => {
           const da = a.capturedOnDay ?? 0;
           const db = b.capturedOnDay ?? 0;
@@ -113,14 +96,12 @@ export default function JournalTab() {
     });
 
     if (sortMode === "newest") {
-      // Suspect with the most recent capture floats to the top.
       sorted.sort((a, b) => {
         const ta = a.facts[0]?.capturedAt ?? "";
         const tb = b.facts[0]?.capturedAt ?? "";
         return tb.localeCompare(ta);
       });
     } else {
-      // Suspect whose earliest captured fact lands first chronologically.
       sorted.sort((a, b) => {
         const da = a.facts[0]?.capturedOnDay ?? 0;
         const db = b.facts[0]?.capturedOnDay ?? 0;
@@ -145,7 +126,7 @@ export default function JournalTab() {
   };
 
   return (
-    <View style={[styles.root, { paddingTop: topPad }]}>
+    <View style={styles.root}>
       <ScanlineOverlay />
 
       <PixelText
@@ -215,9 +196,13 @@ export default function JournalTab() {
         )}
       </ScrollView>
 
-      <UndoDiscardBanner
-        bottomOffset={Platform.OS === "web" ? 16 : Math.max(insets.bottom, 12)}
-      />
+      {/*
+        Phone shell already pads the system bottom inset, so the
+        undo banner just sits a hair above the home indicator pill
+        rather than re-applying the safe-area inset and getting
+        pushed up twice.
+      */}
+      <UndoDiscardBanner bottomOffset={16} />
 
       <AccusationSheet
         visible={accuseOpen}
@@ -283,6 +268,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: cfPalette.navyDeep,
     paddingHorizontal: 18,
+    paddingTop: 12,
   },
   title: { marginTop: 8 },
   subtitle: { marginTop: 6, marginBottom: 14 },

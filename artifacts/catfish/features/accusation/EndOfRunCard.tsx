@@ -39,6 +39,7 @@ import { useGameState } from "@/core/gameStore";
 import { getIdentityModule } from "@/core/identities";
 import { AccusationResult, CaseEnding, KillerIdentity } from "@/core/models";
 import { emitSfx } from "@/features/audio/audioEvents";
+import { usePhoneShell } from "@/features/parody/phoneShellState";
 
 interface EndingPalette {
   /** Loud header (e.g. "Caught Them"). */
@@ -113,10 +114,15 @@ export function EndOfRunCard() {
     setBusy(true);
     try {
       // Wipes the deck, facts, threads, swipes, ending — fresh run.
-      // The startNewRun action also routes to a freshly-seeded
-      // CaseRun, so we just bounce back to the tabs.
+      // We also reset the parody phone shell back to the home grid
+      // so the player lands on the new case from the same surface
+      // they'd see by tapping "Continue" off the title screen, not
+      // mid-Lots-'o-Fish from whatever tab they were on when the
+      // previous case closed.
       await startNewRun();
-      router.replace("/(tabs)");
+      usePhoneShell.getState().goHome();
+      usePhoneShell.getState().setLotsOfFishView("splash");
+      router.replace("/home" as never);
     } finally {
       setBusy(false);
     }

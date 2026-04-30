@@ -1,15 +1,20 @@
 /**
- * Tab 2 — Matches.
+ * Lots 'o Fish — Matches screen.
  *
- * Pass 2: each match is a tappable row that pushes into the per-thread
- * chat. The row also previews the most recent message and surfaces a
- * dim "new" pip for threads the player hasn't opened yet, so the tab
- * feels alive even before the player taps in.
+ * Lifted out of `app/(tabs)/matches.tsx` when Task #59 dropped the
+ * root tab bar. Identical to the previous implementation save for
+ * its outer chrome: it no longer adds a top safe-area inset (the
+ * parody phone shell already does) and it sits inside whatever the
+ * Lots 'o Fish dating-app shell renders around it.
+ *
+ * Each match row stays a `<Link>` to the per-thread chat — the chat
+ * route still lives at `/chat/[threadId]`, pushed on top of the
+ * shell, and `router.back()` returns the player to this screen
+ * inside the dating app.
  */
 
 import { Link } from "expo-router";
-import { Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import { AssetImage } from "@/components/AssetImage";
 import {
@@ -20,10 +25,8 @@ import {
 import { cfPalette } from "@/constants/colors";
 import { useGameState } from "@/core/gameStore";
 
-export default function MatchesTab() {
-  const insets = useSafeAreaInsets();
+export function MatchesScreen() {
   const run = useGameState((s) => s.run);
-  const topPad = Math.max(insets.top, Platform.OS === "web" ? 24 : 12);
 
   const matches = run?.matches ?? [];
   // Live leads first, dropped rows pinned to the bottom. We sort instead
@@ -44,7 +47,7 @@ export default function MatchesTab() {
   ).length;
 
   return (
-    <View style={[styles.root, { paddingTop: topPad }]}>
+    <View style={styles.root}>
       <ScanlineOverlay />
       <PixelText size={14} color={cfPalette.cyan} uppercase glow style={styles.title}>
         matches
@@ -85,11 +88,7 @@ export default function MatchesTab() {
             const unread = isDropped ? 0 : (thread?.unreadCount ?? 0);
             // Task #30 — "NEW" calls out matches that formed on the
             // current day's overnight resolution (not stale unopened
-            // threads from earlier days). Tying the affordance to
-            // `matchedOnDay === run.day` instead of "any unopened
-            // thread" keeps the cue meaningful past Day 1 while still
-            // disappearing the moment the player taps in (which causes
-            // openThread to seed the first suspect message).
+            // threads from earlier days).
             const isNewToday =
               !isDropped &&
               unread === 0 &&
@@ -217,6 +216,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: cfPalette.navyDeep,
     paddingHorizontal: 18,
+    paddingTop: 12,
   },
   title: {
     marginTop: 8,
@@ -230,7 +230,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   list: {
-    paddingBottom: Platform.OS === "web" ? 100 : 24,
+    paddingBottom: 24,
     gap: 10,
   },
   empty: {

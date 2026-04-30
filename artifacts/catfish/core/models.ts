@@ -113,6 +113,35 @@ export interface ChatThread {
    * cleared by `markThreadRead` when the player views the thread.
    */
   unreadCount: number;
+  /**
+   * Task #58 — id of the innocent dialogue tree this thread is using
+   * (see `INNOCENT_TREE_POOL` in `core/innocentTrees.ts`). Stamped on
+   * first `openThread` for non-killer candidates and never reassigned.
+   * Killer threads keep this `undefined` and use `killerScript`. Pre-pool
+   * threads also leave this `undefined` and fall back to the legacy
+   * shared `INNOCENT_SCRIPT`.
+   */
+  innocentScriptId?: string;
+  /**
+   * Task #58 — three improv reply options the player can pick from once
+   * the scripted tree has run out. Populated by the api-server improv
+   * endpoint; cleared the moment the player picks one. Empty/undefined
+   * means the picker shows the scripted options (or, when out of
+   * script, the "fetch improv" affordance).
+   */
+  improvReplyOptions?: string[];
+  /**
+   * Task #58 — true while an improv request is in flight. The picker
+   * hides itself behind a typing indicator while this is set so the
+   * player can't fire two requests at once.
+   */
+  improvPending?: boolean;
+  /**
+   * Task #58 — true if the most recent improv request failed. Lets the
+   * picker surface a "tap to retry" affordance instead of silently
+   * staying empty.
+   */
+  improvError?: boolean;
 }
 
 /**
@@ -393,6 +422,14 @@ export interface CaseRun {
    * builds a fresh run.
    */
   ending?: AccusationResult | null;
+  /**
+   * Task #58 — innocent dialogue tree ids that one of this run's threads
+   * has already claimed. New threads pull from `INNOCENT_TREE_POOL`,
+   * skipping anything in this set, so two non-killer matches in the
+   * same run never deliver the same scripted opener. Optional for
+   * back-compat; `migrateRun` defaults missing values to `[]`.
+   */
+  usedInnocentScriptIds?: string[];
 }
 
 /* ───────── id helpers (no `uuid` package — crashes on iOS/Android) ──── */

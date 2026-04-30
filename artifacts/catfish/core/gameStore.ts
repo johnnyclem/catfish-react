@@ -22,7 +22,8 @@ import { create } from "zustand";
 import { AccusationOutcome, resolveAccusation } from "./accusation";
 import { freshDecoysForDay } from "./decoyPool";
 import { buildAuthoredFacts } from "./factBootstrap";
-import { getIdentityModule, getScriptForCandidate } from "./identities";
+import { getIdentityModule, getScriptForThread } from "./identities";
+import { INNOCENT_TREE_IDS } from "./innocentTrees";
 import {
   AccusationResult,
   ALL_KILLERS,
@@ -298,11 +299,24 @@ interface GameStateValue {
   /**
    * Records a player reply and pushes the next scripted suspect turn (if
    * any). Returns the updated thread.
+   *
+   * For non-killer threads that just consumed the final scripted turn,
+   * this also flips `improvPending = true` so the UI knows to fetch the
+   * first improv reply via `requestImprovTurn`.
    */
   sendReply: (
     threadId: ThreadId,
     replyText: string,
   ) => Promise<ChatThread | null>;
+  /**
+   * Task #58 — fetch the next improv suspect turn for a thread that has
+   * exhausted its scripted tree (or has just been picked from after the
+   * tree ended). Pushes the suspect lines into the transcript and stages
+   * three reply options on `thread.improvReplyOptions`. Idempotent: a
+   * second call while one is already in flight is a no-op. Returns the
+   * updated thread, or null on failure (with `improvError = true`).
+   */
+  requestImprovTurn: (threadId: ThreadId) => Promise<ChatThread | null>;
   /**
    * Restore a previously-discarded fact by id, provided it's still in
    * the `recentlyDiscarded` queue. Acts as the undo handler for the
@@ -421,6 +435,7 @@ function buildRun(forced?: KillerIdentity): CaseRun {
     pendingMatchAnnouncements: [],
     closed: false,
     ending: null,
+    usedInnocentScriptIds: [],
   };
 }
 
@@ -454,11 +469,33 @@ export function migrateRun(run: CaseRun | null): CaseRun | null {
       (t as ChatThread).unreadCount >= 0
         ? (t as ChatThread).unreadCount
         : 0;
+    // Task #58 — preserve the innocent-tree assignment + improv state
+    // for threads that already had them; legacy threads without these
+    // fields stay undefined and fall back to INNOCENT_SCRIPT.
+    const tt = t as ChatThread;
+    const innocentScriptId =
+      typeof tt.innocentScriptId === "string" && tt.innocentScriptId.length > 0
+        ? tt.innocentScriptId
+        : undefined;
+    const improvReplyOptions = Array.isArray(tt.improvReplyOptions)
+      ? tt.improvReplyOptions.filter(
+          (opt): opt is string => typeof opt === "string",
+        )
+      : undefined;
+    // `improvPending` never persists across cold starts — a request
+    // that was in flight when the app was killed cannot be resumed,
+    // so we drop the flag and let the player tap to refetch.
+    const improvError =
+      typeof tt.improvError === "boolean" ? tt.improvError : undefined;
     return {
       ...t,
       messages,
       turnIndex,
       unreadCount,
+      innocentScriptId,
+      improvReplyOptions,
+      improvPending: false,
+      improvError,
     } satisfies ChatThread;
   });
 
@@ -495,12 +532,27 @@ export function migrateRun(run: CaseRun | null): CaseRun | null {
       )
     : [];
 
+  // Task #58 — backfill the per-run check-out set. Anything a thread
+  // already claims gets reflected here even if the persisted run
+  // pre-dates the field, so two innocent matches still can't collide
+  // after a cold start.
+  const persistedUsed = Array.isArray(run.usedInnocentScriptIds)
+    ? run.usedInnocentScriptIds.filter((id): id is string => typeof id === "string")
+    : [];
+  const claimedFromThreads = threads
+    .map((t) => t.innocentScriptId)
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+  const usedInnocentScriptIds = Array.from(
+    new Set<string>([...persistedUsed, ...claimedFromThreads]),
+  );
+
   return {
     ...run,
     threads,
     facts,
     pendingLikes,
     pendingMatchAnnouncements,
+    usedInnocentScriptIds,
   };
 }
 
@@ -1364,7 +1416,35 @@ export const useGameState = create<GameStateValue>((set, get) => ({
 
     const candidate = prev.deck.find((c) => c.id === thread.candidateId);
     if (!candidate) return;
-    const script = getScriptForCandidate(candidate);
+
+    // Task #58 — for non-killer matches, claim a fresh innocent tree
+    // id from the per-run check-out set so two innocent threads in the
+    // same run never share dialogue. Killer threads keep using their
+    // bespoke `killerScript` and are skipped here.
+    let claimedScriptId = thread.innocentScriptId;
+    let usedInnocentScriptIds = prev.usedInnocentScriptIds ?? [];
+    if (!candidate.isKillerCandidate && !claimedScriptId) {
+      const used = new Set(usedInnocentScriptIds);
+      const available = INNOCENT_TREE_IDS.filter((id) => !used.has(id));
+      // Pool exhausted (>30 innocent matches in one run — not expected
+      // in practice, but possible across many days). Fall back to a
+      // random reuse so the player still gets a tree; subsequent
+      // improv turns still feel distinct because they branch on the
+      // live transcript, not the opener.
+      const pickFrom =
+        available.length > 0 ? available : INNOCENT_TREE_IDS;
+      claimedScriptId =
+        pickFrom[Math.floor(Math.random() * pickFrom.length)] ?? undefined;
+      if (claimedScriptId && !used.has(claimedScriptId)) {
+        usedInnocentScriptIds = [...usedInnocentScriptIds, claimedScriptId];
+      }
+    }
+
+    const stagedThread: ChatThread = {
+      ...thread,
+      innocentScriptId: claimedScriptId,
+    };
+    const script = getScriptForThread(stagedThread, candidate);
     const turn = script[0];
     if (!turn) return;
 
@@ -1377,8 +1457,8 @@ export const useGameState = create<GameStateValue>((set, get) => ({
     }));
 
     const updatedThread: ChatThread = {
-      ...thread,
-      messages: [...thread.messages, ...opening],
+      ...stagedThread,
+      messages: [...stagedThread.messages, ...opening],
       turnIndex: 1,
       // Player is actively viewing — opening salvo lands as already read.
       unreadCount: 0,
@@ -1387,6 +1467,7 @@ export const useGameState = create<GameStateValue>((set, get) => ({
     const next: CaseRun = {
       ...prev,
       threads: prev.threads.map((t) => (t.id === threadId ? updatedThread : t)),
+      usedInnocentScriptIds,
     };
     set({ run: next });
     await saveActiveRun(next);
@@ -1403,7 +1484,51 @@ export const useGameState = create<GameStateValue>((set, get) => ({
 
     const candidate = prev.deck.find((c) => c.id === thread.candidateId);
     if (!candidate) return null;
-    const script = getScriptForCandidate(candidate);
+    const script = getScriptForThread(thread, candidate);
+
+    // Task #58 — once a non-killer thread has consumed the last
+    // scripted turn, replies are routed through the improv path
+    // instead. The picker for an improv turn is sourced from
+    // `improvReplyOptions`, but we still let the player's chosen
+    // reply land in the transcript and immediately stage the next
+    // improv request.
+    const isImprovTurn =
+      thread.turnIndex >= script.length && !candidate.isKillerCandidate;
+
+    if (isImprovTurn) {
+      const playerMsg: Message = {
+        id: newMessageId(),
+        sender: "player",
+        text: replyText,
+        sentAt: nowIso(),
+        // No beatKey for improv turns — beats are a property of the
+        // hand-authored tree, and improv is by definition off-tree.
+      };
+      const updatedThread: ChatThread = {
+        ...thread,
+        messages: [...thread.messages, playerMsg],
+        turnIndex: thread.turnIndex + 1,
+        // The reply options the player just consumed are stale; the
+        // next set will arrive with the next improv suspect turn.
+        improvReplyOptions: undefined,
+        improvPending: true,
+        improvError: undefined,
+      };
+      const next: CaseRun = {
+        ...prev,
+        threads: prev.threads.map((t) =>
+          t.id === threadId ? updatedThread : t,
+        ),
+      };
+      set({ run: next });
+      await saveActiveRun(next);
+      // Fire-and-forget — the UI shows the pending state via
+      // `improvPending` and renders whatever this resolves into when
+      // the store mutation lands. We deliberately don't await it so
+      // the player's tap stays snappy.
+      void get().requestImprovTurn(threadId);
+      return updatedThread;
+    }
 
     // Bound check — once we run out of authored turns the player can't
     // reply (the UI hides the picker too, but guard here as well).
@@ -1429,6 +1554,13 @@ export const useGameState = create<GameStateValue>((set, get) => ({
         }))
       : [];
 
+    // Task #58 — if the player just consumed the *final* scripted
+    // turn on a non-killer thread, flag the thread as awaiting its
+    // first improv suspect line. The UI will fire `requestImprovTurn`
+    // on focus (or on a retry tap) to pull the live continuation.
+    const justExhaustedScript =
+      !candidate.isKillerCandidate && !nextTurn && thread.turnIndex >= script.length - 1;
+
     const updatedThread: ChatThread = {
       ...thread,
       messages: [...thread.messages, playerMsg, ...suspectMsgs],
@@ -1438,6 +1570,8 @@ export const useGameState = create<GameStateValue>((set, get) => ({
       // actively in the thread never sees a stale badge — but a player
       // who navigated away mid-conversation will.
       unreadCount: thread.unreadCount + suspectMsgs.length,
+      improvPending: justExhaustedScript ? true : thread.improvPending,
+      improvError: justExhaustedScript ? undefined : thread.improvError,
     };
 
     const next: CaseRun = {
@@ -1446,7 +1580,124 @@ export const useGameState = create<GameStateValue>((set, get) => ({
     };
     set({ run: next });
     await saveActiveRun(next);
+
+    if (justExhaustedScript) {
+      // Same fire-and-forget pattern as the improv-on-improv path.
+      void get().requestImprovTurn(threadId);
+    }
+
     return updatedThread;
+  },
+
+  requestImprovTurn: async (threadId) => {
+    const prev = get().run;
+    if (!prev) return null;
+    if (prev.closed) return null;
+    const thread = prev.threads.find((t) => t.id === threadId);
+    if (!thread) return null;
+    const candidate = prev.deck.find((c) => c.id === thread.candidateId);
+    if (!candidate) return null;
+    // Killer threads never improv — their tree is the whole point.
+    if (candidate.isKillerCandidate) return null;
+
+    // Single-flight guard: if a request is already in flight, return
+    // the thread untouched. This blocks both duplicate taps (the
+    // retry button) and the focus-time auto-recover hook from
+    // racing each other into two overlapping Gemini calls.
+    if (thread.improvPending) {
+      return thread;
+    }
+
+    const flagged: ChatThread = {
+      ...thread,
+      improvPending: true,
+      improvError: undefined,
+    };
+    set({
+      run: {
+        ...prev,
+        threads: prev.threads.map((t) => (t.id === threadId ? flagged : t)),
+      },
+    });
+
+    try {
+      // Lazy import keeps the chat client out of the cold start path
+      // and out of any test that doesn't exercise improv.
+      const { fetchImprovTurn } = await import(
+        "@/features/chat/improvClient"
+      );
+      // Cap the prompt at the last 12 messages — enough to hold the
+      // entire scripted tree (4 turns × ~2 lines + 4 player replies
+      // ≈ 12) plus a couple of improv exchanges, while keeping the
+      // request body small and the model focused on recent context.
+      const tail = flagged.messages.slice(-12).map((m) => ({
+        sender: m.sender,
+        text: m.text,
+      }));
+      const result = await fetchImprovTurn({
+        suspect: {
+          name: candidate.displayName,
+          bio: candidate.bio,
+        },
+        transcript: tail,
+      });
+      const suspectMsgs: Message[] = result.suspectMessages.map((text) => ({
+        id: newMessageId(),
+        sender: "suspect",
+        text,
+        sentAt: nowIso(),
+      }));
+      // Re-read the thread off the *current* state — the player may
+      // have sent another reply or navigated since we kicked off the
+      // request, and we need to merge into the latest snapshot.
+      const cur = get().run;
+      if (!cur) return null;
+      const curThread = cur.threads.find((t) => t.id === threadId);
+      if (!curThread) return null;
+      const finalThread: ChatThread = {
+        ...curThread,
+        messages: [...curThread.messages, ...suspectMsgs],
+        turnIndex: curThread.turnIndex + 1,
+        improvReplyOptions: result.replyOptions,
+        improvPending: false,
+        improvError: undefined,
+        unreadCount: curThread.unreadCount + suspectMsgs.length,
+      };
+      const nextRun: CaseRun = {
+        ...cur,
+        threads: cur.threads.map((t) =>
+          t.id === threadId ? finalThread : t,
+        ),
+      };
+      set({ run: nextRun });
+      await saveActiveRun(nextRun);
+      return finalThread;
+    } catch (err) {
+      // Surface the failure on the thread so the UI can render a
+      // retry affordance instead of a stuck "typing…" indicator.
+      const cur = get().run;
+      if (!cur) return null;
+      const curThread = cur.threads.find((t) => t.id === threadId);
+      if (!curThread) return null;
+      const failedThread: ChatThread = {
+        ...curThread,
+        improvPending: false,
+        improvError: true,
+      };
+      const nextRun: CaseRun = {
+        ...cur,
+        threads: cur.threads.map((t) =>
+          t.id === threadId ? failedThread : t,
+        ),
+      };
+      set({ run: nextRun });
+      await saveActiveRun(nextRun);
+      // Don't rethrow — the caller is fire-and-forget. The thread
+      // state carries the failure flag for the UI.
+      // eslint-disable-next-line no-console
+      console.warn("[catfish] improv turn failed:", err);
+      return null;
+    }
   },
 
   restoreFact: async (factId) => {

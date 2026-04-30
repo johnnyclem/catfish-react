@@ -49,6 +49,7 @@
  */
 
 import { decoysForKiller } from "./decoyPool";
+import { getInnocentTreeById } from "./innocentTrees";
 import {
   Candidate,
   Deduction,
@@ -1050,13 +1051,40 @@ export function getIdentityModule(id: KillerIdentity): IdentityModule {
 /**
  * Resolves the chat script for a single candidate. The killer-candidate
  * uses their authored identity script; everyone else gets the shared
- * INNOCENT_SCRIPT. Pass 4 will replace this with fact-aware planning.
+ * INNOCENT_SCRIPT.
+ *
+ * Prefer `getScriptForThread` for innocent matches now that each thread
+ * carries an `innocentScriptId` drawn from `INNOCENT_TREE_POOL` — this
+ * helper is kept for the killer path (where the candidate alone decides
+ * the script) and as a safety net for legacy callers without a thread
+ * in hand.
  */
 export function getScriptForCandidate(
   candidate: Candidate,
 ): DialogueTurn[] {
   if (candidate.isKillerCandidate) {
     return getIdentityModule(candidate.identity).killerScript;
+  }
+  return INNOCENT_SCRIPT;
+}
+
+/**
+ * Task #58 — script for a single thread. Killer threads still use the
+ * killer-candidate's authored `killerScript`; non-killer threads with
+ * an `innocentScriptId` use that tree from `INNOCENT_TREE_POOL`. Threads
+ * persisted before the pool landed (no `innocentScriptId`) fall back to
+ * the legacy shared `INNOCENT_SCRIPT` so saves still hydrate cleanly.
+ */
+export function getScriptForThread(
+  thread: { innocentScriptId?: string },
+  candidate: Candidate,
+): DialogueTurn[] {
+  if (candidate.isKillerCandidate) {
+    return getIdentityModule(candidate.identity).killerScript;
+  }
+  if (thread.innocentScriptId) {
+    const tree = getInnocentTreeById(thread.innocentScriptId);
+    if (tree) return tree.turns;
   }
   return INNOCENT_SCRIPT;
 }

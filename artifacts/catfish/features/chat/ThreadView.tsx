@@ -29,7 +29,7 @@ import {
 } from "@/components/PixelChrome";
 import { cfPalette } from "@/constants/colors";
 import { useGameState } from "@/core/gameStore";
-import { getScriptForCandidate } from "@/core/identities";
+import { getScriptForThread } from "@/core/identities";
 import { ThreadId } from "@/core/models";
 import { MessageFactGesture } from "@/features/journal/MessageFactGesture";
 import { useDialogueVoice } from "@/features/voice/useDialogueVoice";
@@ -152,6 +152,7 @@ export function ThreadView({ threadId }: ThreadViewProps) {
   const sendReply = useGameState((s) => s.sendReply);
   const unmatchThread = useGameState((s) => s.unmatchThread);
   const markThreadRead = useGameState((s) => s.markThreadRead);
+  const requestImprovTurn = useGameState((s) => s.requestImprovTurn);
 
   const [pending, setPending] = useState(false);
   const [unmatchPending, setUnmatchPending] = useState(false);
@@ -239,9 +240,40 @@ export function ThreadView({ threadId }: ThreadViewProps) {
     void markThreadRead(threadId);
   }, [hydrated, threadId, markThreadRead]);
 
+  // Auto-recover an out-of-script innocent thread that landed without
+  // staged improv options (e.g. cold start during an in-flight call,
+  // or a previous failure that the player navigated away from before
+  // tapping retry). The store-level single-flight guard makes this
+  // safe to fire alongside the explicit retry button.
+  useEffect(() => {
+    if (!hydrated || !thread || !candidate) return;
+    if (candidate.isKillerCandidate) return;
+    const script = getScriptForThread(thread, candidate);
+    const outOfScript = thread.turnIndex >= script.length;
+    const hasOptions = (thread.improvReplyOptions?.length ?? 0) > 0;
+    if (
+      outOfScript &&
+      !hasOptions &&
+      !thread.improvPending &&
+      !thread.improvError
+    ) {
+      void requestImprovTurn(threadId);
+    }
+  }, [hydrated, thread, candidate, threadId, requestImprovTurn]);
+
   const replyOptions = useMemo(() => {
     if (!candidate || !thread) return [];
-    const script = getScriptForCandidate(candidate);
+    const script = getScriptForThread(thread, candidate);
+    // Once the scripted tree is exhausted, the picker is sourced from
+    // the live improv reply options that arrived with the most recent
+    // Gemini-generated suspect turn (Task #58). Killer threads stay on
+    // the script and never branch into improv.
+    if (
+      !candidate.isKillerCandidate &&
+      thread.turnIndex >= script.length
+    ) {
+      return thread.improvReplyOptions ?? [];
+    }
     // The picker shows the replies that *belong* to the most recent
     // suspect turn — i.e. script[turnIndex - 1].
     const turn = script[thread.turnIndex - 1];
@@ -322,9 +354,23 @@ export function ThreadView({ threadId }: ThreadViewProps) {
     );
   }
 
-  const script = getScriptForCandidate(candidate);
+  const script = getScriptForThread(thread, candidate);
+  // Killer threads still hit the "you're caught up" hint at the end of
+  // their bespoke script. Innocent threads fall back to live improv
+  // (Task #58) so they never run out — instead they show a typing
+  // indicator while a turn is in flight, or a retry hint on failure.
   const isOutOfScript =
-    thread.turnIndex >= script.length && thread.messages.length > 0;
+    candidate.isKillerCandidate &&
+    thread.turnIndex >= script.length &&
+    thread.messages.length > 0;
+  const showImprovTyping =
+    !candidate.isKillerCandidate &&
+    !!thread.improvPending &&
+    thread.messages.length > 0;
+  const showImprovError =
+    !candidate.isKillerCandidate &&
+    !!thread.improvError &&
+    !thread.improvPending;
 
   return (
     <View style={[styles.root, { paddingTop: topPad }]}>
@@ -437,6 +483,56 @@ export function ThreadView({ threadId }: ThreadViewProps) {
             </PixelText>
           </PixelPanel>
         )}
+        {!isUnmatched && showImprovTyping && (
+          <View testID="thread-improv-typing">
+            <PixelPanel variant="ghost" style={styles.endHint}>
+              <PixelText
+                size={7}
+                color={cfPalette.fog}
+                align="center"
+                uppercase
+                style={{ letterSpacing: 1 }}
+              >
+                {candidate.displayName.toLowerCase()} is typing…
+              </PixelText>
+            </PixelPanel>
+          </View>
+        )}
+        {!isUnmatched && showImprovError && (
+          <View testID="thread-improv-error">
+            <PixelPanel variant="ghost" style={styles.endHint}>
+            <PixelText
+              size={7}
+              color={cfPalette.err}
+              align="center"
+              uppercase
+              style={{ letterSpacing: 1 }}
+            >
+              connection lost
+            </PixelText>
+            <PixelText
+              size={6}
+              color={cfPalette.fog}
+              align="center"
+              style={{ marginTop: 6, lineHeight: 10 }}
+            >
+              {candidate.displayName.toLowerCase()} dropped off mid-text.
+            </PixelText>
+            <Pressable
+              onPress={() => void requestImprovTurn(thread.id)}
+              style={({ pressed }) => [
+                styles.retryBtn,
+                { opacity: pressed ? 0.6 : 1 },
+              ]}
+              testID="thread-improv-retry"
+            >
+              <PixelText size={7} color={cfPalette.cyan} uppercase>
+                tap to retry
+              </PixelText>
+            </Pressable>
+            </PixelPanel>
+          </View>
+        )}
       </ScrollView>
 
       {!isUnmatched && (
@@ -507,6 +603,14 @@ const styles = StyleSheet.create({
     marginTop: 16,
     paddingVertical: 12,
     paddingHorizontal: 16,
+  },
+  retryBtn: {
+    marginTop: 10,
+    alignSelf: "center",
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: cfPalette.cyan,
   },
   footer: {
     borderTopWidth: 2,

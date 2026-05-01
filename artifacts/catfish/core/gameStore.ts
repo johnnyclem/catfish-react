@@ -1040,6 +1040,17 @@ function nextSuspectDelayMs(text?: string): number {
   );
 }
 
+/**
+ * Test-only re-export so `scripts/test-typing-delay.mts` can assert
+ * the floor/ceiling/jitter math without going through the full
+ * scheduleSuspectDelivery side-effect path.
+ */
+export const __nextSuspectDelayMsForTests = nextSuspectDelayMs;
+export const __SUSPECT_DELAY_MIN_MS_FOR_TESTS = SUSPECT_DELAY_MIN_MS;
+export const __SUSPECT_DELAY_MAX_MS_FOR_TESTS = SUSPECT_DELAY_MAX_MS;
+export const __SUSPECT_DELAY_PER_CHAR_MS_FOR_TESTS = SUSPECT_DELAY_PER_CHAR_MS;
+export const __SUSPECT_DELAY_JITTER_MS_FOR_TESTS = SUSPECT_DELAY_JITTER_MS;
+
 function cancelSuspectDeliveryTimer(threadId: ThreadId): void {
   const t = suspectDeliveryTimers.get(threadId);
   if (t) {

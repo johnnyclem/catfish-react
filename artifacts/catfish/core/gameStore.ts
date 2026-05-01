@@ -46,6 +46,7 @@ import {
   newMessageId,
   newRunId,
   newThreadId,
+  PendingSuspectLine,
   SwipeRecord,
   ThreadId,
 } from "./models";
@@ -505,15 +506,69 @@ export function migrateRun(run: CaseRun | null): CaseRun | null {
     // so we drop the flag and let the player tap to refetch.
     const improvError =
       typeof tt.improvError === "boolean" ? tt.improvError : undefined;
+
+    // Task #62 — flush any in-flight typing-delay queue immediately on
+    // cold start. The setTimeout chain that would have drained it is
+    // gone with the dead JS context, and silently dropping the lines
+    // would lose narrative beats the player has already "earned" by
+    // sending the reply that triggered them. So we land every queued
+    // line into the transcript right now and apply the cumulative
+    // postDelivery effects (turnIndex bump, improv reply unlock).
+    const rawQueue = Array.isArray(tt.pendingSuspectQueue)
+      ? tt.pendingSuspectQueue
+      : [];
+    let flushedMessages = messages;
+    let flushedTurnIndex = turnIndex;
+    let flushedImprovReplyOptions = improvReplyOptions;
+    let flushedUnreadCount = unreadCount;
+    if (rawQueue.length > 0) {
+      const flushedExtras: Message[] = [];
+      for (const raw of rawQueue) {
+        if (
+          !raw ||
+          typeof raw !== "object" ||
+          typeof (raw as PendingSuspectLine).id !== "string" ||
+          typeof (raw as PendingSuspectLine).text !== "string"
+        ) {
+          continue;
+        }
+        const line = raw as PendingSuspectLine;
+        flushedExtras.push({
+          id: line.id,
+          sender: "suspect",
+          text: line.text,
+          sentAt: nowIso(),
+          beatKey: line.beatKey,
+        });
+        if (line.postDelivery) {
+          if (line.postDelivery.advanceTurnIndexBy) {
+            flushedTurnIndex =
+              flushedTurnIndex + line.postDelivery.advanceTurnIndexBy;
+          }
+          if (line.postDelivery.setImprovReplyOptions !== undefined) {
+            flushedImprovReplyOptions = line.postDelivery.setImprovReplyOptions;
+          }
+        }
+      }
+      flushedMessages = [...messages, ...flushedExtras];
+      // Honor the "unread bumps when a line lands" invariant — the
+      // cold-start flush is a delivery, just an instantaneous one.
+      // ThreadView's markThreadRead effect will clear the badge the
+      // moment the player focuses this thread, so an actively-viewed
+      // thread doesn't stay stuck on a stale count.
+      flushedUnreadCount = unreadCount + flushedExtras.length;
+    }
+
     return {
       ...t,
-      messages,
-      turnIndex,
-      unreadCount,
+      messages: flushedMessages,
+      turnIndex: flushedTurnIndex,
+      unreadCount: flushedUnreadCount,
       innocentScriptId,
-      improvReplyOptions,
+      improvReplyOptions: flushedImprovReplyOptions,
       improvPending: false,
       improvError,
+      pendingSuspectQueue: undefined,
     } satisfies ChatThread;
   });
 
@@ -926,6 +981,173 @@ function cancelAllDiscardTimers(): void {
   discardClearTimers.clear();
 }
 
+// ─── Task #62: humanized suspect typing-delay scheduling ─────────────
+//
+// Suspect lines no longer land synchronously. Each thread carries a
+// `pendingSuspectQueue` of lines that the UI surfaces as an animated
+// "is typing…" indicator; this module-level Map of timeouts drains
+// the queue one line at a time on a randomized delay so multiple
+// lines from one suspect can never appear in the same frame. Lives
+// outside Zustand state for the same reason `discardClearTimers`
+// does — timers are pure side effect and don't belong in serialized
+// state. Per-thread keying lets unmatch / cold start cancel one
+// thread without disturbing others.
+
+const suspectDeliveryTimers = new Map<
+  ThreadId,
+  ReturnType<typeof setTimeout>
+>();
+
+/** 2–6 seconds — the per-line "typing" beat. */
+const SUSPECT_DELAY_MIN_MS = 2_000;
+const SUSPECT_DELAY_MAX_MS = 6_000;
+
+function nextSuspectDelayMs(): number {
+  const span = SUSPECT_DELAY_MAX_MS - SUSPECT_DELAY_MIN_MS;
+  return SUSPECT_DELAY_MIN_MS + Math.floor(Math.random() * (span + 1));
+}
+
+function cancelSuspectDeliveryTimer(threadId: ThreadId): void {
+  const t = suspectDeliveryTimers.get(threadId);
+  if (t) {
+    clearTimeout(t);
+    suspectDeliveryTimers.delete(threadId);
+  }
+}
+
+function cancelAllSuspectDeliveryTimers(): void {
+  for (const t of suspectDeliveryTimers.values()) {
+    clearTimeout(t);
+  }
+  suspectDeliveryTimers.clear();
+}
+
+/**
+ * Schedule the next queued suspect line for `threadId` to land after
+ * a randomized 2-6 second delay. Cancels any existing timer for the
+ * same thread first so concurrent callers (e.g. a fresh script turn
+ * landing on top of an in-flight improv burst) don't race.
+ */
+function scheduleSuspectDelivery(
+  threadId: ThreadId,
+  set: (
+    partial:
+      | Partial<GameStateValue>
+      | ((state: GameStateValue) => Partial<GameStateValue>),
+  ) => void,
+  get: () => GameStateValue,
+): void {
+  cancelSuspectDeliveryTimer(threadId);
+  const handle = setTimeout(() => {
+    suspectDeliveryTimers.delete(threadId);
+    void deliverNextSuspectLine(threadId, set, get);
+  }, nextSuspectDelayMs());
+  suspectDeliveryTimers.set(threadId, handle);
+}
+
+/**
+ * Pop the head of `pendingSuspectQueue`, append it as a real Message,
+ * apply its `postDelivery` effects (turnIndex bump, improv reply
+ * unlock), persist, and chain another timer if more lines remain.
+ *
+ * Defensively bails when:
+ *   - the run has changed or closed since the timer was scheduled
+ *   - the thread has been unmatched (queue is dropped silently)
+ *   - the queue has already been drained by another path (cold-start
+ *     flush, manual cancel)
+ */
+async function deliverNextSuspectLine(
+  threadId: ThreadId,
+  set: (
+    partial:
+      | Partial<GameStateValue>
+      | ((state: GameStateValue) => Partial<GameStateValue>),
+  ) => void,
+  get: () => GameStateValue,
+): Promise<void> {
+  const cur = get().run;
+  if (!cur || cur.closed) return;
+  const t = cur.threads.find((x) => x.id === threadId);
+  if (!t) return;
+  const queue = t.pendingSuspectQueue ?? [];
+  if (queue.length === 0) return;
+
+  // Suspect was dropped while typing — silently discard the queue.
+  // No new transcript noise from a relationship the player has
+  // explicitly ended.
+  const match = cur.matches.find((m) => m.threadId === threadId);
+  if (match?.unmatched) {
+    const cleared: ChatThread = { ...t, pendingSuspectQueue: undefined };
+    const next: CaseRun = {
+      ...cur,
+      threads: cur.threads.map((x) => (x.id === threadId ? cleared : x)),
+    };
+    set({ run: next });
+    await saveActiveRun(next);
+    return;
+  }
+
+  const [head, ...rest] = queue;
+  const landed: Message = {
+    id: head.id,
+    sender: "suspect",
+    text: head.text,
+    sentAt: nowIso(),
+    beatKey: head.beatKey,
+  };
+
+  let turnIndex = t.turnIndex;
+  let improvReplyOptions = t.improvReplyOptions;
+  if (head.postDelivery) {
+    if (head.postDelivery.advanceTurnIndexBy) {
+      turnIndex = turnIndex + head.postDelivery.advanceTurnIndexBy;
+    }
+    if (head.postDelivery.setImprovReplyOptions !== undefined) {
+      improvReplyOptions = head.postDelivery.setImprovReplyOptions;
+    }
+  }
+
+  const updatedThread: ChatThread = {
+    ...t,
+    messages: [...t.messages, landed],
+    unreadCount: t.unreadCount + 1,
+    pendingSuspectQueue: rest.length > 0 ? rest : undefined,
+    turnIndex,
+    improvReplyOptions,
+  };
+  const next: CaseRun = {
+    ...cur,
+    threads: cur.threads.map((x) => (x.id === threadId ? updatedThread : x)),
+  };
+  set({ run: next });
+  await saveActiveRun(next);
+
+  if (rest.length > 0) {
+    scheduleSuspectDelivery(threadId, set, get);
+  }
+}
+
+/**
+ * Turn a list of authored/generated suspect line strings into queued
+ * `PendingSuspectLine` entries, optionally stamping `postDelivery`
+ * effects onto the *last* line. Centralized so the openThread,
+ * sendReply, and improv paths agree on how multi-line bursts are
+ * shaped.
+ */
+function queueSuspectLines(
+  texts: readonly string[],
+  beatKey: string | undefined,
+  lastPostDelivery?: PendingSuspectLine["postDelivery"],
+): PendingSuspectLine[] {
+  if (texts.length === 0) return [];
+  return texts.map((text, i, arr) => ({
+    id: newMessageId(),
+    text,
+    beatKey,
+    postDelivery: i === arr.length - 1 ? lastPostDelivery : undefined,
+  }));
+}
+
 export const useGameState = create<GameStateValue>((set, get) => ({
   hydrated: false,
   run: null,
@@ -961,6 +1183,12 @@ export const useGameState = create<GameStateValue>((set, get) => ({
       // dangling stash from a prior process is impossible. Still,
       // explicitly clearing here documents the contract.
       cancelAllDiscardTimers();
+      // Same contract for the typing-delay timers — `migrateRun`
+      // already flushed every persisted suspect queue into the
+      // transcript above, so nothing should still be due to fire,
+      // but documenting the cold-start clear keeps the invariant
+      // obvious.
+      cancelAllSuspectDeliveryTimers();
       set({
         run: existing,
         hydrated: true,
@@ -1067,6 +1295,11 @@ export const useGameState = create<GameStateValue>((set, get) => ({
     // Starting a fresh run forfeits any pending undos — facts stashed
     // against the previous run must not be restorable into the new one.
     cancelAllDiscardTimers();
+    // Task #62 — drop any in-flight suspect typing-delay timers from
+    // the previous run. The new run has fresh threads, so the old
+    // timers would either fire into nothing or (worse) try to
+    // operate on a thread id that's been replaced.
+    cancelAllSuspectDeliveryTimers();
     // Reset the per-session journal-new counter — the freshly seeded
     // run's authored facts are not "new evidence to triage", they're
     // the starting case file. The counter only tracks player-captured
@@ -1183,6 +1416,11 @@ export const useGameState = create<GameStateValue>((set, get) => ({
         closed: true,
         ending: result,
       };
+      // Task #62 — the case is sealed. Any in-flight suspect typing
+      // beats would land messages into a closed run, which the
+      // delivery helper would reject anyway, but cancelling here
+      // avoids the wasted timer fire.
+      cancelAllSuspectDeliveryTimers();
       set({ run: next });
       await saveActiveRun(next);
       return;
@@ -1241,6 +1479,10 @@ export const useGameState = create<GameStateValue>((set, get) => ({
       closed: true,
       ending: result,
     };
+    // Task #62 — accusation closes the case. Drop any in-flight
+    // typing-delay timers so a stale suspect line can't post into
+    // the End-of-Run card.
+    cancelAllSuspectDeliveryTimers();
     set({ run: next });
     await saveActiveRun(next);
     return result;
@@ -1483,20 +1725,37 @@ export const useGameState = create<GameStateValue>((set, get) => ({
     const turn = script[0];
     if (!turn) return;
 
-    const opening: Message[] = turn.suspectMessages.map((text) => ({
+    // Task #62 — humanized typing delay. The very first opener line
+    // lands immediately so a freshly-opened chat doesn't feel empty
+    // when the player taps in (per-spec). Any subsequent lines in the
+    // opening turn are queued and drained one at a time on a 2-6s
+    // delay so the suspect appears to be typing them out. turnIndex
+    // is held at 0 until the *last* queued line lands so the picker
+    // stays hidden through the whole opening salvo.
+    const openingTexts = turn.suspectMessages;
+    if (openingTexts.length === 0) return;
+    const firstLine: Message = {
       id: newMessageId(),
       sender: "suspect",
-      text,
+      text: openingTexts[0],
       sentAt: nowIso(),
       beatKey: turn.beatKey,
-    }));
+    };
+    const queuedRest: PendingSuspectLine[] = queueSuspectLines(
+      openingTexts.slice(1),
+      turn.beatKey,
+      { advanceTurnIndexBy: 1 },
+    );
+    const turnIndex = queuedRest.length === 0 ? 1 : 0;
 
     const updatedThread: ChatThread = {
       ...stagedThread,
-      messages: [...stagedThread.messages, ...opening],
-      turnIndex: 1,
+      messages: [...stagedThread.messages, firstLine],
+      turnIndex,
       // Player is actively viewing — opening salvo lands as already read.
       unreadCount: 0,
+      pendingSuspectQueue:
+        queuedRest.length > 0 ? queuedRest : undefined,
     };
 
     const next: CaseRun = {
@@ -1506,6 +1765,10 @@ export const useGameState = create<GameStateValue>((set, get) => ({
     };
     set({ run: next });
     await saveActiveRun(next);
+
+    if (queuedRest.length > 0) {
+      scheduleSuspectDelivery(threadId, set, get);
+    }
   },
 
   sendReply: async (threadId, replyText) => {
@@ -1519,6 +1782,25 @@ export const useGameState = create<GameStateValue>((set, get) => ({
 
     const candidate = prev.deck.find((c) => c.id === thread.candidateId);
     if (!candidate) return null;
+
+    // Task #62 — refuse a send while the suspect is still "typing"
+    // their last burst. The picker is hidden in this state, so this
+    // path is mainly a defense-in-depth against double-fires from a
+    // racing useEffect — without it a stray send would queue a new
+    // reply on top of stale `turnIndex` and corrupt the burst's
+    // postDelivery contract.
+    if (
+      thread.pendingSuspectQueue &&
+      thread.pendingSuspectQueue.length > 0
+    ) {
+      return null;
+    }
+    // Same defense-in-depth for the in-flight improv request — the
+    // single-flight guard inside `requestImprovTurn` already covers
+    // the API call itself, but blocking the player send keeps the
+    // turn ordering coherent.
+    if (thread.improvPending) return null;
+
     const script = getScriptForThread(thread, candidate);
 
     // Task #58 — once a non-killer thread has consumed the last
@@ -1579,32 +1861,49 @@ export const useGameState = create<GameStateValue>((set, get) => ({
     };
 
     const nextTurn = script[thread.turnIndex];
-    const suspectMsgs: Message[] = nextTurn
-      ? nextTurn.suspectMessages.map((text) => ({
-          id: newMessageId(),
-          sender: "suspect",
-          text,
-          sentAt: nowIso(),
-          beatKey: nextTurn.beatKey,
-        }))
+
+    // Task #62 — humanized typing delay. The player's reply lands
+    // immediately, but the suspect's response is queued and drained
+    // line-by-line behind a typing indicator on a 2-6s beat. Bumping
+    // `turnIndex` is deferred to the *last* queued line so the picker
+    // stays hidden until the suspect is done "typing" — see
+    // `deliverNextSuspectLine` for the apply-on-land machinery.
+    const suspectQueue: PendingSuspectLine[] = nextTurn
+      ? queueSuspectLines(nextTurn.suspectMessages, nextTurn.beatKey, {
+          advanceTurnIndexBy: 1,
+        })
       : [];
 
     // Task #58 — if the player just consumed the *final* scripted
     // turn on a non-killer thread, flag the thread as awaiting its
-    // first improv suspect line. The UI will fire `requestImprovTurn`
-    // on focus (or on a retry tap) to pull the live continuation.
+    // first improv suspect line. The improv path itself queues the
+    // resulting suspect lines through `pendingSuspectQueue` so the
+    // typing-delay treatment applies to improv too.
     const justExhaustedScript =
-      !candidate.isKillerCandidate && !nextTurn && thread.turnIndex >= script.length - 1;
+      !candidate.isKillerCandidate &&
+      !nextTurn &&
+      thread.turnIndex >= script.length - 1;
+
+    // When the script HAS a next turn, we don't bump turnIndex now —
+    // the queued last line will. When the script just ran out and
+    // we're handing off to improv, there's no suspect queue to wait
+    // on, so bump immediately to record that the script's done.
+    const bumpNow = !nextTurn;
+
+    const mergedQueue: PendingSuspectLine[] = [
+      ...(thread.pendingSuspectQueue ?? []),
+      ...suspectQueue,
+    ];
 
     const updatedThread: ChatThread = {
       ...thread,
-      messages: [...thread.messages, playerMsg, ...suspectMsgs],
-      turnIndex: thread.turnIndex + 1,
-      // Bump unread for any new suspect lines. ThreadView clears it back
-      // to 0 on the next render via markThreadRead so a player who is
-      // actively in the thread never sees a stale badge — but a player
-      // who navigated away mid-conversation will.
-      unreadCount: thread.unreadCount + suspectMsgs.length,
+      messages: [...thread.messages, playerMsg],
+      turnIndex: bumpNow ? thread.turnIndex + 1 : thread.turnIndex,
+      pendingSuspectQueue:
+        mergedQueue.length > 0 ? mergedQueue : undefined,
+      // Unread is bumped per landed suspect line by `deliverNextSuspectLine`,
+      // not eagerly here — keeping the badge honest with what's actually
+      // visible in the transcript.
       improvPending: justExhaustedScript ? true : thread.improvPending,
       improvError: justExhaustedScript ? undefined : thread.improvError,
     };
@@ -1615,6 +1914,10 @@ export const useGameState = create<GameStateValue>((set, get) => ({
     };
     set({ run: next });
     await saveActiveRun(next);
+
+    if (suspectQueue.length > 0) {
+      scheduleSuspectDelivery(threadId, set, get);
+    }
 
     if (justExhaustedScript) {
       // Same fire-and-forget pattern as the improv-on-improv path.
@@ -1676,12 +1979,6 @@ export const useGameState = create<GameStateValue>((set, get) => ({
         },
         transcript: tail,
       });
-      const suspectMsgs: Message[] = result.suspectMessages.map((text) => ({
-        id: newMessageId(),
-        sender: "suspect",
-        text,
-        sentAt: nowIso(),
-      }));
       // Re-read the thread off the *current* state — the player may
       // have sent another reply or navigated since we kicked off the
       // request, and we need to merge into the latest snapshot.
@@ -1689,15 +1986,44 @@ export const useGameState = create<GameStateValue>((set, get) => ({
       if (!cur) return null;
       const curThread = cur.threads.find((t) => t.id === threadId);
       if (!curThread) return null;
-      const finalThread: ChatThread = {
-        ...curThread,
-        messages: [...curThread.messages, ...suspectMsgs],
-        turnIndex: curThread.turnIndex + 1,
-        improvReplyOptions: result.replyOptions,
-        improvPending: false,
-        improvError: undefined,
-        unreadCount: curThread.unreadCount + suspectMsgs.length,
-      };
+
+      // Task #62 — improv suspect lines are queued and drained on the
+      // same 2-6s typing-delay beat as scripted lines. The turnIndex
+      // bump and reply-options unlock are stamped on the *last* queued
+      // line so the picker doesn't surface mid-burst. `improvPending`
+      // is cleared now (the network request is done) — the queue's
+      // own non-empty state keeps the typing indicator on screen.
+      let finalThread: ChatThread;
+      if (result.suspectMessages.length === 0) {
+        // Defensive — model returned no suspect text. Apply the reply
+        // options synchronously so the picker can recover.
+        finalThread = {
+          ...curThread,
+          turnIndex: curThread.turnIndex + 1,
+          improvReplyOptions: result.replyOptions,
+          improvPending: false,
+          improvError: undefined,
+        };
+      } else {
+        const queued = queueSuspectLines(
+          result.suspectMessages,
+          undefined,
+          {
+            advanceTurnIndexBy: 1,
+            setImprovReplyOptions: result.replyOptions,
+          },
+        );
+        finalThread = {
+          ...curThread,
+          pendingSuspectQueue: [
+            ...(curThread.pendingSuspectQueue ?? []),
+            ...queued,
+          ],
+          improvPending: false,
+          improvError: undefined,
+        };
+      }
+
       const nextRun: CaseRun = {
         ...cur,
         threads: cur.threads.map((t) =>
@@ -1706,6 +2032,13 @@ export const useGameState = create<GameStateValue>((set, get) => ({
       };
       set({ run: nextRun });
       await saveActiveRun(nextRun);
+
+      if (
+        finalThread.pendingSuspectQueue &&
+        finalThread.pendingSuspectQueue.length > 0
+      ) {
+        scheduleSuspectDelivery(threadId, set, get);
+      }
       return finalThread;
     } catch (err) {
       // Surface the failure on the thread so the UI can render a
@@ -1785,9 +2118,19 @@ export const useGameState = create<GameStateValue>((set, get) => ({
     const matches = prev.matches.map((m) =>
       m.id === matchId ? { ...m, unmatched: true } : m,
     );
-    // NB: we deliberately leave run.threads untouched. Pass 3's Journal
-    // still needs to be able to cite messages from dropped suspects.
-    const next: CaseRun = { ...prev, matches };
+    // Task #62 — drop any pending typing-delay queue + timer for this
+    // thread. Leaving them in flight would land suspect lines into
+    // a thread the player has explicitly ended.
+    cancelSuspectDeliveryTimer(target.threadId);
+    const threads = prev.threads.map((t) =>
+      t.id === target.threadId
+        ? ({ ...t, pendingSuspectQueue: undefined } satisfies ChatThread)
+        : t,
+    );
+    // NB: we deliberately leave run.threads' messages untouched.
+    // Pass 3's Journal still needs to be able to cite messages from
+    // dropped suspects.
+    const next: CaseRun = { ...prev, matches, threads };
     set({ run: next });
     await saveActiveRun(next);
   },
@@ -1807,6 +2150,9 @@ export const useGameState = create<GameStateValue>((set, get) => ({
   },
   resetRun: async () => {
     cancelAllDiscardTimers();
+    // Task #62 — kill every in-flight suspect typing-delay timer so
+    // we don't try to deliver lines into a null run.
+    cancelAllSuspectDeliveryTimers();
     set({ run: null, recentlyDiscarded: [], journalNewSinceLastVisit: 0 });
     await saveActiveRun(null);
   },

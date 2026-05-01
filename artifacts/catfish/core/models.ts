@@ -142,6 +142,54 @@ export interface ChatThread {
    * staying empty.
    */
   improvError?: boolean;
+  /**
+   * Task #62 — humanized typing delay: suspect lines that have been
+   * authored/generated but are still being "typed" by the suspect.
+   * The store drains this queue one line at a time on a 2-6 second
+   * randomized delay, appending each landed line to `messages`. The
+   * UI shows an animated typing indicator while this is non-empty so
+   * two suspect messages can't appear in the same frame. Persisted so
+   * cold starts don't drop in-flight lines (`migrateRun` flushes the
+   * queue into `messages` immediately on hydrate). Optional for
+   * back-compat with runs persisted before the field landed.
+   */
+  pendingSuspectQueue?: PendingSuspectLine[];
+}
+
+/**
+ * Task #62 — one suspect chat line waiting to be "typed out" into the
+ * transcript. The fields in `postDelivery` are applied atomically to
+ * the thread the moment this line lands, so a multi-line burst can
+ * keep `turnIndex` / `improvReplyOptions` in lockstep with the *last*
+ * line's arrival rather than pre-bumping them while the player still
+ * sees a typing indicator.
+ */
+export interface PendingSuspectLine {
+  id: MessageId;
+  text: string;
+  beatKey?: string;
+  /**
+   * Effects to apply to the parent thread *after* this line lands.
+   * Set only on the last line of a burst so multi-line replies don't
+   * bump `turnIndex` or unlock the picker until the suspect is
+   * actually done "typing".
+   */
+  postDelivery?: PendingSuspectPostDelivery;
+}
+
+/**
+ * Atomic post-delivery effects for the last line of a queued suspect
+ * burst. Anything left undefined is a no-op for that field.
+ */
+export interface PendingSuspectPostDelivery {
+  /** Bump `thread.turnIndex` by this many turns once the line lands. */
+  advanceTurnIndexBy?: number;
+  /**
+   * Replace `thread.improvReplyOptions` with this list once the line
+   * lands. Used by the improv path so the picker only unlocks after
+   * the staggered delivery completes.
+   */
+  setImprovReplyOptions?: string[];
 }
 
 /**

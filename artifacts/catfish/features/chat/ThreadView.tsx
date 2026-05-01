@@ -156,6 +156,11 @@ export function ThreadView({ threadId }: ThreadViewProps) {
 
   const [pending, setPending] = useState(false);
   const [unmatchPending, setUnmatchPending] = useState(false);
+  // Task #62 — animated "is typing" ellipsis. Cycles through 1/2/3
+  // dots roughly every ~400ms so the indicator feels alive instead
+  // of static. Lives in component state (not a render-time clock)
+  // so it can be paused implicitly when the typing surface unmounts.
+  const [typingDots, setTypingDots] = useState(1);
   const scrollRef = useRef<ScrollView>(null);
 
   const thread = useMemo(
@@ -191,6 +196,38 @@ export function ThreadView({ threadId }: ThreadViewProps) {
     }, 60);
     return () => clearTimeout(t);
   }, [thread?.messages.length]);
+
+  // Auto-scroll on queue/improv state changes too — the typing
+  // indicator panel appearing / disappearing changes the visible
+  // bottom anchor and otherwise can leave the player looking at
+  // empty space above a new "is typing…" line.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    }, 60);
+    return () => clearTimeout(t);
+  }, [
+    thread?.pendingSuspectQueue?.length,
+    thread?.improvPending,
+  ]);
+
+  // Animated typing-ellipsis cycle. Resets to 1 dot whenever the
+  // typing surface (re)appears so a fresh burst always opens with
+  // a single dot rather than mid-cycle.
+  const typingActive =
+    (thread?.pendingSuspectQueue?.length ?? 0) > 0 ||
+    !!thread?.improvPending;
+  useEffect(() => {
+    if (!typingActive) {
+      setTypingDots(1);
+      return;
+    }
+    setTypingDots(1);
+    const id = setInterval(() => {
+      setTypingDots((d) => (d % 3) + 1);
+    }, 400);
+    return () => clearInterval(id);
+  }, [typingActive]);
 
   // Voice playback — auto-plays *new* suspect bubbles only. Tracking
   // played message ids in a ref (instead of by length delta) keeps the
@@ -230,24 +267,35 @@ export function ThreadView({ threadId }: ThreadViewProps) {
     }
   }, [hydrated, thread, candidate, voice]);
 
-  // Clear unread once on initial focus of this thread. We deliberately
-  // do NOT re-fire on every thread mutation — when sendReply pushes a
-  // new suspect turn, that bump should persist on the Matches row so
-  // the player sees a badge after they navigate back. markThreadRead
-  // fires again on the next focus (re-mount) when they re-enter.
+  // Clear unread on focus AND on every new message that lands while
+  // the player is actively in the thread. With Task #62's humanized
+  // delivery the suspect's lines drift in 2-6s after each reply, so
+  // the player is watching them arrive in real time — flashing a
+  // "2 unread" badge on the Matches row the moment they navigate
+  // back would be a lie about what they've already read. Threads
+  // they're NOT inside still accumulate unread the normal way (the
+  // effect doesn't run for unmounted screens).
   useEffect(() => {
     if (!hydrated) return;
     void markThreadRead(threadId);
-  }, [hydrated, threadId, markThreadRead]);
+  }, [hydrated, threadId, markThreadRead, thread?.messages.length]);
 
   // Auto-recover an out-of-script innocent thread that landed without
   // staged improv options (e.g. cold start during an in-flight call,
   // or a previous failure that the player navigated away from before
   // tapping retry). The store-level single-flight guard makes this
   // safe to fire alongside the explicit retry button.
+  //
+  // Task #62 — also skip while a typing-delay queue is still draining.
+  // The reply options arrive *with* the last queued line via its
+  // `postDelivery` payload, so kicking a fresh improv request before
+  // the burst lands would race it.
   useEffect(() => {
     if (!hydrated || !thread || !candidate) return;
     if (candidate.isKillerCandidate) return;
+    const queueDraining =
+      (thread.pendingSuspectQueue?.length ?? 0) > 0;
+    if (queueDraining) return;
     const script = getScriptForThread(thread, candidate);
     const outOfScript = thread.turnIndex >= script.length;
     const hasOptions = (thread.improvReplyOptions?.length ?? 0) > 0;
@@ -363,14 +411,21 @@ export function ThreadView({ threadId }: ThreadViewProps) {
     candidate.isKillerCandidate &&
     thread.turnIndex >= script.length &&
     thread.messages.length > 0;
-  const showImprovTyping =
-    !candidate.isKillerCandidate &&
-    !!thread.improvPending &&
-    thread.messages.length > 0;
+  // Task #62 — unified "is typing…" surface. The suspect is "typing"
+  // whenever lines are queued for delayed delivery OR an improv
+  // request is in flight. Killer threads also use the queue (no
+  // improv path) so this covers them too.
+  const queueDraining = (thread.pendingSuspectQueue?.length ?? 0) > 0;
+  const showSuspectTyping =
+    (queueDraining ||
+      (!candidate.isKillerCandidate && !!thread.improvPending)) &&
+    thread.messages.length > 0 &&
+    !isUnmatched;
   const showImprovError =
     !candidate.isKillerCandidate &&
     !!thread.improvError &&
-    !thread.improvPending;
+    !thread.improvPending &&
+    !queueDraining;
 
   return (
     <View style={[styles.root, { paddingTop: topPad }]}>
@@ -483,7 +538,7 @@ export function ThreadView({ threadId }: ThreadViewProps) {
             </PixelText>
           </PixelPanel>
         )}
-        {!isUnmatched && showImprovTyping && (
+        {showSuspectTyping && (
           <View testID="thread-improv-typing">
             <PixelPanel variant="ghost" style={styles.endHint}>
               <PixelText
@@ -493,7 +548,8 @@ export function ThreadView({ threadId }: ThreadViewProps) {
                 uppercase
                 style={{ letterSpacing: 1 }}
               >
-                {candidate.displayName.toLowerCase()} is typing…
+                {candidate.displayName.toLowerCase()} is typing
+                {".".repeat(typingDots)}
               </PixelText>
             </PixelPanel>
           </View>
@@ -542,9 +598,15 @@ export function ThreadView({ threadId }: ThreadViewProps) {
             { paddingBottom: Math.max(insets.bottom, 12) },
           ]}
         >
+          {/*
+            Task #62 — hide the reply picker while the suspect is
+            "typing" so the player can't fire a reply on top of an
+            in-flight burst (and so the picker doesn't surface stale
+            options computed off a turnIndex that hasn't bumped yet).
+          */}
           <ReplyPicker
-            options={replyOptions}
-            pending={pending}
+            options={showSuspectTyping ? [] : replyOptions}
+            pending={pending || showSuspectTyping}
             onPick={handlePick}
           />
         </View>

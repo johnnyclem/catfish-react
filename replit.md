@@ -51,6 +51,18 @@ Three-layer fact model — `static | variable | conditional` authored facts (in 
 - `core/gameStore.ts` — `commitFact` populates the new typed fields (`kind: "captured"`, `source`, `day`, `aboutCharacter`, `payload`) alongside the legacy `payloadJson` / `captured*` breadcrumbs. `migrateRun` backfills these for pre-Pass-4 persisted runs without retroactively injecting authored facts.
 - `pnpm --filter @workspace/catfish test:clue-graph` — verifies bootstrapper inclusion rules, double-blind variable swap, `commitFact` shape, all four endings, and the legacy migration round-trip.
 
+### Humanized chat reply timing (Task #62)
+
+NPC chat lines are no longer pushed synchronously. Each `ChatThread` now carries an optional `pendingSuspectQueue: PendingSuspectLine[]` (in `core/models.ts`); the store schedules a 2-6s randomized delay between each line so multiple suspect messages from the same turn never appear in the same frame.
+
+- `core/gameStore.ts` — module-level `suspectDeliveryTimers: Map<ThreadId, Timeout>` plus `scheduleSuspectDelivery` / `deliverNextSuspectLine` / `cancelSuspectDeliveryTimer` / `cancelAllSuspectDeliveryTimers`. `queueSuspectLines(texts, beatKey, lastPostDelivery)` builds a burst whose *last* line carries optional `postDelivery: { advanceTurnIndexBy?, setImprovReplyOptions? }` so `turnIndex` and improv reply unlock fire atomically when the suspect is done "typing", not pre-bumped mid-burst.
+- `openThread`: first opener line lands instantly (so the chat doesn't feel empty when the player taps in), remaining opener lines queue with `advanceTurnIndexBy: 1` on the last.
+- `sendReply`: player bubble lands immediately; scripted suspect response queues with `advanceTurnIndexBy: 1` on the last line. Refuses sends while `pendingSuspectQueue` is non-empty or `improvPending` is true.
+- `requestImprovTurn`: API result is queued with `{ advanceTurnIndexBy: 1, setImprovReplyOptions: result.replyOptions }` on the last line; `improvPending` is cleared the moment the network call resolves (the queue's own non-empty state keeps the typing indicator on screen).
+- `migrateRun`: cold-start flushes any persisted queue into `messages` immediately, applying cumulative `postDelivery` effects, and bumps `unreadCount` by the flushed-line count (the active-thread `markThreadRead` effect clears it on focus).
+- Lifecycle cancels: `hydrate`, `startNewRun`, `advanceDay` Day-7 close, `accuse`, and `resetRun` all `cancelAllSuspectDeliveryTimers()`. `unmatchThread` cancels its thread's timer + clears that thread's queue.
+- `features/chat/ThreadView.tsx` — unified `showSuspectTyping = (queue non-empty || improvPending)`, animated typing dots cycling 1→2→3 every 400ms, `ReplyPicker` hidden+disabled while typing, auto-scroll on queue/improv state changes, `markThreadRead` re-fires on `messages.length` so an actively-watched thread never leaks a stale unread badge to Matches when the player navigates back.
+
 ### Audio (Pass 1.1)
 
 Three independent channels — voice (existing ElevenLabs flow) plus new music + SFX — each persisted as a separate `*_muted` boolean in `gameStore.ts` (`catfish/prefs/{voice,sfx,music}_muted/v1`) and toggled from the Profile tab via three side-by-side cells (`voice-mute-toggle` / `sfx-mute-toggle` / `music-mute-toggle`).

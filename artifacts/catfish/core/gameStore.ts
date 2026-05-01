@@ -1001,10 +1001,43 @@ const suspectDeliveryTimers = new Map<
 /** 2–6 seconds — the per-line "typing" beat. */
 const SUSPECT_DELAY_MIN_MS = 2_000;
 const SUSPECT_DELAY_MAX_MS = 6_000;
+/**
+ * Task #63 — scale the typing beat by the line's character count so a
+ * one-word retort doesn't sit behind the same delay as a paragraph.
+ * 35ms/char puts the floor (~2s) at roughly a 57-char line and the
+ * ceiling (~6s) at roughly 171 chars, which lines up with how long the
+ * typing indicator used to drag on for those lengths anyway.
+ */
+const SUSPECT_DELAY_PER_CHAR_MS = 35;
+/**
+ * Symmetric jitter applied on top of the length-derived beat so even
+ * lines that clamp to the floor/ceiling don't fire at the exact same
+ * millisecond every time. Re-clamped after to preserve the 2–6s
+ * contract.
+ */
+const SUSPECT_DELAY_JITTER_MS = 500;
 
-function nextSuspectDelayMs(): number {
-  const span = SUSPECT_DELAY_MAX_MS - SUSPECT_DELAY_MIN_MS;
-  return SUSPECT_DELAY_MIN_MS + Math.floor(Math.random() * (span + 1));
+function nextSuspectDelayMs(text?: string): number {
+  const len = text?.length ?? 0;
+  const perChar = SUSPECT_DELAY_PER_CHAR_MS * len;
+  // Hold the per-character estimate inside the 2–6s window before
+  // jitter so we don't accidentally schedule a 50ms or 12s beat for
+  // pathological inputs.
+  const clamped = Math.max(
+    SUSPECT_DELAY_MIN_MS,
+    Math.min(SUSPECT_DELAY_MAX_MS, perChar),
+  );
+  const jitter =
+    Math.floor(Math.random() * (SUSPECT_DELAY_JITTER_MS * 2 + 1)) -
+    SUSPECT_DELAY_JITTER_MS;
+  // Re-clamp so jitter can't push us past the boundary, but the
+  // boundary itself still gets a little wiggle from the additive
+  // term (e.g. a "lol" lands somewhere in 2.0–2.5s rather than at a
+  // dead-on 2000ms every time).
+  return Math.max(
+    SUSPECT_DELAY_MIN_MS,
+    Math.min(SUSPECT_DELAY_MAX_MS, clamped + jitter),
+  );
 }
 
 function cancelSuspectDeliveryTimer(threadId: ThreadId): void {
@@ -1038,10 +1071,17 @@ function scheduleSuspectDelivery(
   get: () => GameStateValue,
 ): void {
   cancelSuspectDeliveryTimer(threadId);
+  // Task #63 — peek at the next queued line so the typing beat can
+  // scale to its length. Falls back to the unscaled floor when the
+  // queue is unexpectedly empty (defensive; deliverNextSuspectLine
+  // also no-ops in that case).
+  const cur = get().run;
+  const thread = cur?.threads.find((x) => x.id === threadId);
+  const headText = thread?.pendingSuspectQueue?.[0]?.text;
   const handle = setTimeout(() => {
     suspectDeliveryTimers.delete(threadId);
     void deliverNextSuspectLine(threadId, set, get);
-  }, nextSuspectDelayMs());
+  }, nextSuspectDelayMs(headText));
   suspectDeliveryTimers.set(threadId, handle);
 }
 

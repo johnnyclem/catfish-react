@@ -63,6 +63,10 @@ NPC chat lines are no longer pushed synchronously. Each `ChatThread` now carries
 - Lifecycle cancels: `hydrate`, `startNewRun`, `advanceDay` Day-7 close, `accuse`, and `resetRun` all `cancelAllSuspectDeliveryTimers()`. `unmatchThread` cancels its thread's timer + clears that thread's queue. Note: navigating between threads (or sending a reply in another thread) **does not** cancel an in-flight queue — each thread owns its own timer slot, so a suspect's burst keeps draining in the background and is fully landed (with unread bumps) when the player returns. This is intentional; cross-thread cancellation would silently drop authored beats.
 - `features/chat/ThreadView.tsx` — unified `showSuspectTyping = (queue non-empty || improvPending)`, animated typing dots cycling 1→2→3 every 400ms, `ReplyPicker` hidden+disabled while typing, auto-scroll on queue/improv state changes, `markThreadRead` re-fires on `messages.length` so an actively-watched thread never leaks a stale unread badge to Matches when the player navigates back.
 
+### Improv prompt role tagging
+
+`artifacts/api-server/src/routes/improv.ts` labels transcript turns with the suspect's uppercased display name (e.g. `SIENNA:`) and `PLAYER:` instead of the older `you:` / `them:`. The previous tags collided with the system prompt's own use of "you" to address the model and produced occasional perspective leaks where a player-style line ("that's really sweet of you to offer") landed inside `suspectMessages`. The system prompt also explicitly forbids the suspect from thanking/accepting an offer the suspect itself made. Temperature is `0.7` (down from `0.9`) for the same reason — high temperature widened the role-drift tail.
+
 ### Audio (Pass 1.1)
 
 Three independent channels — voice (existing ElevenLabs flow) plus new music + SFX — each persisted as a separate `*_muted` boolean in `gameStore.ts` (`catfish/prefs/{voice,sfx,music}_muted/v1`) and toggled from the Profile tab via three side-by-side cells (`voice-mute-toggle` / `sfx-mute-toggle` / `music-mute-toggle`).

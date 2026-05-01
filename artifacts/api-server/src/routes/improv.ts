@@ -63,19 +63,34 @@ type ImprovChatRequest = z.infer<typeof ImprovChatRequestSchema>;
 // Keep this short — the model handles "match the voice above" better
 // than a long re-statement of rules, and short prompts also keep cost
 // + latency lower.
-const SYSTEM_INSTRUCTION = `You are continuing an in-progress dating-app chat for a pixel-art noir detective game called Catfish. The player is a detective swiping on dating profiles; you are voicing an innocent match who is just trying to date.
+//
+// Role labels in the transcript are the suspect's display name vs
+// "PLAYER" rather than "you"/"them". The "you"/"them" version was
+// ambiguous because the system prompt also addresses the model as
+// "you", which produced occasional perspective leaks where the model
+// dropped a player-style reply ("thanks for offering", "that sounds
+// fun") into suspectMessages.
+const SYSTEM_INSTRUCTION = `You are continuing an in-progress dating-app chat for a pixel-art noir detective game called Catfish. The player is a detective swiping on dating profiles; you voice an innocent match who is just trying to date.
+
+The transcript below uses two role labels:
+- The match's display name (e.g. "SIENNA:") — these are YOUR previous lines as the match.
+- "PLAYER:" — these are the detective's previous taps. NEVER write a new line from the PLAYER's perspective in suspectMessages.
 
 Hard constraints on every reply:
 - Output JSON: { "suspectMessages": [1-2 strings], "replyOptions": [3 strings] }.
-- Suspect lines: 1 to 2 short messages, 5 to 14 words each. Lowercase casual texting voice. No emoji. Contractions fine. No exclamation marks. Em dashes ok. Each line max 80 chars.
-- Reply options: exactly 3, each a complete short sentence the player could send. Mix of warm / curious / playful. Each max 60 chars. No emoji. No exclamation marks.
+- suspectMessages: 1 to 2 short messages spoken BY the match, continuing what the match has been saying. 5 to 14 words each. Lowercase casual texting voice. No emoji. Contractions fine. No exclamation marks. Em dashes ok. Each line max 80 chars. NEVER thank the player for an offer the match itself just made; never accept an invitation the match itself just extended; never react as if the match is hearing its own previous line for the first time.
+- replyOptions: exactly 3, each a complete short sentence the PLAYER (detective) could tap to send. Mix of warm / curious / playful. Each max 60 chars. No emoji. No exclamation marks. These are the only place where player-perspective text belongs.
 - Stay 100% in character as a normal person on a date. NEVER describe a crime, mention being a killer, break the fourth wall, or roleplay as the detective. If the player asks something dark, deflect naturally as a real person would.
-- Continue the established topic. Do not re-introduce yourself. Do not abruptly change subject unless the previous player message asked you to.`;
+- Continue the established topic. Do not re-introduce yourself. Do not abruptly change subject unless the previous PLAYER message asked you to.`;
 
 function buildUserPrompt(input: ImprovChatRequest): string {
+  // Use the match's display name (uppercased for visual contrast) and
+  // "PLAYER" as transcript role labels — see SYSTEM_INSTRUCTION above
+  // for why we don't use "you"/"them" here.
+  const matchLabel = input.suspect.name.toUpperCase();
   const lines = input.transcript
     .map((m) => {
-      const tag = m.sender === "suspect" ? "you" : "them";
+      const tag = m.sender === "suspect" ? matchLabel : "PLAYER";
       return `${tag}: ${m.text}`;
     })
     .join("\n");
@@ -86,7 +101,7 @@ function buildUserPrompt(input: ImprovChatRequest): string {
     "Recent conversation (oldest first):",
     lines,
     "",
-    'Continue the conversation. Return JSON only — { "suspectMessages": [...], "replyOptions": [...] }.',
+    `Continue the conversation. Your suspectMessages must be the next thing ${matchLabel} would say to PLAYER, not the other way around. Return JSON only — { "suspectMessages": [...], "replyOptions": [...] }.`,
   ].join("\n");
 }
 
@@ -144,7 +159,10 @@ async function callGemini(input: ImprovChatRequest): Promise<Improv> {
         responseMimeType: "application/json",
         // Plenty of headroom for the tiny JSON object we ask for.
         maxOutputTokens: 1024,
-        temperature: 0.9,
+        // 0.9 was creative enough that the model occasionally drifted
+        // into player-perspective lines inside suspectMessages. 0.7
+        // keeps the voice loose without that role-confusion tail.
+        temperature: 0.7,
       },
     }),
     REQUEST_TIMEOUT_MS,

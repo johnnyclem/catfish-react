@@ -207,9 +207,13 @@ export function decoysForKiller(
   const take = Math.min(count, DECOY_POOL.length);
   return order.slice(0, take).map((poolIndex) => {
     const t = DECOY_POOL[poolIndex];
+    // Decoys deliberately leave `identity` undefined — the
+    // `KillerIdentity` union is reserved for the killer-candidate of
+    // the run. Stamping it here used to collapse the AccusationSheet
+    // (every row "selected" at once) and corrupt captured-fact
+    // attribution because every decoy shared the killer's slot.
     return {
       id: newCandidateId(),
-      identity,
       displayName: t.displayName,
       age: t.age,
       tagline: t.tagline,
@@ -269,9 +273,14 @@ export function freshDecoysForDay(
   const picked = [...fresh, ...repeat].slice(0, Math.min(count, DECOY_POOL.length));
   return picked.map((poolIndex) => {
     const t = DECOY_POOL[poolIndex]!;
+    // Same decoy-identity rule as `decoysForKiller` above: leave
+    // `identity` undefined so a decoy can never be mistaken for the
+    // run's killer slot. The `killer` parameter is no longer read
+    // here — it's kept on the signature so older callers/tests don't
+    // need to be reworked, but a future cleanup can drop it.
+    void killer;
     return {
       id: newCandidateId(),
-      identity: killer,
       displayName: t.displayName,
       age: t.age,
       tagline: t.tagline,

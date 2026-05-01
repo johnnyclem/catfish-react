@@ -37,7 +37,7 @@ import {
 } from "@/components/PixelChrome";
 import { cfPalette } from "@/constants/colors";
 import { useGameState } from "@/core/gameStore";
-import { Candidate, KillerIdentity } from "@/core/models";
+import { Candidate, CandidateId } from "@/core/models";
 import { emitSfx } from "@/features/audio/audioEvents";
 
 interface AccusationSheetProps {
@@ -55,7 +55,14 @@ interface AccuseRow {
 export function AccusationSheet({ visible, onClose }: AccusationSheetProps) {
   const run = useGameState((s) => s.run);
   const accuse = useGameState((s) => s.accuse);
-  const [selected, setSelected] = useState<KillerIdentity | null>(null);
+  // Selection keys off the candidate id — NOT the legacy
+  // `KillerIdentity` slot. Decoys don't carry an identity, and even
+  // when they did (pre-audit), every decoy shared the killer's slot,
+  // so selecting "Riley" would highlight every row at once and
+  // auto-win the accusation. Keying on the candidate id makes each
+  // row independently selectable and lets the gameStore decide
+  // killer-vs-decoy from the candidate itself.
+  const [selected, setSelected] = useState<CandidateId | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   // Build accusation rows from candidates the player has actually
@@ -74,22 +81,25 @@ export function AccusationSheet({ visible, onClose }: AccusationSheetProps) {
     );
 
     // Per-candidate captured-fact tally so the row can hint at how
-    // much evidence the player actually filed against them.
-    const factsByIdentity = new Map<KillerIdentity, number>();
+    // much evidence the player actually filed against them. Keys off
+    // `capturedFromCandidateId` (always unique per candidate) — the
+    // older `aboutCharacter`-keyed map collapsed all decoys onto the
+    // killer's slot because every decoy was stamped with that
+    // identity, which made the badge useless.
+    const factsByCandidate = new Map<CandidateId, number>();
     for (const f of run.facts) {
       if (!f.committed) continue;
-      const who = f.aboutCharacter;
-      if (who === "player") continue;
-      // Friend NPCs aren't accusable in this pass — skip.
-      if (who === "alex" || who === "morgan" || who === "dev") continue;
-      factsByIdentity.set(who, (factsByIdentity.get(who) ?? 0) + 1);
+      if (f.kind !== "captured") continue;
+      const cid = f.capturedFromCandidateId;
+      if (!cid) continue;
+      factsByCandidate.set(cid, (factsByCandidate.get(cid) ?? 0) + 1);
     }
 
     const out: AccuseRow[] = seen.map((c) => ({
       candidate: c,
       matched: matchedIds.has(c.id),
       dropped: droppedIds.has(c.id) && !matchedIds.has(c.id),
-      factCount: factsByIdentity.get(c.identity) ?? 0,
+      factCount: factsByCandidate.get(c.id) ?? 0,
     }));
 
     // Sort: live matches first, then dropped matches, then everyone
@@ -120,12 +130,15 @@ export function AccusationSheet({ visible, onClose }: AccusationSheetProps) {
     // resolves and overlays its own win/lose sting on top.
     emitSfx("accuse");
     try {
-      // For escaped we still need to pass an `accused` value so the
-      // resolver's signature is satisfied — it gets ignored by the
-      // resolver entirely (escaped always reads as `escapedStub`).
-      const accused: KillerIdentity =
-        outcome === "accuse" && selected ? selected : run?.killer ?? "miles";
-      await accuse({ accused, outcome });
+      // The store's `accuse` action accepts a candidate id directly
+      // and decides whether the candidate is the killer or a decoy.
+      // For "escaped" we don't need an accusedCandidateId at all —
+      // the resolver always returns `escapedStub`.
+      if (outcome === "accuse" && selected) {
+        await accuse({ accusedCandidateId: selected, outcome });
+      } else {
+        await accuse({ outcome });
+      }
       // Card mounts at the root layout — just close ourselves and
       // let the overlay light up.
       setSelected(null);
@@ -188,11 +201,11 @@ export function AccusationSheet({ visible, onClose }: AccusationSheetProps) {
                 showsVerticalScrollIndicator={false}
               >
                 {rows.map((r) => {
-                  const isSel = selected === r.candidate.identity;
+                  const isSel = selected === r.candidate.id;
                   return (
                     <Pressable
                       key={r.candidate.id}
-                      onPress={() => setSelected(r.candidate.identity)}
+                      onPress={() => setSelected(r.candidate.id)}
                       style={({ pressed }) => [
                         styles.row,
                         {
@@ -208,7 +221,7 @@ export function AccusationSheet({ visible, onClose }: AccusationSheetProps) {
                       accessibilityRole="button"
                       accessibilityState={{ selected: isSel }}
                       accessibilityLabel={`Accuse ${r.candidate.displayName}`}
-                      testID={`accuse-row-${r.candidate.identity}`}
+                      testID={`accuse-row-${r.candidate.id}`}
                     >
                       <AssetImage
                         id={

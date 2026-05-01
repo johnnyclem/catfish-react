@@ -256,7 +256,7 @@ function fnv1a(input: string): number {
  * pre-gen stay in lockstep without sharing state.
  */
 export function voiceForCandidate(candidate: Candidate): VoiceProfile {
-  if (candidate.isKillerCandidate) {
+  if (candidate.isKillerCandidate && candidate.identity) {
     return KILLER_VOICES[candidate.identity];
   }
   const idx = fnv1a(candidate.id) % INNOCENT_POOL.length;

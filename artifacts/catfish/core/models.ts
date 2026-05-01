@@ -59,7 +59,24 @@ export interface Message {
 
 export interface Candidate {
   id: CandidateId;
-  identity: KillerIdentity;
+  /**
+   * Killer-identity slot the candidate occupies in the run's authored
+   * cast. Stamped only on the run's killer-candidate (where it equals
+   * `run.killer`). Decoy candidates from `decoyPool` leave this
+   * `undefined` — they have no `KillerIdentity` because the union
+   * is reserved for the eight authored killers.
+   *
+   * Historic note: prior to the audit task that introduced this
+   * comment, every decoy was stamped with the killer's identity,
+   * which collapsed the AccusationSheet (every row "selected" at once,
+   * every accusation auto-won) and corrupted captured-fact attribution.
+   * Optional now so the type system stops decoys from ever colliding
+   * with a killer slot again. Persisted runs from before that fix may
+   * still carry a stale identity on their decoys; consumers should gate
+   * any read of this field on `isKillerCandidate` or on a stricter
+   * `identity === run.killer` check.
+   */
+  identity?: KillerIdentity;
   displayName: string;
   age: number;
   tagline: string;
@@ -362,8 +379,18 @@ export interface Fact {
   source: FactSource;
   /** Day-clock value the Fact is "stamped" with. */
   day: number;
-  /** Character the Fact is *about* — usually a candidate identity. */
-  aboutCharacter: KillerIdentity | "player" | FriendID;
+  /**
+   * Character the Fact is *about* — usually a candidate identity.
+   *
+   * Authored facts always set this (see `factUniverse.json`). Captured
+   * facts only set it when the source candidate is the killer-candidate;
+   * captures from decoys (who have no `KillerIdentity`) leave it
+   * undefined. Consumers that need per-suspect grouping should prefer
+   * `capturedFromCandidateId` for captured rows — that field carries the
+   * actual candidate id and never collides across decoys the way
+   * `aboutCharacter` did before the audit fix.
+   */
+  aboutCharacter?: KillerIdentity | "player" | FriendID;
   /** Resolved payload for this run/killer. */
   payload: FactPayload;
   /**

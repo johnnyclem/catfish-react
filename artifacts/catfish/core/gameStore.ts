@@ -130,9 +130,26 @@ export interface CommitFactInput {
  * before nailing it) — `"metKiller"` is wired internally by
  * `advanceDay` when the Day 7 face-to-face fires, not by external
  * callers.
+ *
+ * Two ways to identify the accused:
+ *
+ *  - `accusedCandidateId` — preferred. The AccusationSheet keys off
+ *    the candidate row's id, so decoys and the killer-candidate are
+ *    distinguishable even though decoys carry no `KillerIdentity`.
+ *    The store reads `Candidate.isKillerCandidate` to decide whether
+ *    to forward the run's `killer` slot or a sentinel "wrong slot"
+ *    to the resolver.
+ *  - `accused` — legacy. Pre-audit callers, the Day-7 face-to-face
+ *    beat in `advanceDay`, and headless test scripts pass an
+ *    identity directly. Still honored verbatim.
+ *
+ * For `outcome === "escaped"` neither is required — the resolver
+ * always returns `escapedStub`. For "accuse"/"metKiller", at least
+ * one of the two must be set or the call is a no-op.
  */
 export interface AccuseInput {
-  accused: KillerIdentity;
+  accused?: KillerIdentity;
+  accusedCandidateId?: CandidateId;
   outcome?: AccusationOutcome;
 }
 
@@ -572,13 +589,33 @@ export function migrateRun(run: CaseRun | null): CaseRun | null {
     } satisfies ChatThread;
   });
 
+  // Audit fix — scrub the legacy decoy-identity stamp from any deck
+  // row that isn't the killer-candidate. Pre-fix builds wrote
+  // `identity: <killer>` onto every decoy, which (a) collapsed the
+  // AccusationSheet selection model and (b) made every accusation
+  // auto-resolve as `caughtThem`. The new code keeps `identity`
+  // strictly opt-in for killer-candidates, so the safe move on a
+  // cold start is to drop any stray slot from a non-killer row even
+  // if the persisted blob still has one.
+  const deck = run.deck.map((c) =>
+    c.isKillerCandidate ? c : { ...c, identity: undefined },
+  );
+
+  // Use the post-scrub deck when reasoning about the source candidate
+  // for a captured fact — so legacy captures from decoys correctly
+  // see `isKillerCandidate === false` and drop their stale
+  // `aboutCharacter` stamp during migration.
+  const runForFactMigration: CaseRun = { ...run, deck };
+
   // Pass 4 — backfill the new Clue Graph fields onto pre-schema Fact
   // rows so cold start of an in-flight run can't crash on a missing
   // `kind`/`source`/`day`/`aboutCharacter`/`payload`. We do *not*
   // retroactively inject authored facts here — those only land via
   // `startNewRun`, per the task spec, so an in-flight run keeps the
   // exact captured-facts list it had before the upgrade.
-  const facts: Fact[] = run.facts.map((f) => migrateFact(f, run));
+  const facts: Fact[] = run.facts.map((f) =>
+    migrateFact(f, runForFactMigration),
+  );
 
   // Task #29 — default the like-then-match queues so runs persisted
   // before this field landed continue to load. An in-flight run that
@@ -621,6 +658,7 @@ export function migrateRun(run: CaseRun | null): CaseRun | null {
 
   return {
     ...run,
+    deck,
     threads,
     facts,
     pendingLikes,
@@ -677,18 +715,28 @@ function migrateFact(raw: Fact, run: CaseRun): Fact {
         ? f.capturedOnDay
         : run.day;
 
-  // `aboutCharacter` — for a captured fact, derive from the
-  // candidate the quote came from (so the Journal still groups
-  // correctly). Falls back to the run's killer identity if the
-  // candidate has been removed from the deck since capture.
+  // `aboutCharacter` — for an authored fact this is always set on the
+  // raw row and we honor it verbatim. For a captured fact, only the
+  // killer-candidate carries an `identity`, so we leave the field
+  // undefined when the source candidate is a decoy — even if the
+  // legacy persisted row has a stale `aboutCharacter: <killer>` stamp
+  // from the pre-fix builds (where every decoy shared the killer's
+  // slot). Per-suspect grouping in the journal / AccusationSheet
+  // keys off `capturedFromCandidateId` instead, so dropping the stale
+  // stamp is the consistent move.
   let aboutCharacter: Fact["aboutCharacter"];
-  if (f.aboutCharacter) {
+  if (kind === "captured" && f.capturedFromCandidateId) {
+    const cand = run.deck.find((c) => c.id === f.capturedFromCandidateId);
+    aboutCharacter = cand?.isKillerCandidate ? cand.identity : undefined;
+  } else if (f.aboutCharacter) {
     aboutCharacter = f.aboutCharacter;
   } else if (f.capturedFromCandidateId) {
-    const cand = run.deck.find((c) => c.id === f.capturedFromCandidateId);
-    aboutCharacter = cand?.identity ?? run.killer;
+    // Captured fact whose source candidate has been removed from the
+    // deck — can't tell if it was a decoy or the killer-candidate, so
+    // drop the field rather than guess.
+    aboutCharacter = undefined;
   } else {
-    aboutCharacter = run.killer;
+    aboutCharacter = undefined;
   }
 
   // `payload` — prefer the typed field, else lift the captured
@@ -1502,9 +1550,50 @@ export const useGameState = create<GameStateValue>((set, get) => ({
     await saveActiveRun(next);
   },
 
-  accuse: async ({ accused, outcome = "accuse" }) => {
+  accuse: async ({ accused, accusedCandidateId, outcome = "accuse" }) => {
     const prev = get().run;
     if (!prev || prev.closed) return null;
+
+    // Resolve which `KillerIdentity` slot to forward to the resolver.
+    // The resolver does a strict `accused === run.killer` compare, so
+    // we need a definite identity for "accuse"/"metKiller". For
+    // "escaped" the resolver ignores it entirely (always returns
+    // `escapedStub`), but the type still wants something — fall back
+    // to `prev.killer` so the call shape stays valid.
+    let resolvedAccused: KillerIdentity = prev.killer;
+    if (outcome === "escaped") {
+      // Identity is unused — leave `resolvedAccused` at the fallback.
+    } else if (accusedCandidateId) {
+      const cand = prev.deck.find((c) => c.id === accusedCandidateId);
+      if (!cand) return null;
+      if (cand.isKillerCandidate) {
+        // Killer-candidate carries the run's killer slot. This is the
+        // only path that should produce `correctMatch` (assuming the
+        // player has discovered the right facts).
+        resolvedAccused = prev.killer;
+      } else {
+        // Decoy-candidate. Pick any `KillerIdentity` that isn't the
+        // run's killer so the resolver returns `wrongfulAccusation`.
+        // The specific value doesn't matter — the resolver only
+        // compares against `run.killer` — but we keep it stable
+        // (first non-killer in the canonical order) so the ending
+        // payload that quotes `accused` stays deterministic for
+        // logs/replays.
+        const otherSlot = ALL_KILLERS.find((k) => k !== prev.killer);
+        // ALL_KILLERS has 8 entries; this find can't return undefined
+        // unless the union itself is wrong. Falls back to "miles" for
+        // the type checker.
+        resolvedAccused = otherSlot ?? "miles";
+      }
+    } else if (accused) {
+      // Legacy/test path — pass through verbatim. The Day-7
+      // face-to-face beat in `advanceDay` always lands here with
+      // `accused: prev.killer, outcome: "metKiller"`.
+      resolvedAccused = accused;
+    } else {
+      // Neither id nor identity — refuse to file an empty accusation.
+      return null;
+    }
 
     // Discovered set = every committed authored OR captured fact, keyed
     // by authoring key (NOT the random per-row Fact.id). The resolver
@@ -1519,7 +1608,7 @@ export const useGameState = create<GameStateValue>((set, get) => ({
     );
 
     const result = resolveAccusation({
-      accused,
+      accused: resolvedAccused,
       run: prev,
       discoveredFactIds,
       outcome,
@@ -1651,7 +1740,13 @@ export const useGameState = create<GameStateValue>((set, get) => ({
         messageId,
       },
       day: prev.day,
-      aboutCharacter: candidate.identity,
+      // Only the killer-candidate carries an `identity`. Captures
+      // from decoys leave `aboutCharacter` undefined — per-suspect
+      // grouping in the journal and the AccusationSheet keys off the
+      // unique `capturedFromCandidateId` (set below) instead.
+      aboutCharacter: candidate.isKillerCandidate
+        ? candidate.identity
+        : undefined,
       payload,
       // Legacy field kept on the row so a downgrade to a Pass-3-only
       // build (or a JSON inspection tool that reads it directly) sees

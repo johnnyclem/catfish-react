@@ -27,6 +27,7 @@
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import { Modal, Platform, ScrollView, StyleSheet, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   NeonButton,
@@ -87,6 +88,7 @@ export function EndOfRunCard() {
   const run = useGameState((s) => s.run);
   const startNewRun = useGameState((s) => s.startNewRun);
   const dismissAccusation = useGameState((s) => s.dismissAccusation);
+  const insets = useSafeAreaInsets();
   const [busy, setBusy] = useState(false);
 
   // Win/lose sting fires the first frame the result is on screen.
@@ -156,7 +158,17 @@ export function EndOfRunCard() {
       <View style={styles.overlay} testID="end-of-run-card">
         <ScanlineOverlay />
         <ScrollView
-          contentContainerStyle={styles.scroll}
+          contentContainerStyle={[
+            styles.scroll,
+            // Pad past the system safe-area on devices with a notch
+            // / home indicator so the bottom action buttons are
+            // always reachable. Keep a 24px floor so short content
+            // still gets the original breathing room.
+            {
+              paddingTop: Math.max(24, insets.top + 8),
+              paddingBottom: Math.max(24, insets.bottom + 16),
+            },
+          ]}
           showsVerticalScrollIndicator={false}
         >
           <PixelPanel
@@ -294,7 +306,9 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: "center",
     paddingHorizontal: Platform.OS === "web" ? 24 : 16,
-    paddingVertical: 24,
+    // Vertical padding intentionally omitted — the component overrides
+    // it with safe-area-aware values so the action buttons clear the
+    // system home-indicator on every device class.
   },
   card: {
     paddingVertical: 24,

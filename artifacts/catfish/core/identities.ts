@@ -1062,7 +1062,7 @@ export function getIdentityModule(id: KillerIdentity): IdentityModule {
 export function getScriptForCandidate(
   candidate: Candidate,
 ): DialogueTurn[] {
-  if (candidate.isKillerCandidate) {
+  if (candidate.isKillerCandidate && candidate.identity) {
     return getIdentityModule(candidate.identity).killerScript;
   }
   return INNOCENT_SCRIPT;
@@ -1079,7 +1079,7 @@ export function getScriptForThread(
   thread: { innocentScriptId?: string },
   candidate: Candidate,
 ): DialogueTurn[] {
-  if (candidate.isKillerCandidate) {
+  if (candidate.isKillerCandidate && candidate.identity) {
     return getIdentityModule(candidate.identity).killerScript;
   }
   if (thread.innocentScriptId) {

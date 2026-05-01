@@ -15,8 +15,10 @@
  *   title → Start New Case
  *      → parody home grid
  *      → Lots 'o Fish app → right-swipe every candidate
- *      → end-of-deck "Sleep — End Day"
- *      → home indicator → Journal app
+ *      → end-of-deck "Sleep — End Day" (likes reciprocate, matches form)
+ *      → Matches tab → open the killer's chat thread
+ *      → long-press the suspect's opening line → fact filed
+ *      → home indicator → Journal app → captured fact is visible
  *      → "Accuse A Suspect" → AccusationSheet
  *      → tap THE KILLER row → "File Accusation"
  *      → EndOfRunCard with "case closed" / killer reveal
@@ -73,10 +75,36 @@ interface PersistedCandidate {
   displayName: string;
   isKillerCandidate: boolean;
 }
+interface PersistedMatch {
+  id: string;
+  candidateId: string;
+  threadId: string;
+  unmatched?: boolean;
+}
+interface PersistedMessage {
+  id: string;
+  sender: "suspect" | "player";
+  text: string;
+}
+interface PersistedThread {
+  id: string;
+  candidateId: string;
+  messages: PersistedMessage[];
+}
+interface PersistedFact {
+  id: string;
+  committed: boolean;
+  capturedFromCandidateId?: string;
+  capturedFromMessageId?: string;
+  capturedQuote?: string;
+}
 interface PersistedRun {
   killer: string;
   deck: PersistedCandidate[];
   deckCursor: number;
+  matches?: PersistedMatch[];
+  threads?: PersistedThread[];
+  facts?: PersistedFact[];
 }
 
 /**
@@ -85,9 +113,27 @@ interface PersistedRun {
  * first; otherwise we go straight to "Start New Case".
  */
 async function bootIntoFreshRun(page: Page): Promise<void> {
+  // Clear localStorage BEFORE the first navigation so any
+  // active_run/prefs/parody-session blobs left behind by a prior
+  // spec (parody-games leaves a few) cannot poison the title-screen
+  // CTA layout. We can't call localStorage.clear() before goto()
+  // because the document hasn't loaded — so we land on the page
+  // first, wipe storage, then reload to re-render the title against
+  // a clean slate.
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  // The launch CTAs render labels with CSS uppercase; the underlying
-  // textContent is mixed-case as authored — match the source casing.
+  await page.evaluate(() => {
+    try {
+      window.localStorage.clear();
+    } catch {
+      /* private mode / quota — best effort */
+    }
+  });
+  await page.reload({ waitUntil: "domcontentloaded" });
+
+  // After the wipe + reload the title CTA is unambiguously
+  // "Start New Case" — a stale "New Case (Reset)" shouldn't be
+  // possible. Keep the reset fallback as a defensive net in case
+  // something else races in.
   const reset = page.getByText("New Case (Reset)").first();
   if (await reset.isVisible({ timeout: 2_000 }).catch(() => false)) {
     await reset.click();
@@ -144,6 +190,83 @@ async function likeTopCard(page: Page): Promise<void> {
   await page.getByText("♥ Like").first().click();
   // Brief settle so the next card animates in before the next click.
   await page.waitForTimeout(120);
+}
+
+/**
+ * Wait for the killer's chat thread to have at least one suspect
+ * message. `openThread()` lazily pushes the opening salvo on first
+ * mount of `ThreadView`, so by the time we land on the chat screen
+ * the first suspect line should appear within a beat. Polled because
+ * the persist-to-localStorage write happens a tick after the store
+ * mutation.
+ */
+async function waitForFirstSuspectMessage(
+  page: Page,
+  threadId: string,
+): Promise<PersistedMessage> {
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    const blob = await page.evaluate(
+      (key) => window.localStorage.getItem(key),
+      ACTIVE_RUN_KEY,
+    );
+    if (blob) {
+      try {
+        const run = JSON.parse(blob) as PersistedRun;
+        const thread = (run.threads ?? []).find((t) => t.id === threadId);
+        const first = thread?.messages.find((m) => m.sender === "suspect");
+        if (first) return first;
+      } catch {
+        /* keep polling */
+      }
+    }
+    await page.waitForTimeout(150);
+  }
+  throw new Error(
+    `No suspect message ever landed in thread "${threadId}" within 15s`,
+  );
+}
+
+/**
+ * Long-press a chat bubble via synthesized mouse events. Catfish wraps
+ * each suspect bubble in a `MessageFactGesture` that listens for a 450ms
+ * `react-native-gesture-handler` LongPress; on web that fires off a
+ * pointerdown timer. We center the cursor on the bubble, hold the
+ * primary button for 700ms, and release — long enough to clear the
+ * 450ms `LONG_PRESS_MS` threshold with comfortable headroom.
+ */
+async function longPressFactGesture(
+  page: Page,
+  messageId: string,
+): Promise<void> {
+  const target = page.getByTestId(`fact-gesture-${messageId}`).first();
+  await expect(target).toBeVisible({ timeout: 5_000 });
+  const box = await target.boundingBox();
+  if (!box) throw new Error(`fact-gesture-${messageId} has no bounding box`);
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  await page.mouse.move(cx, cy);
+  await page.mouse.down();
+  // 700ms ≫ LONG_PRESS_MS (450) so the gesture-handler timer fires
+  // even on a slow CI box. Slightly longer is safer than slightly
+  // shorter.
+  await page.waitForTimeout(700);
+  await page.mouse.up();
+}
+
+/** Read the persisted run's `facts` array, defaulting to []. */
+async function readPersistedFacts(page: Page): Promise<PersistedFact[]> {
+  const blob = await page.evaluate(
+    (key) => window.localStorage.getItem(key),
+    ACTIVE_RUN_KEY,
+  );
+  if (!blob) return [];
+  try {
+    const run = JSON.parse(blob) as PersistedRun;
+    return run.facts ?? [];
+  } catch {
+    return [];
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -212,33 +335,140 @@ test.describe("accusation happy path — file against the killer", () => {
     // 3. Right-swipe every candidate in the deck so the killer is
     //    guaranteed to appear on the AccusationSheet (the sheet only
     //    lists candidates the player has surfaced — `seen = deck.slice(0,
-    //    deckCursor)`). Cap iterations defensively in case the deck is
-    //    longer than expected.
+    //    deckCursor)`). Drive the loop off the persisted deckCursor
+    //    rather than a visibility probe so we don't terminate early
+    //    when a slow shared-suite render misses the next "♥ Like"
+    //    button paint.
     const deckSize = run.deck.length;
-    for (let i = 0; i < deckSize + 2; i++) {
+    const swipeDeadline = Date.now() + 30_000;
+    while (Date.now() < swipeDeadline) {
+      const cursor = await page.evaluate((key) => {
+        const blob = window.localStorage.getItem(key);
+        if (!blob) return -1;
+        try {
+          return (JSON.parse(blob) as { deckCursor?: number }).deckCursor ?? 0;
+        } catch {
+          return -1;
+        }
+      }, ACTIVE_RUN_KEY);
+      if (cursor >= deckSize) break;
       const likeBtn = page.getByText("♥ Like").first();
-      // Once the deck is empty the Like button unmounts; a 350ms
-      // visibility probe is plenty (cards animate in <200ms) and
-      // keeps the loop from running for the full default timeout.
-      if (!(await likeBtn.isVisible({ timeout: 350 }).catch(() => false))) {
-        break;
+      if (!(await likeBtn.isVisible({ timeout: 2_000 }).catch(() => false))) {
+        // Empty-deck panel rendered before the cursor caught up to
+        // deckSize — happens if a like animation defers the
+        // setState by a frame. Re-poll the cursor next iteration.
+        await page.waitForTimeout(150);
+        continue;
       }
       await likeTopCard(page);
     }
 
-    // 4. End-of-deck panel — tap "Sleep — End Day" to advance.
-    //    (Not strictly required for the accuse path, but it exercises
-    //    the day-rollover code path before we file.)
+    // 4. End-of-deck panel — tap "Sleep — End Day" so the overnight
+    //    resolver fires. Story-candidate likes (which include the
+    //    killer) reciprocate during `advanceDay()`, so the killer's
+    //    `MatchRelationship` only exists *after* this step. Without
+    //    sleeping, run.matches is empty and there's no chat thread to
+    //    open.
     const sleepBtn = page.getByText("Sleep — End Day").first();
-    if (await sleepBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
-      await sleepBtn.click();
-    }
+    await expect(sleepBtn).toBeVisible({ timeout: 5_000 });
+    await sleepBtn.click();
 
-    // 5. Back to the home grid → open Journal.
+    // 5. Switch to the Matches tab and open the killer's chat thread.
+    //    Sleep dropped us back on the Swipe view of a refilled deck;
+    //    the bottom tab bar is mounted, so `lof-tab-matches` is one
+    //    tap away.
+    await page.getByTestId("lof-tab-matches").click();
+
+    // Re-read the persisted run; the overnight resolver wrote a
+    // `MatchRelationship` for every reciprocated like. Find the
+    // killer's match by its candidateId.
+    const matchedRun = await readActiveRun(page);
+    const killerMatch = (matchedRun.matches ?? []).find(
+      (m) => m.candidateId === killerCandidate!.id,
+    );
+    expect(
+      killerMatch,
+      "Killer should be in run.matches after Sleep resolves the overnight likes",
+    ).toBeDefined();
+
+    const killerMatchRow = page.getByTestId(`match-row-${killerMatch!.id}`);
+    await expect(killerMatchRow).toBeVisible({ timeout: 5_000 });
+    await killerMatchRow.click();
+
+    // 6. Wait for the suspect's opening line to land in the persisted
+    //    thread (ThreadView's mount effect calls openThread() which
+    //    pushes the firstLine), then long-press it to file as a Fact.
+    const firstSuspect = await waitForFirstSuspectMessage(
+      page,
+      killerMatch!.threadId,
+    );
+    await longPressFactGesture(page, firstSuspect.id);
+
+    // Capture is async (commitFact awaits the persist). Poll the
+    // persisted facts until our long-press's fact appears, with a
+    // generous deadline so a slow CI box can still finish the
+    // 450ms-LongPress → setState → save round-trip.
+    let captured: PersistedFact | undefined;
+    {
+      const deadline = Date.now() + 10_000;
+      while (Date.now() < deadline) {
+        const facts = await readPersistedFacts(page);
+        captured = facts.find(
+          (f) =>
+            f.committed &&
+            f.capturedFromMessageId === firstSuspect.id &&
+            f.capturedFromCandidateId === killerCandidate!.id,
+        );
+        if (captured) break;
+        await page.waitForTimeout(150);
+      }
+    }
+    expect(
+      captured,
+      "Long-press on the killer's first chat bubble should commit a captured Fact",
+    ).toBeDefined();
+
+    // The bubble should also show the "filed" badge confirming the
+    // capture lit up the UI, not just the store.
+    await expect(
+      page.getByTestId(`fact-gesture-${firstSuspect.id}`).getByText("filed"),
+    ).toBeVisible({ timeout: 3_000 });
+
+    // 7. Back out of the chat → home indicator → Journal. Verify our
+    //    captured fact is visible BEFORE we open the AccusationSheet —
+    //    that's the chain the player walks (capture → review →
+    //    accuse) and the architect's required acceptance criterion
+    //    for this happy-path test.
+    const threadBack = page.getByTestId("thread-back");
+    if (await threadBack.isVisible({ timeout: 3_000 }).catch(() => false)) {
+      await threadBack.click();
+    }
     await tapHomeIndicator(page);
     await page.getByTestId("parody-app-journal").click();
 
-    // 6. "Accuse A Suspect" → AccusationSheet appears with one row
+    // The Journal renders one SuspectGroup per candidate-with-facts;
+    // after our single capture there should be exactly "1 fact on
+    // file" under the killer's group.
+    const onFileText = page.getByText(/fact[s]? on file/i).first();
+    await expect(onFileText).toBeVisible({ timeout: 5_000 });
+    const journalText = await onFileText.innerText();
+    expect(
+      journalText.toLowerCase(),
+      `Journal should report at least one fact on file. Saw: "${journalText}"`,
+    ).toMatch(/^\s*\d+\s+fact[s]? on file/);
+
+    // The captured quote text should also appear somewhere in the
+    // journal screen — FactCard renders the quote verbatim, so a
+    // short prefix substring is robust to any ellipsis truncation.
+    const quoteText = firstSuspect.text ?? "";
+    const quoteSnippet = quoteText.trim().slice(0, Math.min(16, quoteText.length));
+    if (quoteSnippet.length > 0) {
+      await expect(
+        page.getByText(quoteSnippet, { exact: false }).first(),
+      ).toBeVisible({ timeout: 5_000 });
+    }
+
+    // 8. "Accuse A Suspect" → AccusationSheet appears with one row
     //    per met candidate.
     await page.getByText("Accuse A Suspect").first().click();
     const killerRow = page.getByTestId(killerRowTestId);

@@ -160,7 +160,17 @@ export function MessageFactGesture({
 
   return (
     <GestureDetector gesture={gesture}>
-      <View style={styles.wrap}>
+      <View
+        style={styles.wrap}
+        // Stable hook for Playwright e2e (`__tests__/e2e/z-accusation-
+        // happy-path.spec.ts`) to long-press a specific suspect bubble
+        // and exercise the chat → capture-a-fact → Journal segment of
+        // the gameplay loop. The id is per-message so the test can
+        // target the first suspect line deterministically. No-op in
+        // production runtime — `testID` only emits as a `data-testid`
+        // attribute on web and an `accessibilityIdentifier` on native.
+        testID={`fact-gesture-${messageId}`}
+      >
         <Animated.View
           style={{
             opacity: pressedDown ? 0.72 : 1,

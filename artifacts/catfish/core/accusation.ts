@@ -15,6 +15,7 @@
 import { getIdentityModule } from "./identities";
 import {
   AccusationResult,
+  CandidateId,
   CaseRun,
   Deduction,
   FactId,
@@ -38,6 +39,15 @@ export type AccusationOutcome = "accuse" | "metKiller" | "escaped";
 export interface ResolveAccusationInput {
   /** The candidate identity the player is accusing. */
   accused: KillerIdentity;
+  /**
+   * The exact candidate id the player accused, when the caller has it
+   * in hand. Threaded straight onto `AccusationResult.accusedCandidateId`
+   * so UI surfaces (e.g. the End-of-Run card's wrongful-accusation
+   * side-by-side portrait) can look the candidate up on `run.deck`.
+   * Optional because the stub endings (`metKiller`, `escaped`) and
+   * legacy test paths fire without a specific candidate.
+   */
+  accusedCandidateId?: CandidateId;
   /** The active run — needed for the truth identity + universe. */
   run: CaseRun;
   /**
@@ -95,7 +105,13 @@ function isSubset<T>(
 export function resolveAccusation(
   input: ResolveAccusationInput,
 ): AccusationResult {
-  const { accused, run, discoveredFactIds, outcome = "accuse" } = input;
+  const {
+    accused,
+    accusedCandidateId,
+    run,
+    discoveredFactIds,
+    outcome = "accuse",
+  } = input;
 
   const discovered: ReadonlySet<FactId> =
     discoveredFactIds instanceof Set
@@ -115,6 +131,7 @@ export function resolveAccusation(
       matchedDeduction: null,
       ending: "metKillerStub",
       narrativeBeat: FALLBACK_BEATS.metKiller,
+      accusedCandidateId,
     };
   }
   if (outcome === "escaped") {
@@ -123,6 +140,7 @@ export function resolveAccusation(
       matchedDeduction: null,
       ending: "escapedStub",
       narrativeBeat: FALLBACK_BEATS.escaped,
+      accusedCandidateId,
     };
   }
 
@@ -134,6 +152,7 @@ export function resolveAccusation(
       matchedDeduction: null,
       ending: "wrongfulAccusation",
       narrativeBeat: FALLBACK_BEATS.wrongful,
+      accusedCandidateId,
     };
   }
 
@@ -150,6 +169,7 @@ export function resolveAccusation(
       matchedDeduction: truthDeduction,
       ending: "caughtThem",
       narrativeBeat: truthDeduction!.narrativeBeat,
+      accusedCandidateId,
     };
   }
   return {
@@ -157,5 +177,6 @@ export function resolveAccusation(
     matchedDeduction: null,
     ending: "caughtThem",
     narrativeBeat: FALLBACK_BEATS.caughtThemWeak,
+    accusedCandidateId,
   };
 }

@@ -29,6 +29,7 @@ import { useEffect, useState } from "react";
 import { Modal, Platform, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { AssetImage } from "@/components/AssetImage";
 import {
   NeonButton,
   PixelPanel,
@@ -108,8 +109,31 @@ export function EndOfRunCard() {
 
   const result: AccusationResult = run.ending;
   const truthIdentity: KillerIdentity = run.killer;
-  const truthName = getIdentityModule(truthIdentity).displayName;
+  const truthModule = getIdentityModule(truthIdentity);
+  const truthName = truthModule.displayName;
+  const truthPortraitId = truthModule.portraitAssetId;
   const palette = paletteForEnding(result.ending, truthName);
+
+  // Wrongful accusation only — surface the candidate the player named
+  // so we can show their portrait next to the actual killer's. Other
+  // endings (caughtThem, metKillerStub, escapedStub) just show the
+  // killer's portrait in the header. The accused id is threaded
+  // through `AccusationResult.accusedCandidateId` by the resolver;
+  // legacy/test runs without it just fall back to a single-portrait
+  // header.
+  const accusedCandidate =
+    result.ending === "wrongfulAccusation" && result.accusedCandidateId
+      ? run.deck.find((c) => c.id === result.accusedCandidateId) ?? null
+      : null;
+  const accusedPortraitId =
+    accusedCandidate?.portraitAssetId ?? "A500_avatar_placeholder";
+  const accusedDisplayName = accusedCandidate?.displayName ?? "Your suspect";
+
+  // The escaped ending never names a killer in its header copy
+  // (the player walked away), so we suppress the header portrait
+  // for that one ending only — matches the task's "case closed /
+  // wrong call / face to face" scope.
+  const showHeaderPortrait = result.ending !== "escapedStub";
 
   const handleNewCase = async () => {
     if (busy) return;
@@ -195,6 +219,105 @@ export function EndOfRunCard() {
             >
               {palette.title}
             </PixelText>
+
+            {showHeaderPortrait ? (
+              result.ending === "wrongfulAccusation" ? (
+                // Side-by-side: who the player named (left) vs. who
+                // it actually was (right). Contrasting accent frames
+                // make the mismatch obvious at a glance.
+                <View style={styles.portraitPair}>
+                  <View style={styles.portraitColumn}>
+                    <PixelText
+                      size={7}
+                      color={cfPalette.err}
+                      uppercase
+                      align="center"
+                      style={styles.portraitLabel}
+                    >
+                      you named
+                    </PixelText>
+                    <View
+                      style={[
+                        styles.portraitFrame,
+                        { borderColor: cfPalette.err },
+                      ]}
+                    >
+                      <AssetImage
+                        id={accusedPortraitId}
+                        style={styles.portraitImage}
+                        resizeMode="cover"
+                      />
+                    </View>
+                    <PixelText
+                      size={8}
+                      color={cfPalette.bone}
+                      align="center"
+                      style={styles.portraitName}
+                    >
+                      {accusedDisplayName}
+                    </PixelText>
+                  </View>
+                  <View style={styles.portraitColumn}>
+                    <PixelText
+                      size={7}
+                      color={cfPalette.warn}
+                      uppercase
+                      align="center"
+                      style={styles.portraitLabel}
+                    >
+                      it was
+                    </PixelText>
+                    <View
+                      style={[
+                        styles.portraitFrame,
+                        { borderColor: cfPalette.warn },
+                      ]}
+                    >
+                      <AssetImage
+                        id={truthPortraitId}
+                        style={styles.portraitImage}
+                        resizeMode="cover"
+                      />
+                    </View>
+                    <PixelText
+                      size={8}
+                      color={cfPalette.bone}
+                      align="center"
+                      style={styles.portraitName}
+                    >
+                      {truthName}
+                    </PixelText>
+                  </View>
+                </View>
+              ) : (
+                // Single portrait — caughtThem and metKillerStub both
+                // surface the killer here. Frame color follows the
+                // ending palette (ok / warn).
+                <View style={styles.portraitSolo}>
+                  <View
+                    style={[
+                      styles.portraitFrame,
+                      { borderColor: palette.accent },
+                    ]}
+                  >
+                    <AssetImage
+                      id={truthPortraitId}
+                      style={styles.portraitImage}
+                      resizeMode="cover"
+                    />
+                  </View>
+                  <PixelText
+                    size={8}
+                    color={cfPalette.bone}
+                    align="center"
+                    style={styles.portraitName}
+                  >
+                    {truthName}
+                  </PixelText>
+                </View>
+              )
+            ) : null}
+
             <PixelText
               size={8}
               color={cfPalette.bone}
@@ -328,6 +451,40 @@ const styles = StyleSheet.create({
   subhead: {
     marginTop: 14,
     lineHeight: 14,
+  },
+  portraitSolo: {
+    marginTop: 16,
+    alignItems: "center",
+    gap: 6,
+  },
+  portraitPair: {
+    marginTop: 16,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "flex-start",
+    gap: 16,
+  },
+  portraitColumn: {
+    alignItems: "center",
+    gap: 6,
+    flexShrink: 1,
+  },
+  portraitLabel: {
+    letterSpacing: 1.2,
+  },
+  portraitFrame: {
+    width: 80,
+    height: 80,
+    borderWidth: 2,
+    backgroundColor: cfPalette.iron,
+    overflow: "hidden",
+  },
+  portraitImage: {
+    width: "100%",
+    height: "100%",
+  },
+  portraitName: {
+    lineHeight: 12,
   },
   divider: {
     marginTop: 18,

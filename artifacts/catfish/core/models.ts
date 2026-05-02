@@ -340,6 +340,16 @@ export interface AccusationResult {
    * stock line per ending so the UI always has something to show.
    */
   narrativeBeat: string;
+  /**
+   * The candidate the player explicitly accused, when this result came
+   * from the accuse flow with a candidate id in hand. Lets the
+   * End-of-Run card render the accused's portrait + name (e.g. on a
+   * wrongful accusation, the accused decoy shown next to the actual
+   * killer). Undefined for stub endings (`metKillerStub`,
+   * `escapedStub`) and for legacy callers that only had a
+   * `KillerIdentity` slot to forward to the resolver.
+   */
+  accusedCandidateId?: CandidateId;
 }
 
 /**

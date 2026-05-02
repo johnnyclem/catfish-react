@@ -48,6 +48,8 @@
  * authored JSON fact universes resolved at run start.
  */
 
+import { AssetId } from "@/assets/manifest";
+
 import { decoysForKiller } from "./decoyPool";
 import { getInnocentTreeById } from "./innocentTrees";
 import {
@@ -78,6 +80,15 @@ export interface IdentityModule {
   displayName: string;
   /** Brief one-line concept for the killer's persona. */
   concept: string;
+  /**
+   * Canonical portrait asset for the killer. Mirrors the asset id used
+   * on the killer-candidate's swipe-deck portrait so UI surfaces that
+   * don't carry a `Candidate` in hand (e.g. the End-of-Run card, which
+   * only has `run.killer`) can still render the right face. Stub
+   * identities (Tessa, Ren, Delphine) point at the placeholder until
+   * their portraits are authored.
+   */
+  portraitAssetId: AssetId;
   /** Authored seed candidates for the run's swipe deck. */
   buildDeck(): Candidate[];
   /** TODO Pass 4 — authored narrative beats per day. */
@@ -188,6 +199,7 @@ const miles: IdentityModule = {
   displayName: "Miles Carver",
   concept:
     "Software engineer with a vintage film camera obsession and a long, careful smile.",
+  portraitAssetId: "A035_miles_portrait_smile",
   buildDeck: () => [
     {
       id: newCandidateId(),
@@ -339,6 +351,7 @@ const tessa: IdentityModule = {
   displayName: "Tessa Lin",
   concept:
     "Late-night radio host with too many keys on her keychain. Voice you'd recognize, hours nobody can verify.",
+  portraitAssetId: "A500_avatar_placeholder",
   buildDeck: () => stubDeck("tessa", "Tessa", "Voice you'd recognize on the radio."),
   beats: {
     1: [
@@ -424,6 +437,7 @@ const ren: IdentityModule = {
   displayName: "Ren Okafor",
   concept:
     "Competitive sailor with a temper he calls 'focus'. Dawn routines that don't quite line up with the marina's clock.",
+  portraitAssetId: "A500_avatar_placeholder",
   buildDeck: () => stubDeck("ren", "Ren", "Sailor. Up at five. Don't ask why."),
   beats: {
     1: [
@@ -511,6 +525,7 @@ const kai: IdentityModule = {
   displayName: "Kai Brennan",
   concept:
     "Street muralist with paint-splattered denim and a photographic memory for faces. Charming, easily distracted, never as scattered as he looks.",
+  portraitAssetId: "A043_kai_portrait_smile",
   buildDeck: () => [
     {
       id: newCandidateId(),
@@ -614,6 +629,7 @@ const delphine: IdentityModule = {
   displayName: "Delphine Roux",
   concept:
     "Perfumer who claims she can smell secrets. Quiet shop, quieter nights, an alibi that doesn't quite hold its shape.",
+  portraitAssetId: "A500_avatar_placeholder",
   buildDeck: () =>
     stubDeck("delphine", "Delphine", "Makes scents. Also reads palms, maybe."),
   beats: {
@@ -702,6 +718,7 @@ const jules: IdentityModule = {
   displayName: "Jules Vega",
   concept:
     "Dive-bar bartender and bassist with a quiet, watchful smile. Charm dialed up, the rest of him dialed all the way down.",
+  portraitAssetId: "A047_jules_portrait_smile",
   buildDeck: () => [
     {
       id: newCandidateId(),
@@ -828,6 +845,7 @@ const river: IdentityModule = {
   displayName: "River Sutherland",
   concept:
     "Climbing instructor and weekend trail guide. Sun-bleached, easy in his body, asks more questions than he answers. The carabiner on his belt is decorative — and isn't.",
+  portraitAssetId: "A055_river_portrait_smile",
   buildDeck: () => [
     {
       id: newCandidateId(),
@@ -933,6 +951,7 @@ const sam: IdentityModule = {
   displayName: "Samira Okonkwo",
   concept:
     "Hospice nurse who reads paperback mysteries on her breaks. Quiet, watchful, makes you feel safe — until you start to wonder why she's so good at it.",
+  portraitAssetId: "A059_sam_portrait_smile",
   buildDeck: () => [
     {
       id: newCandidateId(),

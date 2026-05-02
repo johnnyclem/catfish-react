@@ -1609,6 +1609,7 @@ export const useGameState = create<GameStateValue>((set, get) => ({
 
     const result = resolveAccusation({
       accused: resolvedAccused,
+      accusedCandidateId,
       run: prev,
       discoveredFactIds,
       outcome,

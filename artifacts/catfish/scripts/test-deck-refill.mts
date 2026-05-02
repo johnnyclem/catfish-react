@@ -155,8 +155,8 @@ const state = useGameState.getState;
 // ─── Test 3: refill is deterministic + cold-start safe ────────────────
 {
   // 3a — `freshDecoysForDay` is pure: same inputs → same names.
-  const a = freshDecoysForDay("run_test_refill", 3, "miles", []);
-  const b = freshDecoysForDay("run_test_refill", 3, "miles", []);
+  const a = freshDecoysForDay("run_test_refill", 3, []);
+  const b = freshDecoysForDay("run_test_refill", 3, []);
   const namesA = a.map((c) => c.displayName).join(",");
   const namesB = b.map((c) => c.displayName).join(",");
   assert(
@@ -166,7 +166,7 @@ const state = useGameState.getState;
 
   // Different days produce different slates (sanity check that we
   // are not just always returning the same shuffle).
-  const day4 = freshDecoysForDay("run_test_refill", 4, "miles", []);
+  const day4 = freshDecoysForDay("run_test_refill", 4, []);
   const namesD4 = day4.map((c) => c.displayName).join(",");
   assert(
     namesA !== namesD4,

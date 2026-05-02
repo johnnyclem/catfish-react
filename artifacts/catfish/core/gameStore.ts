@@ -1535,7 +1535,7 @@ export const useGameState = create<GameStateValue>((set, get) => ({
     // index into earlier `deck` positions).
     //
     // Deterministic per (runId, nextDay) so cold-starts don't reroll.
-    const refill = freshDecoysForDay(prev.id, nextDay, prev.killer, prev.deck);
+    const refill = freshDecoysForDay(prev.id, nextDay, prev.deck);
 
     const next: CaseRun = {
       ...prev,

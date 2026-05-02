@@ -245,14 +245,10 @@ export function decoysForKiller(
  *      better the player sees Onyx twice than sees an empty deck.
  *   4. Returned Candidates have fresh ids and `isStoryCandidate: false`
  *      so they roll the probabilistic match-back path on Sleep.
- *
- * `killer` is plumbed through only to stamp `Candidate.identity` —
- * the deck still belongs to a single run and a single killer.
  */
 export function freshDecoysForDay(
   runId: string,
   day: number,
-  killer: KillerIdentity,
   existingDeck: Candidate[],
   count = 4,
 ): Candidate[] {
@@ -275,10 +271,7 @@ export function freshDecoysForDay(
     const t = DECOY_POOL[poolIndex]!;
     // Same decoy-identity rule as `decoysForKiller` above: leave
     // `identity` undefined so a decoy can never be mistaken for the
-    // run's killer slot. The `killer` parameter is no longer read
-    // here — it's kept on the signature so older callers/tests don't
-    // need to be reworked, but a future cleanup can drop it.
-    void killer;
+    // run's killer slot.
     return {
       id: newCandidateId(),
       displayName: t.displayName,

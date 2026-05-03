@@ -503,10 +503,22 @@ export interface CaseRun {
    * run so cold-starting on top of a closed case still surfaces the
    * ending instead of dropping the player into a frozen deck.
    *
-   * Cleared when `dismissAccusation()` runs or when `startNewRun()`
-   * builds a fresh run.
+   * Cleared only when `startNewRun()` builds a fresh run — the
+   * legacy `dismissAccusation()` used to null this out, but Task #68
+   * keeps the result around so the closed-run Journal recovery panel
+   * can re-open the same End-of-Run card the player dismissed.
    */
   ending?: AccusationResult | null;
+  /**
+   * Task #68 — set when the player dismissed the End-of-Run overlay
+   * via "Back To Title". The run stays `closed` and `ending` stays
+   * populated so the Journal can offer a "View Case Recap" button
+   * that flips this flag back to `false` and re-mounts the overlay.
+   * Optional for back-compat; pre-#68 runs default to `false` on
+   * cold start (their `ending` field was already nulled by the old
+   * dismiss path, so the overlay correctly stays hidden).
+   */
+  endingDismissed?: boolean;
   /**
    * Task #58 — innocent dialogue tree ids that one of this run's threads
    * has already claimed. New threads pull from `INNOCENT_TREE_POOL`,

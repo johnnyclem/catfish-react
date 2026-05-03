@@ -18,11 +18,16 @@ import {
   PixelText,
   ScanlineOverlay,
 } from "@/components/PixelChrome";
+import { router } from "expo-router";
+
 import { cfPalette } from "@/constants/colors";
 import { useGameState } from "@/core/gameStore";
-import { Candidate, CandidateId, Fact } from "@/core/models";
+import { getIdentityModule } from "@/core/identities";
+import { CaseRun, Candidate, CandidateId, Fact } from "@/core/models";
 import { AccusationSheet } from "@/features/accusation/AccusationSheet";
+import { paletteForEnding } from "@/features/accusation/EndOfRunCard";
 import { EmptyState } from "@/features/journal/EmptyState";
+import { usePhoneShell } from "@/features/parody/phoneShellState";
 import {
   JournalControls,
   JournalSortMode,
@@ -38,11 +43,14 @@ interface CandidateGroup {
 export function JournalScreen() {
   const run = useGameState((s) => s.run);
   const removeFact = useGameState((s) => s.removeFact);
+  const reopenEnding = useGameState((s) => s.reopenEnding);
+  const startNewRun = useGameState((s) => s.startNewRun);
 
   const [selectedSuspectId, setSelectedSuspectId] =
     useState<CandidateId | null>(null);
   const [sortMode, setSortMode] = useState<JournalSortMode>("newest");
   const [accuseOpen, setAccuseOpen] = useState(false);
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
 
   const committed = useMemo<Fact[]>(
     () =>
@@ -171,6 +179,37 @@ export function JournalScreen() {
         />
       )}
 
+      {run && run.closed && (
+        <ClosedRunPanel
+          run={run}
+          busy={recoveryBusy}
+          onViewRecap={async () => {
+            if (recoveryBusy) return;
+            setRecoveryBusy(true);
+            try {
+              await reopenEnding();
+            } finally {
+              setRecoveryBusy(false);
+            }
+          }}
+          onStartNewCase={async () => {
+            if (recoveryBusy) return;
+            setRecoveryBusy(true);
+            try {
+              await startNewRun();
+              // Land back on Lots 'o Fish with a fresh splash so the
+              // new case starts from the dating-app entry point —
+              // mirrors the EndOfRunCard "Start New Case" path.
+              const shell = usePhoneShell.getState();
+              shell.openApp("lotsOfFish", "splash");
+              router.replace("/home" as never);
+            } finally {
+              setRecoveryBusy(false);
+            }
+          }}
+        />
+      )}
+
       <ScrollView
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
@@ -208,6 +247,115 @@ export function JournalScreen() {
         visible={accuseOpen}
         onClose={() => setAccuseOpen(false)}
       />
+    </View>
+  );
+}
+
+interface ClosedRunPanelProps {
+  run: CaseRun;
+  busy: boolean;
+  onViewRecap: () => void | Promise<void>;
+  onStartNewCase: () => void | Promise<void>;
+}
+
+/**
+ * Task #68 — recovery panel rendered in place of the "Accuse A
+ * Suspect" button when the case has already closed (player accused
+ * already, or the Day 7 face-to-face fired). Without this the player
+ * could land on the Journal post-accusation with zero in-screen exits
+ * — the Accuse button hid itself, the EndOfRunCard had been dismissed,
+ * and the only escape was the bone home-indicator pill at the bottom.
+ *
+ * The panel always offers two unambiguous routes out:
+ *   - View Case Recap → re-mounts the EndOfRunCard via reopenEnding
+ *     (only when an `ending` payload is still on the run; legacy
+ *     pre-#68 dismissals nulled `ending`, so we hide the button in
+ *     that case rather than crash the overlay).
+ *   - Start New Case → wipes the run and lands on Lots 'o Fish.
+ */
+function ClosedRunPanel({
+  run,
+  busy,
+  onViewRecap,
+  onStartNewCase,
+}: ClosedRunPanelProps) {
+  const truthName = getIdentityModule(run.killer).displayName;
+  const palette = run.ending
+    ? paletteForEnding(run.ending.ending, truthName)
+    : null;
+  const canViewRecap = !!run.ending;
+
+  return (
+    <View testID="journal-closed-run-panel">
+    <PixelPanel
+      variant="raised"
+      borderColor={palette?.accent ?? cfPalette.fog}
+      style={styles.closedPanel}
+    >
+      <PixelText
+        size={7}
+        color={cfPalette.ash}
+        uppercase
+        align="center"
+        style={styles.closedKicker}
+      >
+        case sealed · day {run.day}
+      </PixelText>
+      <PixelText
+        size={14}
+        color={palette?.accent ?? cfPalette.fog}
+        uppercase
+        glow
+        align="center"
+        style={styles.closedTitle}
+      >
+        {palette?.title ?? "case closed"}
+      </PixelText>
+      {palette ? (
+        <PixelText
+          size={7}
+          color={cfPalette.bone}
+          align="center"
+          style={styles.closedSubhead}
+        >
+          {palette.subhead}
+        </PixelText>
+      ) : (
+        <PixelText
+          size={7}
+          color={cfPalette.bone}
+          align="center"
+          style={styles.closedSubhead}
+        >
+          This case is over. Start a new one to play again.
+        </PixelText>
+      )}
+
+      <View style={styles.closedActions}>
+        {canViewRecap ? (
+          <NeonButton
+            label="View Case Recap"
+            variant="primary"
+            size="md"
+            fullWidth
+            disabled={busy}
+            onPress={() => {
+              void onViewRecap();
+            }}
+          />
+        ) : null}
+        <NeonButton
+          label="Start New Case"
+          variant={canViewRecap ? "ghost" : "primary"}
+          size="md"
+          fullWidth
+          disabled={busy}
+          onPress={() => {
+            void onStartNewCase();
+          }}
+        />
+      </View>
+    </PixelPanel>
     </View>
   );
 }
@@ -292,6 +440,26 @@ const styles = StyleSheet.create({
   statLabel: { marginTop: 4 },
   accuseBtn: {
     marginBottom: 14,
+  },
+  closedPanel: {
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginBottom: 14,
+  },
+  closedKicker: {
+    letterSpacing: 1.5,
+  },
+  closedTitle: {
+    marginTop: 6,
+    letterSpacing: 1.5,
+  },
+  closedSubhead: {
+    marginTop: 8,
+    lineHeight: 12,
+  },
+  closedActions: {
+    marginTop: 14,
+    gap: 10,
   },
   list: {
     paddingBottom: Platform.OS === "web" ? 100 : 24,

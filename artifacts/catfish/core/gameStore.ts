@@ -289,12 +289,20 @@ interface GameStateValue {
    */
   accuse: (input: AccuseInput) => Promise<AccusationResult | null>;
   /**
-   * Dismiss the run-end card without starting a new run. Clears
-   * `run.ending` so the overlay disappears; leaves `closed = true`
-   * so the previous run still reads as over and a fresh run is
-   * required to play again.
+   * Dismiss the run-end card without starting a new run. Sets
+   * `run.endingDismissed = true` so the overlay disappears; leaves
+   * `closed = true` AND keeps `ending` populated so the Journal's
+   * closed-run recovery panel can re-open the same card via
+   * `reopenEnding`. A fresh run is still required to play again.
    */
   dismissAccusation: () => Promise<void>;
+  /**
+   * Re-mount the End-of-Run overlay for a closed run that was
+   * previously dismissed via `dismissAccusation`. Flips
+   * `endingDismissed` back to `false`. No-op if the run isn't closed
+   * or has no `ending` payload.
+   */
+  reopenEnding: () => Promise<void>;
   /**
    * Records a swipe. A right-swipe is now a "like" — it appends a
    * pending `LikeRecord` and a `SwipeRecord` and advances the cursor,
@@ -1632,7 +1640,21 @@ export const useGameState = create<GameStateValue>((set, get) => ({
   dismissAccusation: async () => {
     const prev = get().run;
     if (!prev || !prev.ending) return;
-    const next: CaseRun = { ...prev, ending: null };
+    // Task #68 — keep `ending` so the Journal's closed-run recovery
+    // panel can re-mount the same End-of-Run card via reopenEnding.
+    // Pre-#68 this nulled `ending`, which left the player with no
+    // way back to the case recap once they'd dismissed it.
+    if (prev.endingDismissed) return;
+    const next: CaseRun = { ...prev, endingDismissed: true };
+    set({ run: next });
+    await saveActiveRun(next);
+  },
+
+  reopenEnding: async () => {
+    const prev = get().run;
+    if (!prev || !prev.closed || !prev.ending) return;
+    if (!prev.endingDismissed) return;
+    const next: CaseRun = { ...prev, endingDismissed: false };
     set({ run: next });
     await saveActiveRun(next);
   },

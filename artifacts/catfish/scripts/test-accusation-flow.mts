@@ -28,7 +28,7 @@
  *      result with `correct: true` (it really was the killer
  *      who showed up), and leaves the swipe deck untouched so
  *      the Journal can still cite captured facts.
- *   6. `dismissAccusation` clears `run.ending` but keeps
+ *   6. `dismissAccusation` hides the overlay (Task #68) but keeps
  *      `closed = true`, so the overlay disappears and the run
  *      still reads as over.
  *   7. `startNewRun` resets `closed`/`ending` to a clean slate
@@ -278,23 +278,50 @@ const state = useGameState.getState;
 
   await state().dismissAccusation();
   const after = state().run!;
+  // Task #68 — dismissAccusation now flips an `endingDismissed` flag
+  // and KEEPS `ending` populated so the Journal's closed-run recovery
+  // panel can re-mount the same End-of-Run card via `reopenEnding`.
   assert(
-    after.ending === null,
-    "dismissAccusation clears run.ending",
+    after.endingDismissed === true,
+    "dismissAccusation flips endingDismissed=true",
+  );
+  assert(
+    after.ending !== null && after.ending !== undefined,
+    "dismissAccusation preserves run.ending for recap re-open",
   );
   assert(
     after.closed === true,
     "dismissAccusation does NOT reopen the run",
   );
 
-  // Persistence sanity — the cleared ending survives a cold start.
+  // Persistence sanity — the dismissed-but-preserved state cold-starts.
   const persisted = await loadActiveRun();
   assert(
-    persisted && persisted.closed === true && !persisted.ending,
-    "persisted blob mirrors the dismissed state",
+    persisted &&
+      persisted.closed === true &&
+      persisted.endingDismissed === true &&
+      !!persisted.ending,
+    "persisted blob mirrors the dismissed-but-preserved state",
   );
 
-  console.log("PASS  test 6: dismissAccusation clears overlay only");
+  // reopenEnding flips the flag back so the EndOfRunCard can re-mount.
+  await state().reopenEnding();
+  const reopened = state().run!;
+  assert(
+    reopened.endingDismissed === false && !!reopened.ending,
+    "reopenEnding clears the dismissed flag and keeps the ending",
+  );
+
+  // Re-dismiss to leave the closed-but-dismissed shape for tests 7/8.
+  await state().dismissAccusation();
+  assert(
+    state().run!.endingDismissed === true,
+    "re-dismissed before handing off to test 7",
+  );
+
+  console.log(
+    "PASS  test 6: dismissAccusation preserves ending; reopenEnding restores",
+  );
 }
 
 // ─── Test 7: startNewRun resets closed + ending for a fresh case ───────
@@ -350,9 +377,12 @@ const state = useGameState.getState;
 
   // Dismiss the overlay so we're in the post-card "still on a closed
   // run" state. This is exactly the state the code review flagged.
+  // Task #68 — dismiss now keeps `ending` populated and just flips
+  // `endingDismissed`; the gameplay-lockout invariants below hold
+  // either way because they key off `closed`, not the overlay state.
   await state().dismissAccusation();
   assert(
-    state().run!.closed === true && !state().run!.ending,
+    state().run!.closed === true && state().run!.endingDismissed === true,
     "precondition: dismissed overlay, run still closed",
   );
 

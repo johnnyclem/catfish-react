@@ -52,7 +52,7 @@ interface EndingPalette {
   accent: string;
 }
 
-function paletteForEnding(
+export function paletteForEnding(
   ending: CaseEnding,
   killerName: string,
 ): EndingPalette {
@@ -104,8 +104,10 @@ export function EndOfRunCard() {
 
   // Hidden until the resolver has fired and stamped a result onto the
   // run. Both player accusations and the Day 7 face-to-face beat take
-  // this same path.
-  if (!run || !run.ending) return null;
+  // this same path. Task #68 — also hide while the player has
+  // dismissed this run's end card via "Back To Title"; the Journal's
+  // closed-run recovery panel re-mounts us via `reopenEnding`.
+  if (!run || !run.ending || run.endingDismissed) return null;
 
   const result: AccusationResult = run.ending;
   const truthIdentity: KillerIdentity = run.killer;

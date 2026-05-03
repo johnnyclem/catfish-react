@@ -286,11 +286,11 @@ test.describe("closed-run Journal recovery — no soft-lock after accusing", () 
 
     await panelAgain.getByText("Start New Case").first().click();
 
-    // Lands INSIDE Lots 'o Fish on the splash with a fresh deck — the
+    // Lands on the parody phone HOME GRID with a fresh run — the
     // ClosedRunPanel "Start New Case" handler mirrors the EndOfRunCard
-    // path (openApp("lotsOfFish", "splash") + router.replace("/home")),
-    // so the player sees the splash's "OPEN APP" CTA, not the home tile.
-    await expect(page.getByTestId("parody-lotsofish-open")).toBeVisible({
+    // path (goHome() + setLotsOfFishView("splash") + router.replace
+    // ("/home")), so the player sees the home tile, NOT the splash.
+    await expect(page.getByTestId("parody-app-lotsOfFish")).toBeVisible({
       timeout: 30_000,
     });
     const fresh = await readActiveRun(page);

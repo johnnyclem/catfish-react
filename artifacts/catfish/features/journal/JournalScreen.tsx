@@ -197,11 +197,15 @@ export function JournalScreen() {
             setRecoveryBusy(true);
             try {
               await startNewRun();
-              // Land back on Lots 'o Fish with a fresh splash so the
-              // new case starts from the dating-app entry point —
-              // mirrors the EndOfRunCard "Start New Case" path.
+              // Mirror EndOfRunCard.handleNewCase exactly so the two
+              // entry points stay in lockstep: reset the shell to the
+              // home grid, seed the dating-app's inner view back to
+              // splash, then route to /home. The home indicator pill
+              // will then read as enabled again, and tapping the
+              // Lots 'o Fish tile lands the player on the splash.
               const shell = usePhoneShell.getState();
-              shell.openApp("lotsOfFish", "splash");
+              shell.goHome();
+              shell.setLotsOfFishView("splash");
               router.replace("/home" as never);
             } finally {
               setRecoveryBusy(false);

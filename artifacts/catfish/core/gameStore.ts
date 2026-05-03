@@ -664,6 +664,14 @@ export function migrateRun(run: CaseRun | null): CaseRun | null {
     new Set<string>([...persistedUsed, ...claimedFromThreads]),
   );
 
+  // Task #68 — coerce `endingDismissed` to a strict boolean so a
+  // malformed persisted blob (legacy save with the field absent, or
+  // a corrupted truthy non-boolean) can never wedge the End-of-Run
+  // overlay's visibility gate. Default for legacy runs is `false`
+  // (overlay shows whenever `closed && ending` is set), which matches
+  // the pre-#68 semantics for any save that still has an `ending`.
+  const endingDismissed = !!run.endingDismissed;
+
   return {
     ...run,
     deck,
@@ -672,6 +680,7 @@ export function migrateRun(run: CaseRun | null): CaseRun | null {
     pendingLikes,
     pendingMatchAnnouncements,
     usedInnocentScriptIds,
+    endingDismissed,
   };
 }
 

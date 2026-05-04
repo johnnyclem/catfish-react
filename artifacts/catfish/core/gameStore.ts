@@ -515,10 +515,10 @@ export function migrateRun(run: CaseRun | null): CaseRun | null {
     // for threads that already had them; legacy threads without these
     // fields stay undefined and fall back to INNOCENT_SCRIPT.
     const tt = t as ChatThread;
+    const coercedScriptId =
+      tt.innocentScriptId != null ? String(tt.innocentScriptId) : "";
     const innocentScriptId =
-      typeof tt.innocentScriptId === "string" && tt.innocentScriptId.length > 0
-        ? tt.innocentScriptId
-        : undefined;
+      coercedScriptId.length > 0 ? coercedScriptId : undefined;
     const improvReplyOptions = Array.isArray(tt.improvReplyOptions)
       ? tt.improvReplyOptions.filter(
           (opt): opt is string => typeof opt === "string",

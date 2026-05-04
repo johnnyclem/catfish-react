@@ -84,7 +84,9 @@ const turnIndexCases: Array<{
 }> = [
   { label: "number 0", input: 0, expected: 0 },
   { label: "number 3", input: 3, expected: 3 },
-  { label: "number 7.5", input: 7.5, expected: 7.5 },
+  { label: "number 7.5", input: 7.5, expected: 7 },
+  { label: "number 2.9", input: 2.9, expected: 2 },
+  { label: 'string "4.7"', input: "4.7", expected: 4 },
   { label: 'string "3"', input: "3", expected: 3 },
   { label: 'string "0"', input: "0", expected: 0 },
   { label: 'string "10"', input: "10", expected: 10 },
@@ -124,6 +126,8 @@ const unreadCountCases: Array<{
 }> = [
   { label: "number 0", input: 0, expected: 0 },
   { label: "number 5", input: 5, expected: 5 },
+  { label: "number 3.7", input: 3.7, expected: 3 },
+  { label: 'string "2.9"', input: "2.9", expected: 2 },
   { label: 'string "5"', input: "5", expected: 5 },
   { label: 'string "0"', input: "0", expected: 0 },
   { label: "undefined", input: undefined, expected: 0 },

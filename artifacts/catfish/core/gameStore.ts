@@ -505,12 +505,12 @@ export function migrateRun(run: CaseRun | null): CaseRun | null {
           (m as Message).sender === "player"),
     );
     const rawTurnIndex = Number((t as ChatThread).turnIndex);
-    const turnIndex = Number.isNaN(rawTurnIndex) ? 0 : rawTurnIndex;
+    const turnIndex = Number.isNaN(rawTurnIndex) ? 0 : Math.floor(rawTurnIndex);
     const rawUnreadCount = Number((t as ChatThread).unreadCount);
     const unreadCount =
       Number.isNaN(rawUnreadCount) || rawUnreadCount < 0
         ? 0
-        : rawUnreadCount;
+        : Math.floor(rawUnreadCount);
     // Task #58 — preserve the innocent-tree assignment + improv state
     // for threads that already had them; legacy threads without these
     // fields stay undefined and fall back to INNOCENT_SCRIPT.

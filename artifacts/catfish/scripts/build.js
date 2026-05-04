@@ -54,23 +54,43 @@ function stripProtocol(domain) {
   return new URL(urlString).host;
 }
 
+// A device can't reach `localhost` / `127.0.0.1` / `0.0.0.0` — those resolve
+// to the device itself. A bundle baked with one of those hosts will silently
+// time out every /api/voice/speak and /api/improv/chat call on real hardware,
+// which is exactly the failure we hit on a beta build (see the
+// `https://localhost/api/...` strings in the previous static-build/).
+const UNREACHABLE_HOSTS = new Set([
+  "localhost",
+  "127.0.0.1",
+  "0.0.0.0",
+  "::1",
+]);
+
+function resolveDeploymentDomain() {
+  const sources = [
+    ["REPLIT_INTERNAL_APP_DOMAIN", process.env.REPLIT_INTERNAL_APP_DOMAIN],
+    ["REPLIT_DEV_DOMAIN", process.env.REPLIT_DEV_DOMAIN],
+    ["EXPO_PUBLIC_DOMAIN", process.env.EXPO_PUBLIC_DOMAIN],
+  ];
+  for (const [name, raw] of sources) {
+    if (!raw || !raw.trim()) continue;
+    const host = stripProtocol(raw);
+    const bareHost = host.split(":")[0].toLowerCase();
+    if (UNREACHABLE_HOSTS.has(bareHost)) {
+      return { error: `${name}=${raw} resolves to "${bareHost}", which is unreachable from real devices. Set it to your public deployment hostname.` };
+    }
+    return { host };
+  }
+  return { error: "No deployment domain found. Set REPLIT_INTERNAL_APP_DOMAIN, REPLIT_DEV_DOMAIN, or EXPO_PUBLIC_DOMAIN to your public deployment hostname." };
+}
+
 function getDeploymentDomain() {
-  if (process.env.REPLIT_INTERNAL_APP_DOMAIN) {
-    return stripProtocol(process.env.REPLIT_INTERNAL_APP_DOMAIN);
+  const result = resolveDeploymentDomain();
+  if (result.error) {
+    console.error(`ERROR: ${result.error}`);
+    process.exit(1);
   }
-
-  if (process.env.REPLIT_DEV_DOMAIN) {
-    return stripProtocol(process.env.REPLIT_DEV_DOMAIN);
-  }
-
-  if (process.env.EXPO_PUBLIC_DOMAIN) {
-    return stripProtocol(process.env.EXPO_PUBLIC_DOMAIN);
-  }
-
-  console.error(
-    "ERROR: No deployment domain found. Set REPLIT_INTERNAL_APP_DOMAIN, REPLIT_DEV_DOMAIN, or EXPO_PUBLIC_DOMAIN",
-  );
-  process.exit(1);
+  return result.host;
 }
 
 function prepareDirectories(timestamp) {

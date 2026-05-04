@@ -110,5 +110,85 @@ for (const { label, input, expected } of cases) {
   console.log(`PASS  test ${testNum}: innocentScriptId ${label} → ${JSON.stringify(expected)}`);
 }
 
+console.log("\n── improvReplyOptions: element coercion ──");
+
+const arrayCases: Array<{
+  label: string;
+  input: unknown;
+  expected: string[] | undefined;
+}> = [
+  {
+    label: "all strings",
+    input: ["a", "b", "c"],
+    expected: ["a", "b", "c"],
+  },
+  {
+    label: "mixed types coerced",
+    input: ["a", 42, true],
+    expected: ["a", "42", "true"],
+  },
+  {
+    label: "null/undefined elements filtered",
+    input: ["a", null, undefined, "b"],
+    expected: ["a", "b"],
+  },
+  {
+    label: "number-only array",
+    input: [1, 2, 3],
+    expected: ["1", "2", "3"],
+  },
+  {
+    label: "boolean false element kept",
+    input: [false],
+    expected: ["false"],
+  },
+  {
+    label: "number 0 element kept",
+    input: [0],
+    expected: ["0"],
+  },
+  {
+    label: "empty array stays empty",
+    input: [],
+    expected: [],
+  },
+  {
+    label: "not an array → undefined",
+    input: "not-an-array",
+    expected: undefined,
+  },
+  {
+    label: "undefined → undefined",
+    input: undefined,
+    expected: undefined,
+  },
+];
+
+for (const { label, input, expected } of arrayCases) {
+  testNum++;
+  const raw = stubRun({ improvReplyOptions: input });
+  const migrated = migrateRun(raw as any);
+  assert(migrated !== null, `test ${testNum}: migrateRun should not return null`);
+  const thread = migrated!.threads[0];
+  const actual = thread.improvReplyOptions;
+  assert(
+    JSON.stringify(actual) === JSON.stringify(expected),
+    `test ${testNum} (${label}): expected improvReplyOptions === ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`,
+  );
+  if (expected !== undefined) {
+    assert(
+      Array.isArray(actual),
+      `test ${testNum} (${label}): improvReplyOptions must be an array`,
+    );
+    for (let i = 0; i < actual!.length; i++) {
+      assert(
+        typeof actual![i] === "string",
+        `test ${testNum} (${label}): improvReplyOptions[${i}] must be a string, got ${typeof actual![i]}`,
+      );
+    }
+  }
+  console.log(`PASS  test ${testNum}: improvReplyOptions ${label} → ${JSON.stringify(expected)}`);
+}
+
 console.log(`\nAll ${testNum} migrateRun thread-string coercion tests passed.`);
 process.exit(0);

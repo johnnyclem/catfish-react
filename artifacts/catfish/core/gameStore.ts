@@ -520,9 +520,9 @@ export function migrateRun(run: CaseRun | null): CaseRun | null {
     const innocentScriptId =
       coercedScriptId.length > 0 ? coercedScriptId : undefined;
     const improvReplyOptions = Array.isArray(tt.improvReplyOptions)
-      ? tt.improvReplyOptions.filter(
-          (opt): opt is string => typeof opt === "string",
-        )
+      ? tt.improvReplyOptions
+          .filter((opt) => opt != null)
+          .map((opt) => String(opt))
       : undefined;
     // `improvPending` never persists across cold starts — a request
     // that was in flight when the app was killed cannot be resumed,

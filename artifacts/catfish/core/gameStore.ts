@@ -529,8 +529,7 @@ export function migrateRun(run: CaseRun | null): CaseRun | null {
     // `improvPending` never persists across cold starts — a request
     // that was in flight when the app was killed cannot be resumed,
     // so we drop the flag and let the player tap to refetch.
-    const improvError =
-      typeof tt.improvError === "boolean" ? tt.improvError : undefined;
+    const improvError = tt.improvError ? !!tt.improvError : undefined;
 
     // Task #62 — flush any in-flight typing-delay queue immediately on
     // cold start. The setTimeout chain that would have drained it is

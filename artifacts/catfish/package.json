@@ -27,6 +27,7 @@
     "test:parody-fresh-start": "tsx scripts/test-parody-fresh-start.mts",
     "test:migrate-dismissed": "tsx scripts/test-migrate-dismissed.mts",
     "test:migrate-closed": "tsx scripts/test-migrate-closed.mts",
+    "test:migrate-thread-booleans": "tsx scripts/test-migrate-thread-booleans.mts",
     "test:e2e:install": "playwright install --with-deps chromium",
     "test:e2e": "playwright test"
   },

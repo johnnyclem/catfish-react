@@ -1,0 +1,109 @@
+{
+  "id": "146f62aa-b24d-4fc6-aa7c-e305620db1ab",
+  "createdAt": "2026-05-04T18:39:09.440Z",
+  "runtimeVersion": "exposdk:54.0.0",
+  "launchAsset": {
+    "key": "bundle-1777919949440-46517",
+    "contentType": "application/javascript",
+    "url": "https://localhost/1777919949440-46517/_expo/static/js/ios/bundle.js"
+  },
+  "assets": [],
+  "metadata": {},
+  "extra": {
+    "eas": {},
+    "expoClient": {
+      "name": "Catfish",
+      "slug": "catfish",
+      "version": "1.0.0",
+      "orientation": "portrait",
+      "icon": "./assets/images/icon.png",
+      "scheme": "catfish",
+      "userInterfaceStyle": "automatic",
+      "newArchEnabled": true,
+      "splash": {
+        "image": "./assets/images/icon.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#0a0420",
+        "imageUrl": "http://127.0.0.1:8081/assets/./assets/images/icon.png"
+      },
+      "ios": {
+        "supportsTablet": false
+      },
+      "android": {
+        "permissions": [
+          "android.permission.RECORD_AUDIO",
+          "android.permission.MODIFY_AUDIO_SETTINGS"
+        ]
+      },
+      "web": {
+        "favicon": "./assets/images/icon.png"
+      },
+      "plugins": [
+        [
+          "expo-router",
+          {
+            "origin": "https://replit.com/"
+          }
+        ],
+        "expo-font",
+        "expo-web-browser",
+        "expo-audio",
+        "expo-asset"
+      ],
+      "experiments": {
+        "typedRoutes": true,
+        "reactCompiler": true
+      },
+      "_internal": {
+        "isDebug": false,
+        "projectRoot": "/Users/johnnyclem/Desktop/Repos/catfish-react/artifacts/catfish",
+        "dynamicConfigPath": {},
+        "staticConfigPath": "/Users/johnnyclem/Desktop/Repos/catfish-react/artifacts/catfish/app.json",
+        "packageJsonPath": "/Users/johnnyclem/Desktop/Repos/catfish-react/artifacts/catfish/package.json",
+        "pluginHistory": {
+          "expo-font": {
+            "name": "expo-font",
+            "version": "14.0.11"
+          },
+          "expo-web-browser": {
+            "name": "expo-web-browser",
+            "version": "15.0.11"
+          },
+          "expo-audio": {
+            "name": "expo-audio",
+            "version": "1.1.1"
+          },
+          "expo-asset": {
+            "name": "expo-asset",
+            "version": "12.0.13"
+          }
+        }
+      },
+      "sdkVersion": "54.0.0",
+      "platforms": [
+        "ios",
+        "android",
+        "web"
+      ],
+      "extra": {
+        "router": {
+          "origin": "https://replit.com/"
+        }
+      },
+      "iconUrl": "http://127.0.0.1:8081/assets/./assets/images/icon.png",
+      "hostUri": "localhost/ios"
+    },
+    "expoGo": {
+      "debuggerHost": "localhost/ios",
+      "developer": {
+        "tool": "expo-cli",
+        "projectRoot": "/Users/johnnyclem/Desktop/Repos/catfish-react/artifacts/catfish"
+      },
+      "packagerOpts": {
+        "dev": false
+      },
+      "mainModuleName": "node_modules/.pnpm/expo-router@6.0.23_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__950497bba3dbc1f6b1863109f86ef06a/node_modules/expo-router/entry"
+    },
+    "scopeKey": "@anonymous/catfish-b44d7cb0-e9d8-4d7e-8881-54c86e75cb5a"
+  }
+}

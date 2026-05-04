@@ -692,8 +692,19 @@ export function migrateRun(run: CaseRun | null): CaseRun | null {
   // (e.g. `"true"` or `1`) and break downstream `=== true` checks.
   const closed = !!run.closed;
 
+  const rawDay = Number(run.day);
+  const day = Number.isNaN(rawDay) || rawDay < 1 ? 1 : Math.floor(rawDay);
+
+  const rawDeckCursor = Number(run.deckCursor);
+  const deckCursor =
+    Number.isNaN(rawDeckCursor) || rawDeckCursor < 0
+      ? 0
+      : Math.floor(rawDeckCursor);
+
   return {
     ...run,
+    day,
+    deckCursor,
     deck,
     threads,
     facts,
@@ -746,12 +757,13 @@ function migrateFact(raw: Fact, run: CaseRun): Fact {
     source = { kind: "narratorBeat" };
   }
 
-  const day: number =
+  const rawFactDay =
     typeof f.day === "number"
       ? f.day
       : typeof f.capturedOnDay === "number"
         ? f.capturedOnDay
         : run.day;
+  const day: number = Math.floor(rawFactDay);
 
   // `aboutCharacter` — for an authored fact this is always set on the
   // raw row and we honor it verbatim. For a captured fact, only the

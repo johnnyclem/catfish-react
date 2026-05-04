@@ -30,6 +30,7 @@
     "test:migrate-thread-booleans": "tsx scripts/test-migrate-thread-booleans.mts",
     "test:migrate-thread-numerics": "tsx scripts/test-migrate-thread-numerics.mts",
     "test:migrate-thread-strings": "tsx scripts/test-migrate-thread-strings.mts",
+    "test:migrate-run-numerics": "tsx scripts/test-migrate-run-numerics.mts",
     "test:e2e:install": "playwright install --with-deps chromium",
     "test:e2e": "playwright test"
   },

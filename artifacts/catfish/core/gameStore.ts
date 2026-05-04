@@ -493,17 +493,20 @@ export function migrateRun(run: CaseRun | null): CaseRun | null {
   if (!run) return null;
   const threads = run.threads.map((t) => {
     const rawMessages = Array.isArray(t.messages) ? t.messages : [];
-    // Defensively coerce — anything that doesn't look like a Message gets
-    // dropped instead of crashing the chat renderer.
-    const messages: Message[] = rawMessages.filter(
-      (m): m is Message =>
-        !!m &&
-        typeof m === "object" &&
-        typeof (m as Message).id === "string" &&
-        typeof (m as Message).text === "string" &&
-        ((m as Message).sender === "suspect" ||
-          (m as Message).sender === "player"),
-    );
+    const messages: Message[] = (rawMessages as unknown[])
+      .filter(
+        (m): m is Record<string, unknown> =>
+          !!m &&
+          typeof m === "object" &&
+          (m as Message).id != null &&
+          (m as Message).text != null &&
+          ((m as Message).sender === "suspect" ||
+            (m as Message).sender === "player"),
+      )
+      .map((m) => {
+        const msg = m as unknown as Message;
+        return { ...msg, id: String(msg.id), text: String(msg.text) };
+      });
     const rawTurnIndex = Number((t as ChatThread).turnIndex);
     const turnIndex = Number.isNaN(rawTurnIndex) ? 0 : Math.floor(rawTurnIndex);
     const rawUnreadCount = Number((t as ChatThread).unreadCount);
@@ -549,18 +552,18 @@ export function migrateRun(run: CaseRun | null): CaseRun | null {
         if (
           !raw ||
           typeof raw !== "object" ||
-          typeof (raw as PendingSuspectLine).id !== "string" ||
-          typeof (raw as PendingSuspectLine).text !== "string"
+          (raw as PendingSuspectLine).id == null ||
+          (raw as PendingSuspectLine).text == null
         ) {
           continue;
         }
         const line = raw as PendingSuspectLine;
         flushedExtras.push({
-          id: line.id,
+          id: String(line.id),
           sender: "suspect",
-          text: line.text,
+          text: String(line.text),
           sentAt: nowIso(),
-          beatKey: line.beatKey,
+          beatKey: line.beatKey != null ? String(line.beatKey) : undefined,
         });
         if (line.postDelivery) {
           if (line.postDelivery.advanceTurnIndexBy) {
@@ -627,24 +630,34 @@ export function migrateRun(run: CaseRun | null): CaseRun | null {
   // already has matches keeps them; only the new `pendingLikes` /
   // `pendingMatchAnnouncements` queues are filled in.
   const pendingLikes: LikeRecord[] = Array.isArray(run.pendingLikes)
-    ? run.pendingLikes.filter(
-        (l): l is LikeRecord =>
-          !!l &&
-          typeof l === "object" &&
-          typeof (l as LikeRecord).candidateId === "string" &&
-          typeof (l as LikeRecord).day === "number" &&
-          typeof (l as LikeRecord).at === "string" &&
-          ((l as LikeRecord).status === "pending" ||
-            (l as LikeRecord).status === "matched" ||
-            (l as LikeRecord).status === "passed"),
-      )
+    ? (run.pendingLikes as unknown[])
+        .filter(
+          (l): l is Record<string, unknown> =>
+            !!l &&
+            typeof l === "object" &&
+            (l as LikeRecord).candidateId != null &&
+            (l as LikeRecord).at != null &&
+            ((l as LikeRecord).status === "pending" ||
+              (l as LikeRecord).status === "matched" ||
+              (l as LikeRecord).status === "passed"),
+        )
+        .map((l) => {
+          const lr = l as unknown as LikeRecord;
+          const rawDay = Number(lr.day);
+          return {
+            ...lr,
+            candidateId: String(lr.candidateId),
+            day: Number.isNaN(rawDay) ? 0 : rawDay,
+            at: String(lr.at),
+          };
+        })
     : [];
   const pendingMatchAnnouncements: MatchId[] = Array.isArray(
     run.pendingMatchAnnouncements,
   )
-    ? run.pendingMatchAnnouncements.filter(
-        (id): id is MatchId => typeof id === "string",
-      )
+    ? run.pendingMatchAnnouncements
+        .filter((id) => id != null)
+        .map((id) => String(id) as MatchId)
     : [];
 
   // Task #58 — backfill the per-run check-out set. Anything a thread
@@ -652,8 +665,13 @@ export function migrateRun(run: CaseRun | null): CaseRun | null {
   // pre-dates the field, so two innocent matches still can't collide
   // after a cold start.
   const persistedUsed = Array.isArray(run.usedInnocentScriptIds)
-    ? run.usedInnocentScriptIds.filter((id): id is string => typeof id === "string")
+    ? run.usedInnocentScriptIds
+        .filter((id) => id != null)
+        .map((id) => String(id))
     : [];
+  // Safe: innocentScriptId values are already coerced to string | undefined
+  // by the thread migration above, so the typeof narrowing here cannot
+  // silently drop a truthy non-string value.
   const claimedFromThreads = threads
     .map((t) => t.innocentScriptId)
     .filter((id): id is string => typeof id === "string" && id.length > 0);

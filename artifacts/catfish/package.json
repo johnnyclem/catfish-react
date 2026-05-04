@@ -25,6 +25,7 @@
     "test:parody-save-race": "tsx scripts/test-parody-save-race.mts",
     "test:parody-session": "tsx scripts/test-parody-session.mts",
     "test:parody-fresh-start": "tsx scripts/test-parody-fresh-start.mts",
+    "test:migrate-dismissed": "tsx scripts/test-migrate-dismissed.mts",
     "test:e2e:install": "playwright install --with-deps chromium",
     "test:e2e": "playwright test"
   },

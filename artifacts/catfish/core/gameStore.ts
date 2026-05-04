@@ -672,6 +672,11 @@ export function migrateRun(run: CaseRun | null): CaseRun | null {
   // the pre-#68 semantics for any save that still has an `ending`.
   const endingDismissed = !!run.endingDismissed;
 
+  // Task #71 — apply the same strict-boolean coercion to `closed`.
+  // A corrupted save could set `closed` to a truthy non-boolean
+  // (e.g. `"true"` or `1`) and break downstream `=== true` checks.
+  const closed = !!run.closed;
+
   return {
     ...run,
     deck,
@@ -681,6 +686,7 @@ export function migrateRun(run: CaseRun | null): CaseRun | null {
     pendingMatchAnnouncements,
     usedInnocentScriptIds,
     endingDismissed,
+    closed,
   };
 }
 

@@ -15,9 +15,22 @@
 
 const DEFAULT_BASE = "/api";
 
+let warnedUnreachableDomain = false;
 function apiBase(): string {
   const domain = process.env["EXPO_PUBLIC_DOMAIN"];
-  if (domain) return `https://${domain}/api`;
+  if (domain) {
+    const bare = domain.split(":")[0].toLowerCase();
+    if (
+      !warnedUnreachableDomain &&
+      (bare === "localhost" || bare === "127.0.0.1" || bare === "0.0.0.0")
+    ) {
+      warnedUnreachableDomain = true;
+      console.warn(
+        `[improv] EXPO_PUBLIC_DOMAIN was baked as "${domain}" — unreachable from a real device. Rebuild with REPLIT_INTERNAL_APP_DOMAIN set.`,
+      );
+    }
+    return `https://${domain}/api`;
+  }
   return DEFAULT_BASE;
 }
 

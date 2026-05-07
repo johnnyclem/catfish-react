@@ -1,0 +1,5 @@
+{
+  "buildCommand": "cd artifacts/catfish && EXPO_PUBLIC_DOMAIN=$VERCEL_URL pnpm exec expo export --platform web --output-dir dist",
+  "installCommand": "cd artifacts/catfish && pnpm install",
+  "outputDirectory": "artifacts/catfish/dist"
+}

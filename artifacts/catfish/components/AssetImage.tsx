@@ -11,8 +11,11 @@ import { Image, ImageStyle, StyleProp, StyleSheet, Text, View, ViewStyle } from 
 import { AssetId, getAssetSource, isAssetRegistered } from "@/assets/manifest";
 import { cfPalette } from "@/constants/colors";
 
+/** Accepts any string — used for dynamic asset ids from scene data. */
+type FlexibleAssetId = string;
+
 interface AssetImageProps {
-  id: AssetId;
+  id: FlexibleAssetId;
   style?: StyleProp<ImageStyle>;
   containerStyle?: StyleProp<ViewStyle>;
   resizeMode?: "cover" | "contain" | "stretch" | "center";
@@ -27,8 +30,8 @@ export function AssetImage({
   resizeMode = "contain",
   showPlaceholder,
 }: AssetImageProps) {
-  const source = getAssetSource(id);
-  const useFallback = showPlaceholder || !isAssetRegistered(id) || !source;
+  const source = getAssetSource(id as AssetId);
+  const useFallback = showPlaceholder || !isAssetRegistered(id as AssetId) || !source;
 
   if (useFallback) {
     return (

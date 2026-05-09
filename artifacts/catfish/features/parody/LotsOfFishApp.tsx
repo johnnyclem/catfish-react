@@ -27,6 +27,7 @@ import { cfPalette } from "@/constants/colors";
 import { useGameState } from "@/core/gameStore";
 import { MatchesScreen } from "@/features/dating/MatchesScreen";
 import { ProfileScreen } from "@/features/dating/ProfileScreen";
+import { SocialFeedScreen } from "@/features/dating/SocialFeedScreen";
 import { SwipeScreen } from "@/features/dating/SwipeScreen";
 
 import { LotsOfFishSplash } from "./LotsOfFishSplash";
@@ -41,6 +42,7 @@ interface TabSpec {
 const TABS: TabSpec[] = [
   { view: "swipe", label: "Swipe", icon: "heart" },
   { view: "matches", label: "Matches", icon: "message-circle" },
+  { view: "social", label: "Social", icon: "grid" },
   { view: "profile", label: "Profile", icon: "user" },
 ];
 
@@ -73,6 +75,7 @@ export function LotsOfFishApp() {
       <View style={styles.body}>
         {view === "swipe" && <SwipeScreen />}
         {view === "matches" && <MatchesScreen />}
+        {view === "social" && <SocialFeedScreen />}
         {view === "profile" && <ProfileScreen />}
       </View>
       <View style={styles.tabBar}>

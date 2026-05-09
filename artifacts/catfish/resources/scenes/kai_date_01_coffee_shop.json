@@ -1,0 +1,144 @@
+{
+  "sceneID": "kai_date_01_coffee_shop",
+  "partner": "kai",
+  "environment": "env_coffee_shop_day",
+  "openingNarration": {
+    "voiceLineID": "narrator_kai_d1_intro",
+    "text": "You walk into Cafe Quartz. Kai's already there, sketching."
+  },
+  "beats": [
+    {
+      "beatID": "kai_coffee_01_greeting",
+      "type": "scripted",
+      "actor": "CURRENT_MATCH",
+      "focusShift": false,
+      "variants": [
+        {
+          "condition": "isKiller",
+          "voiceLineID": "kai_coffee_greeting_warm_km",
+          "expression": "neutral_saintmask"
+        },
+        {
+          "condition": "default",
+          "voiceLineID": "kai_coffee_greeting_warm",
+          "expression": "smile"
+        }
+      ]
+    },
+    {
+      "beatID": "kai_coffee_02_smalltalk",
+      "type": "eastworld",
+      "actor": "CURRENT_MATCH",
+      "fallbackVoiceLineID": "kai_coffee_ambient_safe_01"
+    },
+    {
+      "beatID": "kai_coffee_03_player_choice",
+      "type": "choice",
+      "actor": "PLAYER",
+      "choices": [
+        {
+          "id": "ask_about_work",
+          "label": "What do you do for work?",
+          "affinityDelta": 1,
+          "tellEligible": false,
+          "nextBeatID": "kai_coffee_04a"
+        },
+        {
+          "id": "ask_where_last_night",
+          "label": "Where were you last night?",
+          "affinityDelta": -1,
+          "tellEligible": true,
+          "nextBeatID": "kai_coffee_04b"
+        }
+      ]
+    },
+    {
+      "beatID": "kai_coffee_04a_work",
+      "type": "scripted",
+      "actor": "CURRENT_MATCH",
+      "focusShift": false,
+      "variants": [
+        {
+          "condition": "isKiller",
+          "voiceLineID": "kai_work_response_km",
+          "expression": "neutral_saintmask"
+        },
+        {
+          "condition": "default",
+          "voiceLineID": "kai_work_response",
+          "expression": "flirty"
+        }
+      ]
+    },
+    {
+      "beatID": "kai_coffee_04b_alibi",
+      "type": "scripted",
+      "actor": "CURRENT_MATCH",
+      "focusShift": true,
+      "variants": [
+        {
+          "condition": "isKiller",
+          "voiceLineID": "kai_killer_alibi_shaky",
+          "expression": "uneasy",
+          "factReveal": "kai_bio_transit_wall"
+        },
+        {
+          "condition": "default",
+          "voiceLineID": "kai_innocent_alibi_firm",
+          "expression": "neutral"
+        }
+      ]
+    },
+    {
+      "beatID": "kai_coffee_05_focus_shift_return",
+      "type": "scripted",
+      "actor": "CURRENT_MATCH",
+      "focusShift": false,
+      "variants": [
+        {
+          "condition": "isKiller",
+          "voiceLineID": "kai_recovery_smirk",
+          "expression": "neutral_saintmask"
+        },
+        {
+          "condition": "default",
+          "voiceLineID": "kai_social_reflex",
+          "expression": "smile"
+        }
+      ]
+    },
+    {
+      "beatID": "kai_coffee_06_date_close",
+      "type": "choice",
+      "actor": "PLAYER",
+      "choices": [
+        {
+          "id": "coffee_again",
+          "label": "Coffee again this week?",
+          "affinityDelta": 2,
+          "tellEligible": false,
+          "nextBeatID": "kai_coffee_end"
+        },
+        {
+          "id": "keep_options",
+          "label": "I'll let you know.",
+          "affinityDelta": 0,
+          "tellEligible": false,
+          "nextBeatID": "kai_coffee_end"
+        }
+      ]
+    },
+    {
+      "beatID": "kai_coffee_end",
+      "type": "scripted",
+      "actor": "NARRATOR",
+      "variants": [
+        {
+          "condition": "default",
+          "voiceLineID": "narrator_date_end",
+          "text": "You leave Cafe Quartz with Kai's number — and a new question mark."
+        }
+      ]
+    }
+  ]
+}

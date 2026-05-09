@@ -24,6 +24,11 @@ export function emitSfx(name: SfxName): void {
   }
 }
 
+/** Fire-and-forget SFX by string key — skips gracefully if unknown. */
+export function emitSfxByName(name: string): void {
+  emitSfx(name as SfxName);
+}
+
 /** Subscribe to SFX requests. Returns an unsubscribe fn. */
 export function subscribeSfx(listener: Listener): () => void {
   listeners.add(listener);

@@ -21,7 +21,11 @@ export type SfxName =
   | "day_end"
   | "accuse"
   | "win"
-  | "lose";
+  | "lose"
+  | "focusShift"
+  | "clueDiscovered"
+  | "choiceSelect"
+  | "dateEnd";
 
 const SFX_MANIFEST: Record<SfxName, number | object> = {
   swipe_pass: require("@/assets/audio/sfx/swipe_pass.wav"),
@@ -32,6 +36,13 @@ const SFX_MANIFEST: Record<SfxName, number | object> = {
   accuse: require("@/assets/audio/sfx/accuse.wav"),
   win: require("@/assets/audio/sfx/win.wav"),
   lose: require("@/assets/audio/sfx/lose.wav"),
+  // ── Date Mode SFX (Phase 7) ──────────────────────────────────────────────
+  // TODO (Pass 2): generate via ElevenLabs per catfish_audio-brief.md
+  // Each stub uses swipe_pass as placeholder until generation runs.
+  focusShift: require("@/assets/audio/sfx/swipe_pass.wav"),
+  clueDiscovered: require("@/assets/audio/sfx/fact_filed.wav"),
+  choiceSelect: require("@/assets/audio/sfx/swipe_pass.wav"),
+  dateEnd: require("@/assets/audio/sfx/lose.wav"),
 };
 
 export function sfxAsset(name: SfxName): number | object {

@@ -4,6 +4,12 @@
  * Suspect messages anchor left in cyan; player replies anchor right in
  * pink-hot. Glow + 2px borders mirror the rest of the PixelChrome system
  * so the chat reads as part of the same world as the swipe deck.
+ *
+ * Task #63 — player bubbles show a delivery status tick below the text:
+ *   "sent"     → one tick (cyan)
+ *   "delivered"→ two ticks (cyan)
+ *   "read"     → two ticks (pink-hot)
+ * Suspect messages show no indicator.
  */
 
 import { StyleSheet, View } from "react-native";
@@ -23,6 +29,8 @@ export function MessageBubble({ message }: MessageBubbleProps) {
   const border = isPlayer ? cfPalette.pinkSoft : cfPalette.cyan;
   const fg = isPlayer ? cfPalette.void : cfPalette.bone;
 
+  const status = message.status;
+
   return (
     <View style={[styles.row, { justifyContent: align }]}>
       <View
@@ -31,8 +39,6 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           {
             backgroundColor: bg,
             borderColor: border,
-            // Soften the corner that points "into" the conversation. Pixel
-            // borders so we stay on grid.
             borderTopLeftRadius: isPlayer ? 6 : 0,
             borderTopRightRadius: isPlayer ? 0 : 6,
           },
@@ -41,8 +47,26 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         <PixelText size={9} color={fg} style={{ lineHeight: 14 }}>
           {message.text}
         </PixelText>
+        {isPlayer && status != null && (
+          <StatusTick status={status} />
+        )}
       </View>
     </View>
+  );
+}
+
+function StatusTick({ status }: { status: "sent" | "delivered" | "read" }) {
+  const color =
+    status === "read" ? cfPalette.pinkHot : cfPalette.cyan;
+  const label = status === "sent" ? "✓" : status === "delivered" ? "✓✓" : "✓✓";
+  return (
+    <PixelText
+      size={6}
+      color={color}
+      style={styles.statusTick}
+    >
+      {label}
+    </PixelText>
   );
 }
 
@@ -57,5 +81,9 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     paddingVertical: 10,
     paddingHorizontal: 12,
+  },
+  statusTick: {
+    marginTop: 4,
+    textAlign: "right",
   },
 });

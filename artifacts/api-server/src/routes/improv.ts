@@ -43,13 +43,27 @@ const ImprovChatRequestSchema = z
   .object({
     suspect: z
       .object({
-        // The display name the player sees on the match. Used to keep
-        // pronouns / vibe consistent in the prompt.
         name: z.string().trim().min(1).max(80),
-        // Short profile blurb (the dating-app bio). 1-2 sentences.
         bio: z.string().trim().min(1).max(400),
       })
       .strict(),
+    voiceProfile: z
+      .object({
+        voiceId: z.string().trim().min(1).max(80),
+        modelId: z.string().trim().min(1).max(40),
+        notes: z.string().trim().min(1).max(200).optional(),
+        settings: z
+          .object({
+            stability: z.number().optional(),
+            similarityBoost: z.number().optional(),
+            style: z.number().optional(),
+            useSpeakerBoost: z.boolean().optional(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
     transcript: z.array(TranscriptEntrySchema).min(1).max(40),
   })
   .strict();
@@ -84,9 +98,6 @@ Hard constraints on every reply:
 - Continue the established topic. Do not re-introduce yourself. Do not abruptly change subject unless the previous PLAYER message asked you to.`;
 
 function buildUserPrompt(input: ImprovChatRequest): string {
-  // Use the match's display name (uppercased for visual contrast) and
-  // "PLAYER" as transcript role labels — see SYSTEM_INSTRUCTION above
-  // for why we don't use "you"/"them" here.
   const matchLabel = input.suspect.name.toUpperCase();
   const lines = input.transcript
     .map((m) => {
@@ -94,9 +105,37 @@ function buildUserPrompt(input: ImprovChatRequest): string {
       return `${tag}: ${m.text}`;
     })
     .join("\n");
+
+  const voiceHints = input.voiceProfile
+    ? [
+        "",
+        "Voice guidance for this character:",
+        `- ElevenLabs voice id: ${input.voiceProfile.voiceId}`,
+        input.voiceProfile.settings
+          ? [
+              input.voiceProfile.settings.stability !== undefined
+                ? `  stability: ${input.voiceProfile.settings.stability} (0=expressive, 1=monotone)`
+                : null,
+              input.voiceProfile.settings.similarityBoost !== undefined
+                ? `  similarityBoost: ${input.voiceProfile.settings.similarityBoost}`
+                : null,
+              input.voiceProfile.settings.style !== undefined
+                ? `  style: ${input.voiceProfile.settings.style} (0=neutral, 1=exaggerated)`
+                : null,
+            ]
+              .filter(Boolean)
+              .join("\n")
+          : null,
+        input.voiceProfile.notes ? `  character notes: "${input.voiceProfile.notes}"` : null,
+      ]
+        .filter(Boolean)
+        .join("\n")
+    : "";
+
   return [
     `Match name: ${input.suspect.name}`,
     `Match bio: ${input.suspect.bio}`,
+    voiceHints,
     "",
     "Recent conversation (oldest first):",
     lines,

@@ -4,6 +4,81 @@ Session logs and activity records. Append newest entries at the top.
 
 ---
 
+## 2026-05-09 — React Port: SocialFeed, SuspectBoard, Journal P2
+
+**Agent**: opencode (MiniMax-M2.7)
+**Session type**: Implementation (React Native port)
+
+### What happened
+
+Ported three Pass 5/6 SwiftUI screens to React Native + Expo Router, then updated the Journal to handle the two-class fact system (authored + captured).
+
+#### SocialFeedScreen (new)
+
+Created `features/dating/SocialFeedScreen.tsx` — Instagram-style vertical feed:
+- Character picker chip row (filters by matched candidates only)
+- `SocialCard` per `Fact` where `source.kind === "instagram"`, sorted by day
+- Each card shows square social art asset (`A700_kai_social_`, `A720_river_social_`, etc.) with caption text below
+- Captions already carry killer-variant text: `buildAuthoredFacts()` applies `variableOverrides` at bootstrap time, so the double-blind tell works without additional wiring
+
+Added `"social"` to `LotsOfFishView` + `"Social"` tab in `LotsOfFishApp.tsx`.
+
+#### SuspectBoardScreen (new)
+
+Created `features/journal/SuspectBoardScreen.tsx` — case board as a 2-column scrollable grid:
+- `SuspectCard` per candidate from `run.deck`: portrait, name, 4-segment risk meter
+- Risk levels: `???` (0 facts), `low` (1-2), `elevated` (3-5), `high` (6+)
+- `isKillerCandidate` → red border + "suspect" badge
+- `matchId` + `isDropped` → renders "dropped" chip; no chip for unmatched candidates
+- Tap card → `router.push(\`/chat/${threadId}\`)` for matched candidates with a thread
+- `tap to chat ▸` hint shown only on matched, non-dropped cards
+
+Added `"board"` to `LotsOfFishView` + `"Board"` tab with `book-open` icon in `LotsOfFishApp.tsx`.
+
+#### FactCard → unified authored + captured
+
+Rewrote `FactCard.tsx` to handle both fact classes:
+- `kind === "captured"` → shows `capturedQuote`, `capturedOnDay`, `✕` discard chip
+- `kind !== "captured"` → shows `payload.text`, `fact.day`, colored `SourceBadge` (bio/IG/portrait expression/dev/friend/chat/narration)
+
+#### JournalScreen P2 — two-class fact surfacing
+
+Restructured `JournalScreen.tsx`:
+- `authoredFacts` (non-captured committed) shown in a flat chronological section at the top with a purple header label + disclaimer ("world-logged · not discardable")
+- `capturedFacts` continue to use existing `SuspectGroup` per-suspect layout with filter/sort controls
+- `JournalControls` (filter chips + sort pills) appear only when captured facts exist
+- Summary strip updated to 3-column: **captured / authored / suspects**
+- Subtitle updated: "Long-press a chat message to capture a Fact. Authored facts are auto-logged."
+
+### Key patterns learned
+
+- `buildAuthoredFacts(runId, killer)` returns `Fact[]` where `kind: "static" | "variable" | "conditional"` — all pre-committed. Captured facts have `kind: "captured"` and `capturedFromCandidateId` set.
+- `run.facts` is a flat array — grouping for display is done in the screen component with `useMemo`
+- `isKillerCandidate` is `true` only on the actual killer candidate in `run.deck` (not decoys). This is the correct flag for the suspect board's killer indicator, NOT `identity === run.killer` (which was the old buggy pattern that caused all decoys to be marked as killers)
+- `pixelShellState.ts` `LotsOfFishView` type must be updated whenever a new tab is added to the dating app shell
+
+### Files created
+
+- `artifacts/catfish/features/dating/SocialFeedScreen.tsx` (new)
+- `artifacts/catfish/features/journal/SuspectBoardScreen.tsx` (new)
+
+### Files modified
+
+- `artifacts/catfish/features/parody/phoneShellState.ts` — added `"board" | "social"` to `LotsOfFishView`
+- `artifacts/catfish/features/parody/LotsOfFishApp.tsx` — added Social + Board tabs with routing
+- `artifacts/catfish/features/journal/FactCard.tsx` — unified authored/captured rendering
+- `artifacts/catfish/features/journal/JournalScreen.tsx` — two-class fact surfacing, 3-column summary
+- `llm-wiki/features/phone-os.md` — updated with new app tabs + board/social descriptions
+- `llm-wiki/features/journal.md` (new) — full journal feature documentation
+- `llm-wiki/index.md` — added journal page, updated stats
+- `llm-wiki/_activity/changelog.md` — appended this entry
+
+### Verification
+
+- `pnpm tsc --noEmit` — **clean** (zero errors)
+
+---
+
 ## 2026-04-30 — Journal discovery gating + unread clue badge
 
 **Agent**: Codex (GPT-5)

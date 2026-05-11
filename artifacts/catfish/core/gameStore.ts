@@ -30,6 +30,7 @@ import {
   CandidateId,
   CaseRun,
   ChatThread,
+  FriendID,
   RunId,
   Fact,
   FactId,
@@ -389,6 +390,18 @@ interface GameStateValue {
    * safe to call on every focus / message update from the chat screen.
    */
   markThreadRead: (threadId: ThreadId) => Promise<void>;
+  /**
+   * Task #9 — mark a voicemail as listened. Fires when the player opens
+   * the voicemail detail view. Idempotent — re-calling on an already-listened
+   * voicemail is a no-op.
+   */
+  markVmListened: (voicemailId: string) => Promise<void>;
+  /**
+   * Task #9 — spend one phone credit to initiate an outgoing call to a
+   * friend. Deducts from the appropriate budget and triggers a dialogue
+   * tree. No-op if the budget is already zero for that friend.
+   */
+  makeFriendCall: (friend: FriendID) => Promise<void>;
   resetRun: () => Promise<void>;
 }
 
@@ -1256,14 +1269,23 @@ async function deliverNextSuspectLine(
     }
   }
 
-  const updatedThread: ChatThread = {
-    ...t,
-    messages: [...t.messages, landed],
-    unreadCount: t.unreadCount + 1,
-    pendingSuspectQueue: rest.length > 0 ? rest : undefined,
-    turnIndex,
-    improvReplyOptions,
-  };
+// Bump every player message currently at "sent" → "delivered".
+    // The player sees all their prior messages flip from a single-tick
+    // to a double-tick at the same time the suspect bubble lands.
+    const bumpedMessages = t.messages.map((m) =>
+      m.sender === "player" && m.status === "sent"
+        ? { ...m, status: "delivered" as const }
+        : m,
+    );
+
+    const updatedThread: ChatThread = {
+      ...t,
+      messages: [...bumpedMessages, landed],
+      unreadCount: t.unreadCount + 1,
+      pendingSuspectQueue: rest.length > 0 ? rest : undefined,
+      turnIndex,
+      improvReplyOptions,
+    };
   const next: CaseRun = {
     ...cur,
     threads: cur.threads.map((x) => (x.id === threadId ? updatedThread : x)),
@@ -2024,14 +2046,15 @@ export const useGameState = create<GameStateValue>((set, get) => ({
       thread.turnIndex >= script.length && !candidate.isKillerCandidate;
 
     if (isImprovTurn) {
-      const playerMsg: Message = {
-        id: newMessageId(),
-        sender: "player",
-        text: replyText,
-        sentAt: nowIso(),
-        // No beatKey for improv turns — beats are a property of the
-        // hand-authored tree, and improv is by definition off-tree.
-      };
+const playerMsg: Message = {
+      id: newMessageId(),
+      sender: "player",
+      text: replyText,
+      sentAt: nowIso(),
+      // No beatKey for improv turns — beats are a property of the
+      // hand-authored tree, and improv is by definition off-tree.
+      status: "sent",
+    };
       const updatedThread: ChatThread = {
         ...thread,
         messages: [...thread.messages, playerMsg],
@@ -2069,6 +2092,7 @@ export const useGameState = create<GameStateValue>((set, get) => ({
       text: replyText,
       sentAt: nowIso(),
       beatKey: replyTurn.beatKey,
+      status: "sent",
     };
 
     const nextTurn = script[thread.turnIndex];
@@ -2187,6 +2211,12 @@ export const useGameState = create<GameStateValue>((set, get) => ({
         suspect: {
           name: candidate.displayName,
           bio: candidate.bio,
+        },
+        voiceProfile: {
+          voiceId: profile.voiceId,
+          modelId: profile.modelId,
+          settings: profile.settings,
+          notes: profile.notes,
         },
         transcript: tail,
       });
@@ -2351,7 +2381,18 @@ export const useGameState = create<GameStateValue>((set, get) => ({
     if (!prev) return;
     const thread = prev.threads.find((t) => t.id === threadId);
     if (!thread || thread.unreadCount === 0) return;
-    const updatedThread: ChatThread = { ...thread, unreadCount: 0 };
+    // Task #63 — flip every player message to "read" when the player
+    // opens the thread. This is the "read receipt" semantic.
+    const bumpedMessages = thread.messages.map((m) =>
+      m.sender === "player" && m.status !== "read"
+        ? { ...m, status: "read" as const }
+        : m,
+    );
+    const updatedThread: ChatThread = {
+      ...thread,
+      unreadCount: 0,
+      messages: bumpedMessages,
+    };
     const next: CaseRun = {
       ...prev,
       threads: prev.threads.map((t) => (t.id === threadId ? updatedThread : t)),
@@ -2359,6 +2400,41 @@ export const useGameState = create<GameStateValue>((set, get) => ({
     set({ run: next });
     await saveActiveRun(next);
   },
+
+  markVmListened: async (voicemailId) => {
+    const prev = get().run;
+    if (!prev) return;
+    const voicemails = prev.voicemails ?? [];
+    const found = voicemails.find((v) => v.id === voicemailId);
+    if (!found || found.listened) return;
+    const updated = voicemails.map((v) =>
+      v.id === voicemailId ? { ...v, listened: true } : v,
+    );
+    const next: CaseRun = { ...prev, voicemails: updated };
+    set({ run: next });
+    await saveActiveRun(next);
+  },
+
+  makeFriendCall: async (friend) => {
+    const prev = get().run;
+    if (!prev) return;
+    const credits = prev.phoneCredits ?? {
+      lastRefillDay: prev.day,
+      devCalls: 3,
+      niaCalls: 3,
+    };
+    const key = friend === "nia" ? "niaCalls" : "devCalls";
+    const remaining = credits[key];
+    if (remaining <= 0) return;
+    const updatedCredits: typeof credits = {
+      ...credits,
+      [key]: remaining - 1,
+    };
+    const next: CaseRun = { ...prev, phoneCredits: updatedCredits };
+    set({ run: next });
+    await saveActiveRun(next);
+  },
+
   resetRun: async () => {
     cancelAllDiscardTimers();
     // Task #62 — kill every in-flight suspect typing-delay timer so

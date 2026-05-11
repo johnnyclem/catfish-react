@@ -41,6 +41,18 @@ export interface ImprovTranscriptEntry {
 
 export interface ImprovChatArgs {
   suspect: { name: string; bio: string };
+  /** Voice profile hints for Gemini — style, tone, and delivery notes. */
+  voiceProfile?: {
+    voiceId: string;
+    modelId: string;
+    settings: {
+      stability?: number;
+      similarityBoost?: number;
+      style?: number;
+      useSpeakerBoost?: boolean;
+    };
+    notes: string;
+  };
   transcript: ImprovTranscriptEntry[];
   signal?: AbortSignal;
 }
@@ -67,6 +79,7 @@ export async function fetchImprovTurn(
     },
     body: JSON.stringify({
       suspect: args.suspect,
+      voiceProfile: args.voiceProfile,
       transcript: args.transcript,
     }),
     signal: args.signal,

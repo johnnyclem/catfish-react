@@ -55,6 +55,16 @@ export interface Message {
   text: string;
   sentAt: string;
   beatKey?: string;
+  /**
+   * Task #63 — delivery status for player messages.
+   * - sent       — message was dispatched by the player
+   * - delivered  — at least one suspect reply has since landed in the thread
+   * - read       — player has opened the thread since this message was sent
+   *
+   * Suspect messages leave this undefined. Consumers treat undefined as
+   * "not applicable" since suspects don't have delivery receipts.
+   */
+  status?: "sent" | "delivered" | "read";
 }
 
 export interface Candidate {
@@ -248,12 +258,48 @@ export interface ChatMessage {
  */
 
 /**
- * Friend NPC ids reserved for forward compatibility with the
- * `friendText` source variant — no friend characters are authored in
- * this pass, but the enum exists so a later pass can fill them in
- * without re-shaping the schema.
+ * Friend NPC ids — Dev and Nia are the phone app's contactable friends.
  */
-export type FriendID = "alex" | "morgan" | "dev";
+export type FriendID = "alex" | "morgan" | "dev" | "nia";
+
+/**
+ * A friend tip delivered via the phone app's voicemail system.
+ * Voicemails are authored per day and optional killer-awareness per entry.
+ */
+export interface Voicemail {
+  /** Stable id. */
+  id: string;
+  /** Which friend sent this. */
+  friend: FriendID;
+  /** The playable/displayable tip text. */
+  text: string;
+  /** Game-day clock value at which this voicemail appears. */
+  day: number;
+  /**
+   * Optional killer identity gating. If set, this voicemail only appears
+   * when `run.killer === gate`. Unset means the voicemail is universal.
+   */
+  killerGate?: KillerIdentity;
+  /**
+   * Fact id this voicemail is linked to. The voicemail's delivery
+   * commits the fact to the journal automatically.
+   */
+  linkedFactId?: FactId;
+  /** True once the player has listened to this voicemail. */
+  listened: boolean;
+}
+
+/**
+ * Phone credit state for outgoing friend calls.
+ * The PRD caps outgoing calls at 3 per day per friend.
+ */
+export interface PhoneCreditBudget {
+  /** Day on which the budget was last refilled. */
+  lastRefillDay: number;
+  /** Remaining outgoing calls per friend. */
+  devCalls: number;
+  niaCalls: number;
+}
 
 /**
  * Where an authored or captured Fact comes from. Discriminated union
@@ -291,6 +337,11 @@ export interface FactPayload {
   voiceLineID?: string;
   /** Optional subject character (e.g. red herring "looks bad on Jules"). */
   subject?: KillerIdentity | "player" | FriendID;
+  /**
+   * Optional evidence image asset id (A3xx range from assets/manifest.ts).
+   * Facts with this set will appear in the Photos app's evidence grid.
+   */
+  imageAssetID?: string;
 }
 
 /**
@@ -527,6 +578,39 @@ export interface CaseRun {
    * back-compat; `migrateRun` defaults missing values to `[]`.
    */
   usedInnocentScriptIds?: string[];
+  /**
+   * Task #9 — incoming voicemails from friends (Dev + Nia).
+   * New entries are appended by `advanceDay()` based on authored
+   * daily content. Optional for back-compat; `migrateRun` defaults
+   * to `[]`.
+   */
+  voicemails?: Voicemail[];
+  /**
+   * Task #9 — phone credit budget for outgoing friend calls.
+   * Refilled to 3 each on day advance. Optional for back-compat;
+   * `migrateRun` defaults to `lastRefillDay: 1, devCalls: 3, niaCalls: 3`.
+   */
+  phoneCredits?: PhoneCreditBudget;
+  /**
+   * Task #9 — incoming Facetime call invitations awaiting player
+   * acceptance or decline. Shown as a notification when the player
+   * is in the phone shell. Optional for back-compat; `migrateRun`
+   * defaults to `[]`.
+   */
+  pendingFacetimeCalls?: FacetimeCall[];
+}
+
+/**
+ * Task #9 — an incoming Facetime call invitation from a matched
+ * character. Shown as a notification when the player is in the
+ * phone shell; accepting enters the Facetime call flow.
+ */
+export interface FacetimeCall {
+  id: string;
+  candidateId: string;
+  day: number;
+  /** Short call topic label shown in the notification. */
+  topic: string;
 }
 
 /* ───────── id helpers (no `uuid` package — crashes on iOS/Android) ──── */
@@ -543,3 +627,5 @@ export const newThreadId = (): ThreadId => rid("thread");
 export const newFactId = (): FactId => rid("fact");
 export const newCandidateId = (): CandidateId => rid("cand");
 export const newMessageId = (): MessageId => rid("msg");
+export const newVoicemailId = (): string => rid("vm");
+export const newFacetimeCallId = (): string => rid("ft");

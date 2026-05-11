@@ -32,6 +32,8 @@ import { AppNotificationBadge } from "./AppNotificationBadge";
 import { EgoTripIcon } from "./EgoTripIcon";
 import { JournalIcon } from "./JournalIcon";
 import { LotsOfFishIcon } from "./LotsOfFishIcon";
+import { PhoneIcon } from "./PhoneIcon";
+import { PhotosIcon } from "./PhotosIcon";
 import { SafeSpotIcon } from "./SafeSpotIcon";
 import { SugarCoatIcon } from "./SugarCoatIcon";
 import { WordLowIcon } from "./WordLowIcon";
@@ -43,6 +45,8 @@ export type ParodyAppId =
   | "wordLow"
   | "lotsOfFish"
   | "journal"
+  | "phone"
+  | "photos"
   | "gameCenter";
 
 interface Props {
@@ -63,6 +67,8 @@ const APPS: AppTileSpec[] = [
   { id: "wordLow", name: "Word-Low", Icon: WordLowIcon },
   { id: "lotsOfFish", name: "Lots 'o Fish", Icon: LotsOfFishIcon },
   { id: "journal", name: "Journal", Icon: JournalIcon },
+  { id: "phone", name: "Phone", Icon: PhoneIcon },
+  { id: "photos", name: "Photos", Icon: PhotosIcon },
 ];
 
 export function HomeGrid({ onOpenApp }: Props) {

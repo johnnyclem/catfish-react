@@ -32,6 +32,8 @@ export type PhoneShellApp =
   | "home"
   | "lotsOfFish"
   | "journal"
+  | "phone"
+  | "photos"
   | "gameCenter"
   | "egoTrip"
   | "sugarCoat"
@@ -44,7 +46,7 @@ export type PhoneShellApp =
  * visit doesn't re-show the splash unless the caller explicitly
  * asks for it.
  */
-export type LotsOfFishView = "splash" | "swipe" | "matches" | "profile" | "social";
+export type LotsOfFishView = "splash" | "swipe" | "matches" | "profile" | "social" | "board";
 
 interface PhoneShellState {
   currentApp: PhoneShellApp;

@@ -28,6 +28,7 @@ import { useGameState } from "@/core/gameStore";
 import { MatchesScreen } from "@/features/dating/MatchesScreen";
 import { ProfileScreen } from "@/features/dating/ProfileScreen";
 import { SocialFeedScreen } from "@/features/dating/SocialFeedScreen";
+import { SuspectBoardScreen } from "@/features/journal/SuspectBoardScreen";
 import { SwipeScreen } from "@/features/dating/SwipeScreen";
 
 import { LotsOfFishSplash } from "./LotsOfFishSplash";
@@ -43,6 +44,7 @@ const TABS: TabSpec[] = [
   { view: "swipe", label: "Swipe", icon: "heart" },
   { view: "matches", label: "Matches", icon: "message-circle" },
   { view: "social", label: "Social", icon: "grid" },
+  { view: "board", label: "Board", icon: "book-open" },
   { view: "profile", label: "Profile", icon: "user" },
 ];
 
@@ -76,6 +78,7 @@ export function LotsOfFishApp() {
         {view === "swipe" && <SwipeScreen />}
         {view === "matches" && <MatchesScreen />}
         {view === "social" && <SocialFeedScreen />}
+        {view === "board" && <SuspectBoardScreen />}
         {view === "profile" && <ProfileScreen />}
       </View>
       <View style={styles.tabBar}>

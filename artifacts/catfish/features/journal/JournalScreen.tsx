@@ -3,10 +3,16 @@
  *
  * Lifted from `app/(tabs)/journal.tsx` when Task #59 dropped the root
  * tab bar and made the parody phone home grid the main interface.
- * Same data-shaping (per-suspect grouping, sort + filter, captured-
- * fact undo banner, accusation entry point) — the only chrome change
- * is that we no longer pad the top inset ourselves; the parody phone
- * shell that hosts us already does.
+ *
+ * P2 schema change: Journal now surfaces TWO classes of committed facts:
+ *   - Authored (static/variable/conditional): auto-logged world facts,
+ *     rendered in a flat chronological section below the header.
+ *   - Captured: player-extracted quotes from chat, grouped by suspect
+ *     via the existing SuspectGroup path.
+ *
+ * Summary strip shows captured / authored / suspects counts. Authored
+ * facts have no discard affordance (world-logged). Captured facts can
+ * be discarded via the ✕ chip on each FactCard.
  */
 
 import { useMemo, useState } from "react";
@@ -26,6 +32,7 @@ import { getIdentityModule } from "@/core/identities";
 import { CaseRun, Candidate, CandidateId, Fact } from "@/core/models";
 import { AccusationSheet } from "@/features/accusation/AccusationSheet";
 import { paletteForEnding } from "@/features/accusation/EndOfRunCard";
+import { FactCard } from "@/features/journal/FactCard";
 import { EmptyState } from "@/features/journal/EmptyState";
 import { usePhoneShell } from "@/features/parody/phoneShellState";
 import {
@@ -53,17 +60,26 @@ export function JournalScreen() {
   const [recoveryBusy, setRecoveryBusy] = useState(false);
 
   const committed = useMemo<Fact[]>(
-    () =>
-      (run?.facts ?? []).filter(
-        (f) => f.committed && f.capturedFromCandidateId,
-      ),
+    () => (run?.facts ?? []).filter((f) => f.committed),
     [run?.facts],
   );
 
-  const allGroups = useMemo<CandidateGroup[]>(() => {
+  const capturedFacts = useMemo<Fact[]>(
+    () => committed.filter((f) => f.kind === "captured"),
+    [committed],
+  );
+
+  const authoredFacts = useMemo<Fact[]>(() => {
+    const capturedIds = new Set(capturedFacts.map((f) => f.id));
+    return committed.filter(
+      (f) => f.kind !== "captured" && !capturedIds.has(f.id),
+    );
+  }, [committed, capturedFacts]);
+
+  const capturedGroups = useMemo<CandidateGroup[]>(() => {
     if (!run) return [];
     const byCandidate = new Map<CandidateId, Fact[]>();
-    for (const fact of committed) {
+    for (const fact of capturedFacts) {
       const cid = fact.capturedFromCandidateId;
       if (!cid) continue;
       const list = byCandidate.get(cid) ?? [];
@@ -78,13 +94,13 @@ export function JournalScreen() {
       out.push({ candidate, facts });
     }
     return out;
-  }, [run, committed]);
+  }, [run, capturedFacts]);
 
-  const groups = useMemo<CandidateGroup[]>(() => {
+  const filteredGroups = useMemo<CandidateGroup[]>(() => {
     const filtered =
       selectedSuspectId == null
-        ? allGroups
-        : allGroups.filter((g) => g.candidate.id === selectedSuspectId);
+        ? capturedGroups
+        : capturedGroups.filter((g) => g.candidate.id === selectedSuspectId);
 
     const sorted = filtered.map((g) => {
       const facts = [...g.facts];
@@ -120,14 +136,27 @@ export function JournalScreen() {
       });
     }
     return sorted;
-  }, [allGroups, selectedSuspectId, sortMode]);
+  }, [capturedGroups, selectedSuspectId, sortMode]);
+
+  const sortedAuthored = useMemo<Fact[]>(() => {
+    const sorted = [...authoredFacts];
+    if (sortMode === "newest") {
+      sorted.sort((a, b) => (b.day - a.day) || ((b.capturedAt ?? "")?.localeCompare(a.capturedAt ?? "") ?? 0));
+    } else {
+      sorted.sort((a, b) => a.day - b.day || ((a.capturedAt ?? "")?.localeCompare(b.capturedAt ?? "") ?? 0));
+    }
+    return sorted;
+  }, [authoredFacts, sortMode]);
 
   const hasFacts = committed.length > 0;
+  const hasCaptured = capturedFacts.length > 0;
+  const hasAuthored = authoredFacts.length > 0;
   const matches = run?.matches ?? [];
-  const factsCount = committed.length;
-  const suspectsCount = allGroups.length;
+  const capturedCount = capturedFacts.length;
+  const authoredCount = authoredFacts.length;
+  const suspectsCount = capturedGroups.length;
   const filterIsActive = selectedSuspectId !== null;
-  const filterHidEverything = hasFacts && groups.length === 0;
+  const filterHidEverything = hasCaptured && filteredGroups.length === 0;
   const clearFilters = () => {
     setSelectedSuspectId(null);
     setSortMode("newest");
@@ -147,20 +176,41 @@ export function JournalScreen() {
         the journal
       </PixelText>
       <PixelText size={7} color={cfPalette.ash} style={styles.subtitle}>
-        Long-press a chat message to file it as a Fact.
+        Long-press a chat message to capture a Fact. Authored facts are
+        auto-logged.
       </PixelText>
 
       {hasFacts && (
         <PixelPanel variant="raised" style={styles.summary}>
-          <SummaryStat label="facts" value={String(factsCount)} />
+          <SummaryStat label="captured" value={String(capturedCount)} />
+          <View style={styles.summaryDivider} />
+          <SummaryStat label="authored" value={String(authoredCount)} />
           <View style={styles.summaryDivider} />
           <SummaryStat label="suspects" value={String(suspectsCount)} />
         </PixelPanel>
       )}
 
-      {hasFacts && (
+      {hasAuthored && (
+        <View style={styles.authoredSection}>
+          <View style={styles.authoredHeader}>
+            <PixelText size={7} color={cfPalette.purpleHot} uppercase>
+              authored facts
+            </PixelText>
+            <PixelText size={6} color={cfPalette.ash}>
+              world-logged · not discardable
+            </PixelText>
+          </View>
+          <View style={styles.authoredCards}>
+            {sortedAuthored.map((f) => (
+              <FactCard key={f.id} fact={f} />
+            ))}
+          </View>
+        </View>
+      )}
+
+      {hasCaptured && (
         <JournalControls
-          suspects={allGroups.map((g) => g.candidate)}
+          suspects={capturedGroups.map((g) => g.candidate)}
           selectedSuspectId={selectedSuspectId}
           onSelectSuspect={setSelectedSuspectId}
           sortMode={sortMode}
@@ -197,12 +247,6 @@ export function JournalScreen() {
             setRecoveryBusy(true);
             try {
               await startNewRun();
-              // Mirror EndOfRunCard.handleNewCase exactly so the two
-              // entry points stay in lockstep: reset the shell to the
-              // home grid, seed the dating-app's inner view back to
-              // splash, then route to /home. The home indicator pill
-              // will then read as enabled again, and tapping the
-              // Lots 'o Fish tile lands the player on the splash.
               const shell = usePhoneShell.getState();
               shell.goHome();
               shell.setLotsOfFishView("splash");
@@ -226,7 +270,7 @@ export function JournalScreen() {
             onClear={clearFilters}
           />
         ) : (
-          groups.map((g) => (
+          filteredGroups.map((g) => (
             <SuspectGroup
               key={g.candidate.id}
               candidate={g.candidate}
@@ -239,12 +283,6 @@ export function JournalScreen() {
         )}
       </ScrollView>
 
-      {/*
-        Phone shell already pads the system bottom inset, so the
-        undo banner just sits a hair above the home indicator pill
-        rather than re-applying the safe-area inset and getting
-        pushed up twice.
-      */}
       <UndoDiscardBanner bottomOffset={16} />
 
       <AccusationSheet
@@ -262,21 +300,6 @@ interface ClosedRunPanelProps {
   onStartNewCase: () => void | Promise<void>;
 }
 
-/**
- * Task #68 — recovery panel rendered in place of the "Accuse A
- * Suspect" button when the case has already closed (player accused
- * already, or the Day 7 face-to-face fired). Without this the player
- * could land on the Journal post-accusation with zero in-screen exits
- * — the Accuse button hid itself, the EndOfRunCard had been dismissed,
- * and the only escape was the bone home-indicator pill at the bottom.
- *
- * The panel always offers two unambiguous routes out:
- *   - View Case Recap → re-mounts the EndOfRunCard via reopenEnding
- *     (only when an `ending` payload is still on the run; legacy
- *     pre-#68 dismissals nulled `ending`, so we hide the button in
- *     that case rather than crash the overlay).
- *   - Start New Case → wipes the run and lands on Lots 'o Fish.
- */
 function ClosedRunPanel({
   run,
   busy,
@@ -291,75 +314,75 @@ function ClosedRunPanel({
 
   return (
     <View testID="journal-closed-run-panel">
-    <PixelPanel
-      variant="raised"
-      borderColor={palette?.accent ?? cfPalette.fog}
-      style={styles.closedPanel}
-    >
-      <PixelText
-        size={7}
-        color={cfPalette.ash}
-        uppercase
-        align="center"
-        style={styles.closedKicker}
+      <PixelPanel
+        variant="raised"
+        borderColor={palette?.accent ?? cfPalette.fog}
+        style={styles.closedPanel}
       >
-        case sealed · day {run.day}
-      </PixelText>
-      <PixelText
-        size={14}
-        color={palette?.accent ?? cfPalette.fog}
-        uppercase
-        glow
-        align="center"
-        style={styles.closedTitle}
-      >
-        {palette?.title ?? "case closed"}
-      </PixelText>
-      {palette ? (
         <PixelText
           size={7}
-          color={cfPalette.bone}
+          color={cfPalette.ash}
+          uppercase
           align="center"
-          style={styles.closedSubhead}
+          style={styles.closedKicker}
         >
-          {palette.subhead}
+          case sealed · day {run.day}
         </PixelText>
-      ) : (
         <PixelText
-          size={7}
-          color={cfPalette.bone}
+          size={14}
+          color={palette?.accent ?? cfPalette.fog}
+          uppercase
+          glow
           align="center"
-          style={styles.closedSubhead}
+          style={styles.closedTitle}
         >
-          This case is over. Start a new one to play again.
+          {palette?.title ?? "case closed"}
         </PixelText>
-      )}
+        {palette ? (
+          <PixelText
+            size={7}
+            color={cfPalette.bone}
+            align="center"
+            style={styles.closedSubhead}
+          >
+            {palette.subhead}
+          </PixelText>
+        ) : (
+          <PixelText
+            size={7}
+            color={cfPalette.bone}
+            align="center"
+            style={styles.closedSubhead}
+          >
+            This case is over. Start a new one to play again.
+          </PixelText>
+        )}
 
-      <View style={styles.closedActions}>
-        {canViewRecap ? (
+        <View style={styles.closedActions}>
+          {canViewRecap ? (
+            <NeonButton
+              label="View Case Recap"
+              variant="primary"
+              size="md"
+              fullWidth
+              disabled={busy}
+              onPress={() => {
+                void onViewRecap();
+              }}
+            />
+          ) : null}
           <NeonButton
-            label="View Case Recap"
-            variant="primary"
+            label="Start New Case"
+            variant={canViewRecap ? "ghost" : "primary"}
             size="md"
             fullWidth
             disabled={busy}
             onPress={() => {
-              void onViewRecap();
+              void onStartNewCase();
             }}
           />
-        ) : null}
-        <NeonButton
-          label="Start New Case"
-          variant={canViewRecap ? "ghost" : "primary"}
-          size="md"
-          fullWidth
-          disabled={busy}
-          onPress={() => {
-            void onStartNewCase();
-          }}
-        />
-      </View>
-    </PixelPanel>
+        </View>
+      </PixelPanel>
     </View>
   );
 }
@@ -395,7 +418,7 @@ function FilterEmptyState({ filterIsActive, onClear }: FilterEmptyStateProps) {
         style={styles.filterEmptyBody}
       >
         {filterIsActive
-          ? "The suspect chip at the top is filtering this view. Tap “All” — or tap the active chip again — to see every captured Fact."
+          ? "The suspect chip at the top is filtering this view. Tap \"All\" — or tap the active chip again — to see every captured Fact."
           : "Adjust the filter chips above to bring captured Facts back into view."}
       </PixelText>
       <Pressable
@@ -423,7 +446,11 @@ const styles = StyleSheet.create({
     paddingTop: 12,
   },
   title: { marginTop: 8 },
-  subtitle: { marginTop: 6, marginBottom: 14 },
+  subtitle: {
+    marginTop: 6,
+    marginBottom: 14,
+    lineHeight: 11,
+  },
   summary: {
     flexDirection: "row",
     alignItems: "center",
@@ -442,6 +469,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   statLabel: { marginTop: 4 },
+  authoredSection: {
+    marginBottom: 14,
+  },
+  authoredHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+    paddingRight: 4,
+  },
+  authoredCards: {
+    gap: 8,
+  },
   accuseBtn: {
     marginBottom: 14,
   },

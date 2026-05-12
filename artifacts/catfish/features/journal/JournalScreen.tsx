@@ -31,6 +31,7 @@ import { useGameState } from "@/core/gameStore";
 import { getIdentityModule } from "@/core/identities";
 import { CaseRun, Candidate, CandidateId, Fact } from "@/core/models";
 import { AccusationSheet } from "@/features/accusation/AccusationSheet";
+import { AccusationWizard } from "@/features/accusation/AccusationWizard";
 import { paletteForEnding } from "@/features/accusation/EndOfRunCard";
 import { FactCard } from "@/features/journal/FactCard";
 import { EmptyState } from "@/features/journal/EmptyState";
@@ -41,6 +42,7 @@ import {
 } from "@/features/journal/JournalControls";
 import { SuspectGroup } from "@/features/journal/SuspectGroup";
 import { UndoDiscardBanner } from "@/features/journal/UndoDiscardBanner";
+import { EvidenceChainBuilder } from "@/features/journal/EvidenceChainBuilder";
 
 interface CandidateGroup {
   candidate: Candidate;
@@ -57,6 +59,8 @@ export function JournalScreen() {
     useState<CandidateId | null>(null);
   const [sortMode, setSortMode] = useState<JournalSortMode>("newest");
   const [accuseOpen, setAccuseOpen] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [chainBuilderOpen, setChainBuilderOpen] = useState(false);
   const [recoveryBusy, setRecoveryBusy] = useState(false);
 
   const committed = useMemo<Fact[]>(
@@ -219,14 +223,24 @@ export function JournalScreen() {
       )}
 
       {run && !run.closed && (
-        <NeonButton
-          label="Accuse A Suspect"
-          variant="primary"
-          size="md"
-          fullWidth
-          onPress={() => setAccuseOpen(true)}
-          style={styles.accuseBtn}
-        />
+        <>
+          <NeonButton
+            label="Link Evidence"
+            variant="secondary"
+            size="sm"
+            fullWidth
+            onPress={() => setChainBuilderOpen(true)}
+            style={styles.chainBtn}
+          />
+          <NeonButton
+            label="Accuse A Suspect"
+            variant="primary"
+            size="md"
+            fullWidth
+            onPress={() => setWizardOpen(true)}
+            style={styles.accuseBtn}
+          />
+        </>
       )}
 
       {run && run.closed && (
@@ -288,6 +302,17 @@ export function JournalScreen() {
       <AccusationSheet
         visible={accuseOpen}
         onClose={() => setAccuseOpen(false)}
+      />
+
+      <AccusationWizard
+        visible={wizardOpen}
+        onClose={() => setWizardOpen(false)}
+      />
+
+      <EvidenceChainBuilder
+        visible={chainBuilderOpen}
+        onClose={() => setChainBuilderOpen(false)}
+        onChainBuilt={() => {}}
       />
     </View>
   );
@@ -481,6 +506,9 @@ const styles = StyleSheet.create({
   },
   authoredCards: {
     gap: 8,
+  },
+  chainBtn: {
+    marginBottom: 8,
   },
   accuseBtn: {
     marginBottom: 14,

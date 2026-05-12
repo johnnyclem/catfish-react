@@ -54,6 +54,7 @@ import {
   PendingSuspectLine,
   SwipeRecord,
   ThreadId,
+  EvidenceChain,
 } from "./models";
 import {
   EgoTripSession,
@@ -383,6 +384,13 @@ interface GameStateValue {
    * the guard is cheap).
    */
   clearRecentlyDiscarded: (factId: FactId) => void;
+  /**
+   * Task #10.2 — attempt to build an evidence chain by linking two
+   * committed facts. Validated against chain definitions from
+   * `content.json`. Returns the built chain on success, null if the
+   * link isn't a valid chain (wrong pair, already built, etc).
+   */
+  buildChain: (factIdA: FactId, factIdB: FactId) => Promise<EvidenceChain | null>;
   /**
    * Flip a match's `unmatched` flag to true. The thread itself is
    * preserved on the run so Pass 3's Journal can still cite anything
@@ -731,6 +739,18 @@ export function migrateRun(run: CaseRun | null): CaseRun | null {
     usedInnocentScriptIds,
     endingDismissed,
     closed,
+    // Task #10.2 — default evidenceChains for runs persisted before
+    // the field existed.
+    evidenceChains: Array.isArray(run.evidenceChains)
+      ? run.evidenceChains.filter(
+          (c): c is EvidenceChain =>
+            !!c &&
+            typeof c === "object" &&
+            typeof c.id === "string" &&
+            typeof c.factIdA === "string" &&
+            typeof c.factIdB === "string",
+        )
+      : [],
   };
 }
 
@@ -2449,6 +2469,33 @@ const playerMsg: Message = {
     const next: CaseRun = { ...prev, voicemails: updated };
     set({ run: next });
     await saveActiveRun(next);
+  },
+
+  buildChain: async (factIdA, factIdB) => {
+    const prev = get().run;
+    if (!prev || prev.closed) return null;
+    const existingChains = prev.evidenceChains ?? [];
+    if (existingChains.some((c) => c.factIdA === factIdA && c.factIdB === factIdB)) {
+      return null;
+    }
+    const { findChainDefinition } = await import("./evidenceChains");
+    const def = findChainDefinition(factIdA, factIdB);
+    if (!def) return null;
+    const chain: EvidenceChain = {
+      id: `chain_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`,
+      factIdA,
+      factIdB,
+      label: def.label,
+      aboutCandidate: def.aboutCandidate,
+      builtAt: nowIso(),
+    };
+    const next: CaseRun = {
+      ...prev,
+      evidenceChains: [...existingChains, chain],
+    };
+    set({ run: next });
+    await saveActiveRun(next);
+    return chain;
   },
 
   makeFriendCall: async (friend) => {

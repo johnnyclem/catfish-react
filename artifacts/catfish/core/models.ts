@@ -598,6 +598,13 @@ export interface CaseRun {
    * defaults to `[]`.
    */
   pendingFacetimeCalls?: FacetimeCall[];
+  /**
+   * Task #10.2 — evidence chains built by the player in the
+   * EvidenceChainBuilder. Validated against chain definitions in
+   * `content.json`. Optional for back-compat; `migrateRun` defaults
+   * to `[]`.
+   */
+  evidenceChains?: EvidenceChain[];
 }
 
 /**
@@ -611,6 +618,28 @@ export interface FacetimeCall {
   day: number;
   /** Short call topic label shown in the notification. */
   topic: string;
+}
+
+/**
+ * Task #10.2 — a player-built evidence chain linking two facts.
+ * Built by the EvidenceChainBuilder UI; checked against
+ * `content.json` chain definitions to validate the connection.
+ */
+export interface EvidenceChain {
+  id: string;
+  /** First fact in the chain (earlier fact). */
+  factIdA: FactId;
+  /** Second fact in the chain (later fact / conclusion). */
+  factIdB: FactId;
+  /** Human-readable label for the chain (e.g. "River's bootprint doesn't match"). */
+  label: string;
+  /**
+   * Which candidate this chain points toward (if any).
+   * Optional — not every chain is about a specific suspect.
+   */
+  aboutCandidate?: KillerIdentity;
+  /** ISO timestamp when the chain was built. */
+  builtAt: string;
 }
 
 /* ───────── id helpers (no `uuid` package — crashes on iOS/Android) ──── */

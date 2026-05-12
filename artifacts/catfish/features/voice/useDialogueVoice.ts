@@ -20,6 +20,7 @@ import { audioKey, getAudioAsset } from "@/assets/audioManifest";
 import { useGameState } from "@/core/gameStore";
 import type { Candidate } from "@/core/models";
 import { voiceForCandidate, type VoiceProfile } from "@/core/voiceProfiles";
+import { audioDuckRef } from "@/features/audio/AudioProvider";
 
 import { fetchVoiceClip } from "./voiceClient";
 
@@ -69,8 +70,14 @@ export function useDialogueVoice(): DialogueVoiceController {
   const playNext = useCallback(() => {
     const next = queueRef.current.shift();
     if (!next) {
-      playingRef.current = false;
+      if (playingRef.current) {
+        playingRef.current = false;
+        audioDuckRef.current?.unduck();
+      }
       return;
+    }
+    if (!playingRef.current) {
+      audioDuckRef.current?.duck();
     }
     playingRef.current = true;
     try {
@@ -86,6 +93,7 @@ export function useDialogueVoice(): DialogueVoiceController {
         console.warn("[voice] play failed for", next.label, err);
       }
       playingRef.current = false;
+      audioDuckRef.current?.unduck();
       // Recurse via microtask so we don't blow the stack on a
       // pathological queue.
       Promise.resolve().then(playNext);
@@ -99,7 +107,6 @@ export function useDialogueVoice(): DialogueVoiceController {
       finishCounterRef.current += 1;
       if (finishCounterRef.current !== lastFinishHandledRef.current) {
         lastFinishHandledRef.current = finishCounterRef.current;
-        playingRef.current = false;
         playNext();
       }
     }
@@ -117,6 +124,7 @@ export function useDialogueVoice(): DialogueVoiceController {
         /* idle player on web throws, which is fine */
       }
       playingRef.current = false;
+      audioDuckRef.current?.unduck();
       enqueueLockRef.current = Promise.resolve();
     }
   }, [voiceMuted, player]);

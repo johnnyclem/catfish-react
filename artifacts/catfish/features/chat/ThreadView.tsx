@@ -34,6 +34,7 @@ import { ThreadId } from "@/core/models";
 import { MessageFactGesture } from "@/features/journal/MessageFactGesture";
 import { useDialogueVoice } from "@/features/voice/useDialogueVoice";
 import type { Message } from "@/core/models";
+import { emitSfx } from "@/features/audio/audioEvents";
 
 /**
  * Compute the per-beat line index for a suspect message — i.e. "this
@@ -256,6 +257,7 @@ export function ThreadView({ threadId }: ThreadViewProps) {
       if (m.sender !== "suspect") continue;
       if (playedIdsRef.current.has(m.id)) continue;
       playedIdsRef.current.add(m.id);
+      emitSfx("message_receive");
       // Lines without a beatKey can't resolve a pre-baked clip — the
       // hook will silently fall back to live TTS.
       const beatKey = m.beatKey ?? "unknown";
@@ -334,6 +336,7 @@ export function ThreadView({ threadId }: ThreadViewProps) {
       setPending(true);
       try {
         await sendReply(thread.id, option);
+        emitSfx("message_send");
       } finally {
         setPending(false);
       }
@@ -433,7 +436,7 @@ export function ThreadView({ threadId }: ThreadViewProps) {
 
       <View style={styles.header}>
         <Pressable
-          onPress={() => router.back()}
+          onPress={() => { emitSfx("back_button"); router.back(); }}
           style={({ pressed }) => [
             styles.backHit,
             { opacity: pressed ? 0.6 : 1 },

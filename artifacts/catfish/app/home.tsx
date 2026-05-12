@@ -49,6 +49,7 @@ import { EgoTrip } from "@/features/parody/games/EgoTrip";
 import { SafeSpot } from "@/features/parody/games/SafeSpot";
 import { SugarCoat } from "@/features/parody/games/SugarCoat";
 import { WordLow } from "@/features/parody/games/WordLow";
+import { emitSfx } from "@/features/audio/audioEvents";
 
 export default function PhoneHomeShell() {
   const insets = useSafeAreaInsets();
@@ -71,6 +72,12 @@ export default function PhoneHomeShell() {
       void markJournalVisited();
     }
   }, [currentApp, markJournalVisited]);
+
+  // App open/close SFX on mount/unmount.
+  useEffect(() => {
+    emitSfx("app_open");
+    return () => emitSfx("app_close");
+  }, []);
 
   // Phase 11.5 — checkpoint restoration on mount. If the run has a
   // mid-game checkpoint (e.g. an active Date scene), auto-navigate
@@ -135,6 +142,7 @@ export default function PhoneHomeShell() {
 
       <HomeIndicator
         onPress={() => {
+          emitSfx("back_button");
           // Returning home from inside Lots 'o Fish should reset the
           // dating-app view to the splash so the next entry replays
           // the meta reveal — without this, hopping out and back in

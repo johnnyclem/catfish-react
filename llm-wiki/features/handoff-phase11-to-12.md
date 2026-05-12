@@ -1,6 +1,6 @@
 ---
 confidence: 0.95
-sources: [PRD_Phase11.md, codebase inspection, session 2026-05-12]
+sources: [PRD_Phase11.md, PRD_Phase12.md, codebase inspection, session 2026-05-12]
 last-confirmed: 2026-05-12
 status: active
 supersedes: null
@@ -15,7 +15,7 @@ supersedes: null
 
 ### What was done
 
-All 5 Phase 11 items implemented and typecheck-clean. See changelog for full file list.
+All 5 Phase 11 items. See changelog for full file list.
 
 ### Verification
 
@@ -26,47 +26,190 @@ All 5 Phase 11 items implemented and typecheck-clean. See changelog for full fil
 ## Phase 11 Architecture Decisions
 
 ### Onboarding Gating
-- Onboarding shows **only on fresh install** (no active run, no archived runs).
-- Players returning to an in-progress game skip onboarding entirely.
-- Steps 3-4 are event-triggered (first swipe, first player message) rather than linear — the onboarding manager uses `useEffect` to watch game store state.
+- Shown **only on fresh install** (no active run, no archived runs). Returning players skip.
+- Steps 3-4 are event-triggered via `useEffect` watching game store (first swipe, first player message).
+- Persisted to AsyncStorage key `catfish/onboarding/v1`.
 
 ### Run Archive Schema
-- A lightweight `RunSummary` type stores just the viewer-facing fields (killer identity, outcome, days, facts, matches, swipes).
-- Full `CaseRun` blobs are NOT archived to avoid AsyncStorage bloat.
-- Archive is saved in `startNewRun()` when the previous run was closed.
-- Capped at 10 entries.
+- `RunSummary` stores only viewer-facing fields (not full `CaseRun` blobs) to avoid AsyncStorage bloat.
+- Archive saved in `startNewRun()` when previous run was closed. Capped at 10 entries.
+- AsyncStorage key: `catfish/run_archive/v1`.
 
-### Settings Prefs
-- Display/accessibility toggles follow the same `saveBoolPref` / `loadBoolPref` pattern as the existing audio mute prefs.
-- Defaults: scanlines on, screen shake on, reduce motion off, high contrast off.
+### Settings Display Prefs
+- Four new toggles on `gameStore.ts`: `scanlinesEnabled`, `screenShakeEnabled`, `reduceMotionEnabled`, `highContrastTextEnabled`.
+- Each backed by its own AsyncStorage boolean key (`catfish/prefs/scanlines/v1`, etc.), same pattern as audio mute prefs.
+- Defaults: scanlines=on, screen shake=on, reduce motion=off, high contrast=off.
 
-### Display Pref Keys
-- `catfish/prefs/scanlines/v1`, `catfish/prefs/screen_shake/v1`, `catfish/prefs/reduce_motion/v1`, `catfish/prefs/high_contrast/v1`
+### Continue Run Checkpoint
+- `CaseRun.checkpoint?: Checkpoint` with `{ type: "date" | "facetime" | "chat", threadId?, screen? }`.
+- Checkpoint reads are in `home.tsx` via `useEffect` — auto-navigates to the right phone shell surface on mount.
+- Checkpoint-setting logic is NOT implemented yet (that's for the Date Mode/Facetime phase).
 
 ---
 
 ## Phase 12 Build Plan
 
-Source: `PRD_Phase12.md` (not yet read — speculatively Date mode, narrative hooks, or chat improv based on project trajectory).
+Source: `PRD_Phase12.md` — **Audio: Music Authoring, SFX Bundle, Ambience Engine**
 
-### Items likely queued
+### Overview
 
-1. **Date Mode scenes** (SpriteKit or interactive chat-based dates) — the largest remaining gameplay gap.
-2. **Narrative hook system** — the `NarrativeHookRouter`/`HookCatalog` from the SwiftUI codebase hasn't been ported.
-3. **Chat improv** — the `requestImprovTurn` action in gameStore exists but may need a working endpoint.
-4. **Facetime calls** — `pendingFacetimeCalls` field exists on CaseRun but no UI for accepting/declining.
-5. **Voicemail player** — `voicemails` field exists, `markVmListened` action exists, but no playback UI.
-6. **Evidence chain builder UI** — `buildChain` / `updateFactNote` actions exist, evidence chain definitions in content.json, but no UI for the player to build chains.
+The entire game is currently silent or nearly so. The `AudioProvider` manages one music loop + 4 SFX voices, but most BGM tracks are missing, ambience doesn't exist, and audio integration across game surfaces is incomplete.
 
-### Recommended Priority
+### Current Audio Infrastructure
 
-1. **Date Mode** — core gameplay loop. Without dates, the "dating detective" promise is unfulfilled.
-2. **Narrative hooks** — provides ambient game feel (toasts, caller ID flashes, phone vibrations).
-3. **Facetime + Voicemail** — fills out the phone app experience.
-4. **Evidence chain builder UI** — completes the Journal feature arc.
+| Component | Location | What it does |
+|-----------|----------|--------------|
+| `AudioProvider.tsx` | `features/audio/AudioProvider.tsx` | Mounts once in `_layout.tsx`. Manages one looping `useAudioPlayer` (music) + a 4-voice ring for SFX. Reads `musicMuted`/`sfxMuted` from gameStore. Web-safe: patches `HTMLMediaElement.play()` to suppress autoplay rejections. |
+| `audioEvents.ts` | `features/audio/audioEvents.ts` | Pub-sub bus: `emitSfx(name)` → `subscribeSfx(listener)`. Used by non-React code to request SFX without importing expo-audio. |
+| `sfxManifest.ts` | `features/audio/sfxManifest.ts` | Static `require()` map of 12 `SfxName` → asset references. 4 of 12 are stubs (pointing to other sounds). Generated by `pnpm sfx:pregen`. |
+| Existing audio assets | `assets/audio/sfx/*.wav` | 8 unique WAV files: swipe_pass, swipe_like, match, fact_filed, day_end, accuse, win, lose |
+| Existing music assets | `assets/audio/music/noir_loop.wav` | 1 background music loop |
+| Voice assets | `assets/audio/*.mp3` | ~100+ character voice lines (miles, tessa, ren, kai, delphine, jules, river, sam + innocent NPCs) — these are TTS-generated files, used by the voice pipeline |
+
+### What Exists vs PRD Spec
+
+| PRD Item | Status |
+|----------|--------|
+| 12.1 — 12 BGM tracks | **1 of 12 exists** (`noir_loop.wav`). 11 missing: `bgm_phone_os`, `bgm_swipe`, `bgm_chat`, `bgm_date_coffee`, `bgm_date_restaurant`, `bgm_date_park`, `bgm_date_bar`, `bgm_date_apartment`, `bgm_arcade_wordlow`, `bgm_arcade_ego_trip`, `bgm_arcade_general` |
+| 12.2 — 22 UI SFX | **8 of 22 exist** as unique files. Manifest defines 12 names, 4 are stubs. Missing: `swipe_left` (only `swipe_pass`), `match_first_message_tone`, `tab_switch`, `app_open`, `app_close`, `back_button`, `evidence_link`, `accusation_correct` (only generic `win`), `accusation_wrong` (only generic `lose`), `phone_buzz`, `notification_chime`, `message_send`, `message_receive`, `level_complete_day_advance` |
+| 12.3 — 11 diegetic + 4 narrative SFX | **None exist** — phone buzz, traffic, coffee shop ambient, saint mask tone, focus shift sting, etc. |
+| 12.4 — 8 ambience loops | **None exist** — coffee shop, restaurant, park, bar, apartment, alley, hospital, killer reveal |
+| 12.5 — Audio integration across features | **Partial**. SFX are emitted from some surfaces but not systematically wired. No BGM switching per screen. |
+| 12.6 — Settings volume controls | **Mute toggles only** (no volume sliders). Settings screen created in Phase 11 but only has on/off switches. |
+
+### Audio Integration Gaps (per feature)
+
+| Surface | BGM | SFX | Notes |
+|---------|-----|-----|-------|
+| Title screen | `noir_loop` plays (hardcoded in AudioProvider) | None | Should play `bgm_main_theme` |
+| PhoneShell home | Same `noir_loop` (no crossfade) | None | Should play `bgm_phone_os` with crossfade from title |
+| Swipe deck | Same `noir_loop` | `swipe_like`, `swipe_pass`, `match` emitted | Should play `bgm_swipe` |
+| Chat | Same `noir_loop` | None wired | Should play `bgm_chat` + message send/receive SFX |
+| Date scenes | No date scene UI exists yet | `focusShift`, `clueDiscovered`, `choiceSelect` defined as stubs | Full date mode TBD |
+| Arcade games | Same `noir_loop` | None wired per game | Should have per-game BGM + game SFX |
+| Journal | Same `noir_loop` | `fact_filed` emitted on capture | Should also fire on chain creation (`evidence_link`) |
+| Accusation | Same `noir_loop` | `accuse`, `win`/`lose` emitted | No `accusation_correct`/`accusation_wrong` distinction |
+| Day advance | Same `noir_loop` | `day_end` emitted | Should have distinct `day_advance` sting |
+
+### Settings Gap
+
+The Phase 11 Settings screen has mute toggles (Music/SFX/Voice) but no volume sliders. PRD_Phase12.md 12.6 asks for per-bus volume sliders wired to the audio engine. The current `AudioProvider` uses hardcoded constants `MUSIC_VOLUME = 0.32` and `SFX_VOLUME = 0.85` — these would need to become store-backed values.
+
+### Implementation Approach (React Native translation)
+
+The PRD was written for the SwiftUI codebase. In the React Native port:
+
+1. **BGM tracks**: Add `.wav`/`.mp3` files to `assets/audio/music/`, add them to a BGM manifest (pattern: `sfxManifest.ts`), modify `AudioProvider` to switch tracks based on current surface (use `usePhoneShell.currentApp` + game state to determine context).
+
+2. **SFX**: Add new `.wav` files to `assets/audio/sfx/`, add entries to `sfxManifest.ts`, regenerate manifest with `pnpm sfx:pregen`, add `emitSfx()` calls to the appropriate components.
+
+3. **Ambience**: New category — separate manifest + player, or reuse the BGM system with a second layer mixed underneath.
+
+4. **Volume sliders**: Add volume values (0.0-1.0) to `gameStore.ts` alongside the mute booleans, persist via AsyncStorage. Modify `AudioProvider` to read these values instead of hardcoded constants. Add slider UI to Settings screen.
+
+5. **Crossfade**: When switching BGM tracks, fade out old volume → swap source → fade in new. Use `Animated.timing` on the player's volume property.
+
+6. **Voice ducking**: Before playing a voice line, store current BGM volume, lower it, then restore when voice ends. Requires hooking into the voice playback system.
+
+### Files to Create
+
+| File | Purpose |
+|------|---------|
+| `features/audio/bgmManifest.ts` | Static `require()` map of BGM track names to assets (parallel to `sfxManifest.ts`) |
+| `features/audio/ambienceManifest.ts` | Same for ambience loops |
+| `assets/audio/music/*.wav` | 11 new BGM tracks |
+| `assets/audio/sfx/*.wav` | ~20 new SFX files |
+| `assets/audio/ambience/*.wav` | 8 ambience loops |
+
+### Files to Modify
+
+| File | Change |
+|------|--------|
+| `features/audio/AudioProvider.tsx` | BGM track switching, crossfade, ambience layer, volume sliders, voice ducking |
+| `features/audio/sfxManifest.ts` | Add new SFX entries, replace stubs |
+| `core/gameStore.ts` | Add BGM/SFX/ambience volume values to store, persist via AsyncStorage |
+| `features/settings/SettingsScreen.tsx` | Replace mute toggles with volume sliders (or add sliders beneath toggles) |
+| Multiple surface files | Add `emitSfx()` calls — see "Audio Integration Gaps" table above |
 
 ### Risk Areas
 
-1. **SpriteKit integration** — if Date Mode uses SpriteKit, it's a new dependency for the React Native codebase. May need `react-native-skia` or `expo-gl` instead.
-2. **Improv API reliability** — the `requestImprovTurn` path depends on the api-server workspace. If it's not deployed, chat hits a dead end after scripted turns.
-3. **No test infrastructure** — no unit tests exist for any Phase 11 component. Recommend adding tests as Phase 12 proceeds.
+1. **Asset sourcing**: The PRD assumes music/SFX will be authored or sourced. If the agent cannot generate audio, all 12 BGM tracks + 37 SFX + 8 ambience loops will be missing. Consider using procedural/placeholder tracks or sourcing from royalty-free libraries.
+
+2. **expo-audio limitations**: Current implementation uses `expo-audio` 1.1.1. Crossfade support depends on whether expo-audio's `AudioPlayer` exposes a settable volume property that can be animated. Check `expo-audio` docs for `player.volume` mutability.
+
+3. **Bundle size**: PRD specifies <15MB total audio budget. With 12 BGM + 37 SFX + 8 ambience, this is tight. May need to use compressed formats (AAC/MP3) and shorter loops.
+
+4. **Web audio autoplay**: The existing `HTMLMediaElement.play()` patch handles the basic case. Crossfade during playback may trigger additional autoplay restrictions on iOS Safari. Test on web before shipping.
+
+5. **No test infrastructure**: No unit tests exist for any audio component. Recommend adding at minimum smoke tests for the manifest loaders and the pub-sub bus.
+
+### Key AsyncStorage Keys Now In Use
+
+| Key | Type | Purpose |
+|-----|------|---------|
+| `catfish/active_run/v1` | JSON `CaseRun` | Active game run |
+| `catfish/run_archive/v1` | JSON `RunSummary[]` | Closed-run history (max 10) |
+| `catfish/onboarding/v1` | JSON `{completed, step}` | Onboarding progress |
+| `catfish/prefs/voice_muted/v1` | `"1"`/`"0"` | Voice mute toggle |
+| `catfish/prefs/sfx_muted/v1` | `"1"`/`"0"` | SFX mute toggle |
+| `catfish/prefs/music_muted/v1` | `"1"`/`"0"` | Music mute toggle |
+| `catfish/prefs/scanlines/v1` | `"1"`/`"0"` | CRT scanline overlay |
+| `catfish/prefs/screen_shake/v1` | `"1"`/`"0"` | Screen shake effect |
+| `catfish/prefs/reduce_motion/v1` | `"1"`/`"0"` | Reduce motion (accessibility) |
+| `catfish/prefs/high_contrast/v1` | `"1"`/`"0"` | High contrast text |
+| `catfish/prefs/parody/v1` | JSON `ParodyScores` | Mini-game high scores |
+| `catfish/prefs/parody-session/v1` | JSON `ParodySessions` | Per-game session snapshots |
+
+### File Inventory for Phase 12 Agent
+
+**Must-read files** (in order):
+
+1. `PRD_Phase12.md` — the spec
+2. `features/audio/AudioProvider.tsx` — current audio engine
+3. `features/audio/audioEvents.ts` — SFX event bus
+4. `features/audio/sfxManifest.ts` — SFX manifest pattern (replicate for BGM)
+5. `features/settings/SettingsScreen.tsx` — current settings UI (needs sliders)
+6. `core/gameStore.ts` — mute booleans + display prefs (add volume values here)
+7. `features/parody/phoneShellState.ts` — used by AudioProvider to determine context
+8. `app/_layout.tsx` — where AudioProvider + OnboardingGate mount
+9. `app/index.tsx` — title screen (needs `bgm_main_theme`)
+10. `app/home.tsx` — phone shell (needs `bgm_phone_os` + crossfade on app transitions)
+
+### Dependency Graph
+
+```
+Phase 12 ──┬── 12.1-12.4: Asset authoring (no deps)
+           ├── 12.5: Audio integration ──→ depends on swipes, chat, dates, arcade, journal existing
+           └── 12.6: Settings volume ──→ depends on Phase 11 Settings screen
+```
+
+### Phase 12 Items (from PRD, adjusted for RN)
+
+#### 12.1 BGM Tracks (~4h)
+- Source/create 11 missing BGM tracks
+- Create `bgmManifest.ts` following `sfxManifest.ts` pattern
+- Modify `AudioProvider` to switch BGM per context (title → phone → swipe → chat → date → arcade)
+- Implement basic crossfade (fade out old → swap → fade in new)
+
+#### 12.2/12.3 UI SFX + Diegetic SFX (~3h)
+- Source ~20 missing SFX files
+- Add to `sfxManifest.ts`, replace 4 existing stubs
+- Wire `emitSfx()` calls into every game surface
+
+#### 12.4 Ambience Loops (~2h)
+- Source 8 ambience loops
+- Create `ambienceManifest.ts` + player
+- Wire into date scenes (when dates are built)
+
+#### 12.5 Audio Integration (~3h)
+- Systematic pass through every surface adding BGM + SFX
+- See "Audio Integration Gaps" table above for exact per-surface list
+
+#### 12.6 Settings Volume Controls (~2h)
+- Add `bgmVolume`, `sfxVolume`, `voiceVolume` to `gameStore.ts` (0-1 floats, persisted)
+- Add `Slider` UI to Settings screen
+- Wire volume values into `AudioProvider`
+
+### Estimated Total Effort
+
+~14 hours across all 6 items. Biggest unknown: asset sourcing (if no audio files exist, the agent will need to create procedural placeholders or find royalty-free sources).

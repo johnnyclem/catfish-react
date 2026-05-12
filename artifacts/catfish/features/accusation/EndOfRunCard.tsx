@@ -100,6 +100,7 @@ export function EndOfRunCard() {
   useEffect(() => {
     if (!endingTag) return;
     emitSfx(endingTag === "caughtThem" ? "win" : "lose");
+    emitSfx(endingTag === "caughtThem" ? "accusation_correct" : "accusation_wrong");
   }, [endingTag]);
 
   // Hidden until the resolver has fired and stamped a result onto the

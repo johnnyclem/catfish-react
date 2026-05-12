@@ -14,6 +14,8 @@
     "dialogue:gen": "tsx scripts/generate-innocent-trees.mts",
     "sfx:pregen": "tsx scripts/sfx-pregen.mts",
     "music:pregen": "tsx scripts/music-pregen.mts",
+    "bgm:gen": "tsx scripts/generate-bgm.mts",
+    "sfx:gen": "tsx scripts/generate-sfx.mts",
     "test:undo-queue": "tsx scripts/test-undo-queue.mts",
     "test:typing-delay": "tsx scripts/test-typing-delay.mts",
     "test:expo-doctor-parser": "tsx scripts/test-expo-doctor-parser.mts",

@@ -111,7 +111,7 @@ export function EvidenceChainBuilder({
     try {
       const chain = await buildChain(factA.id, factB.id);
       if (chain) {
-        emitSfx("accuse");
+        emitSfx("evidence_link");
         setSuccessToast(`Chain connected: ${chain.label}`);
         setTimeout(() => {
           setSuccessToast(null);

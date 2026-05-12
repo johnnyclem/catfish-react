@@ -1,64 +1,17 @@
-/**
- * AudioProvider — single mount point for the app's non-voice audio.
- *
- * Two responsibilities:
- *
- *   1. Background music. Owns one looping `useAudioPlayer` for the
- *      noir pad loop. Plays/pauses in response to `musicMuted`.
- *      Browsers gate audio behind a user-gesture, so we lazily start
- *      playback the first time `playSfx` fires (any tap, swipe, etc.
- *      counts as that gesture). On native there's no such gate, so
- *      we attempt to start as soon as we mount.
- *
- *   2. SFX. Owns a small ring of `useAudioPlayer`s so two overlapping
- *      one-shots (e.g. swipe sound + match jingle) don't cut each
- *      other off. Each `playSfx` call grabs the oldest player in the
- *      ring, replaces its source, and plays from the start.
- *
- * Mounted once in `app/_layout.tsx`. Exposes a context-free API via
- * the `audioEvents` bus, so call-sites that aren't React (the store,
- * helpers, etc) don't need to wire props through.
- */
 import { useAudioPlayer } from "expo-audio";
-import { type ReactNode, useEffect, useMemo, useRef } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef } from "react";
 import { Platform } from "react-native";
 
 import { useGameState } from "@/core/gameStore";
+import { usePhoneShell } from "@/features/parody/phoneShellState";
 
+import { type AmbienceName, ambienceAsset } from "./ambienceManifest";
 import { subscribeSfx } from "./audioEvents";
-import { MUSIC_LOOP_ASSET, sfxAsset, type SfxName } from "./sfxManifest";
+import { bgmAsset, type BgmName } from "./bgmManifest";
+import { sfxAsset, type SfxName } from "./sfxManifest";
 
 /**
  * Module-load patch for `HTMLMediaElement.prototype.play` (web only).
- *
- * Why this exists:
- *
- * `expo-audio@1.1.1`'s web wrapper (`AudioModule.web.js`) implements
- * `play()` as `this.media.play(); this.isPlaying = true;` — it drops
- * the Promise returned by the native `HTMLMediaElement.play()`. When
- * that Promise rejects (iOS Safari rejects with `NotAllowedError`
- * whenever play() is called outside the synchronous span of a user
- * gesture; any browser rejects with `AbortError` if play() is
- * interrupted by a quick pause()/replace()), the rejection has no
- * handler and surfaces as an unhandled rejection — which the Expo
- * dev client paints as a full-screen red box.
- *
- * We tried a window-level `unhandledrejection` listener with
- * `preventDefault()`, but the Expo dev client registers its own
- * listener at bundle-init (long before our React provider mounts), so
- * its listener fires first and the overlay renders before we can
- * suppress it.
- *
- * The robust fix is to ensure the rejection is *never* unhandled in
- * the first place. We wrap the prototype's `play()` once: it still
- * returns the same Promise to callers (so anyone who *does* attach
- * `.catch` keeps their normal behavior), but we eagerly attach our
- * own no-op `.catch` so the runtime considers the rejection handled.
- *
- * This is a global patch but is safe: a Promise can have any number
- * of handlers, and ours is a no-op that never suppresses anyone
- * else's. Once `expo-audio` fixes its dropped-Promise bug upstream
- * we can delete this whole block.
  */
 declare global {
   interface HTMLMediaElement {
@@ -81,40 +34,28 @@ if (typeof HTMLMediaElement !== "undefined") {
         result &&
         typeof (result as Promise<void>).catch === "function"
       ) {
-        (result as Promise<void>).catch(() => {
-          /* swallowed — autoplay-blocked or play()-aborted */
-        });
+        (result as Promise<void>).catch(() => {});
       }
       return result;
     };
   }
 }
 
-/**
- * On native there's no autoplay gate, so we can start music as soon
- * as the player is ready. On web (and unknown platforms, which we
- * treat conservatively) we wait for a user gesture first.
- */
 const REQUIRES_USER_GESTURE = Platform.OS === "web";
-
-/** How many overlapping one-shots we can support without truncation. */
 const SFX_VOICES = 4;
+const DUCK_FACTOR = 0.3;
+const FADE_STEPS = 8;
+const FADE_INTERVAL_MS = 40;
 
-/** Music volume — pad sits below dialogue and SFX. */
-const MUSIC_VOLUME = 0.32;
+const STEP_SIZE = 1 / FADE_STEPS;
 
-/** SFX volume — clearly audible over music but never harsh. */
-const SFX_VOLUME = 0.85;
-
-/** Dev-only debug shape exposed on `window.__catfishAudio`. */
 interface AudioDebug {
   musicPaused?: boolean;
   musicPlaying?: boolean;
-  musicCurrentTime?: number;
   userInteracted?: boolean;
   sfxMuted?: boolean;
   musicMuted?: boolean;
-  voiceMuted?: boolean;
+  currentBgm?: BgmName;
   lastSfx?: SfxName;
   lastSfxAt?: number;
   lastSuppressed?: SfxName;
@@ -131,8 +72,7 @@ function getDebug(): AudioDebug {
 }
 
 function recordDebug(patch: Partial<AudioDebug>): void {
-  const cur = getDebug();
-  Object.assign(cur, patch);
+  Object.assign(getDebug(), patch);
 }
 
 function safeRead<T>(fn: () => T, fallback: T): T {
@@ -143,19 +83,6 @@ function safeRead<T>(fn: () => T, fallback: T): T {
   }
 }
 
-/**
- * Call `player.play()` and swallow BOTH failure modes:
- *
- *   - synchronous throws (idle web player before load)
- *   - rejected promises (the web HTMLMediaElement contract — iOS
- *     Safari rejects with `NotAllowedError` whenever play() is called
- *     outside the synchronous span of a user gesture, which is what
- *     happens when our `day_end` SFX fires from a `useEffect` after
- *     React commits the day-advance state)
- *
- * Without this guard the rejected promise becomes an unhandled
- * rejection and surfaces as a full-screen red box on the dev client.
- */
 function safePlay(player: { play: () => unknown }): void {
   let result: unknown;
   try {
@@ -168,25 +95,86 @@ function safePlay(player: { play: () => unknown }): void {
     typeof (result as { then?: unknown }).then === "function" &&
     typeof (result as { catch?: unknown }).catch === "function"
   ) {
-    (result as Promise<unknown>).catch(() => {
-      /* autoplay-blocked or load-stalled — silent SFX is fine */
-    });
+    (result as Promise<unknown>).catch(() => {});
   }
 }
+
+function resolveBgm(
+  currentApp: string,
+  lotsOfFishView: string,
+  hasRun: boolean,
+): BgmName {
+  if (!hasRun) return "bgm_main_theme";
+  switch (currentApp) {
+    case "home":
+      return "bgm_phone_os";
+    case "lotsOfFish":
+      if (lotsOfFishView === "swipe") return "bgm_swipe";
+      return "bgm_chat";
+    case "journal":
+      return "bgm_phone_os";
+    case "wordLow":
+      return "bgm_arcade_wordlow";
+    case "egoTrip":
+      return "bgm_arcade_ego_trip";
+    case "safeSpot":
+    case "sugarCoat":
+      return "bgm_arcade_general";
+    default:
+      return "noir_loop";
+  }
+}
+
+function resolveAmbience(
+  _currentApp: string,
+  _lotsOfFishView: string,
+): AmbienceName | null {
+  return null;
+}
+
+/** Fade a player's volume from `from` to `to` in steps over `FADE_STEPS * FADE_INTERVAL_MS` ms. */
+function fadeVolume(
+  player: { volume: number },
+  from: number,
+  to: number,
+  onDone?: () => void,
+): void {
+  let step = 0;
+  try {
+    player.volume = from;
+  } catch {}
+  const dir = to > from ? 1 : -1;
+  const id = setInterval(() => {
+    step++;
+    const t = step * STEP_SIZE;
+    const v = from + (to - from) * Math.min(t, 1);
+    try {
+      player.volume = Math.max(0, Math.min(1, v));
+    } catch {}
+    if (step >= FADE_STEPS) {
+      clearInterval(id);
+      onDone?.();
+    }
+  }, FADE_INTERVAL_MS);
+}
+
+export interface AudioDuckHandle {
+  duck: () => void;
+  unduck: () => void;
+}
+
+export const audioDuckRef: { current: AudioDuckHandle | null } = { current: null };
 
 interface Props {
   children: ReactNode;
 }
 
 export function AudioProvider({ children }: Props) {
-  // ── Music: one player, looping. We pass the source on construction
-  //    so the player has it ready the moment we want to start.
-  const musicPlayer = useAudioPlayer(MUSIC_LOOP_ASSET);
+  // ── BGM: two players for crossfade
+  const bgmA = useAudioPlayer();
+  const bgmB = useAudioPlayer();
 
-  // ── SFX: a small fixed pool. Hooks must be called in a stable
-  //    order, so we declare them explicitly rather than mapping. Four
-  //    voices is plenty for our event density (no scene fires more
-  //    than 2 in the same tick).
+  // ── SFX: small fixed pool
   const sfx0 = useAudioPlayer();
   const sfx1 = useAudioPlayer();
   const sfx2 = useAudioPlayer();
@@ -197,77 +185,210 @@ export function AudioProvider({ children }: Props) {
   );
   const sfxCursor = useRef(0);
 
+  // ── Ambience
+  const ambiencePlayer = useAudioPlayer();
+
+  // ── Store subscriptions
+  const bgmVolume = useGameState((s) => s.bgmVolume);
+  const sfxVolume = useGameState((s) => s.sfxVolume);
+  const storedAmbienceVolume = useGameState((s) => s.ambienceVolume);
   const musicMuted = useGameState((s) => s.musicMuted);
   const sfxMuted = useGameState((s) => s.sfxMuted);
+  const currentApp = usePhoneShell((s) => s.currentApp);
+  const lotsOfFishView = usePhoneShell((s) => s.lotsOfFishView);
+  const run = useGameState((s) => s.run);
 
-  // Has the user interacted yet? Only meaningful on web — native
-  // doesn't gate audio behind a gesture. We also re-attempt music on
-  // every subsequent SFX in case the first try was autoplay-blocked.
+  const currentBgm = useMemo(
+    () => resolveBgm(currentApp, lotsOfFishView, !!run),
+    [currentApp, lotsOfFishView, run],
+  );
+  const currentAmbience = useMemo(
+    () => resolveAmbience(currentApp, lotsOfFishView),
+    [currentApp, lotsOfFishView],
+  );
+
   const userInteractedRef = useRef(!REQUIRES_USER_GESTURE);
+  const activeSlotRef = useRef<0 | 1>(0);
+  const duckedRef = useRef(false);
+  const prevBgmVolumeRef = useRef(bgmVolume);
+  const prevAmbienceVolumeRef = useRef(storedAmbienceVolume);
 
-  /**
-   * Try to start the music if it isn't already running and isn't
-   * muted. Safe to call repeatedly — `play()` on a player that's
-   * already playing is a no-op, and a blocked attempt simply leaves
-   * the player paused for the next tap to retry.
-   */
-  const tryStartMusic = (): void => {
+  const tryStartMusic = useCallback((): void => {
     if (useGameState.getState().musicMuted) return;
     if (!userInteractedRef.current) return;
+    const player = activeSlotRef.current === 0 ? bgmA : bgmB;
     let alreadyPlaying = false;
     try {
-      alreadyPlaying = musicPlayer.playing;
-    } catch {
-      /* idle-player throw on web before load — fine */
-    }
-    if (!alreadyPlaying) safePlay(musicPlayer);
-  };
+      alreadyPlaying = player.playing;
+    } catch {}
+    if (!alreadyPlaying) safePlay(player);
+  }, [bgmA, bgmB]);
 
-  // ── Music lifecycle
+  // ── BGM context switching + crossfade
+  const prevBgmRef = useRef<BgmName>(currentBgm);
+
   useEffect(() => {
+    if (currentBgm === prevBgmRef.current) return;
+    prevBgmRef.current = currentBgm;
+
+    const fromSlot = activeSlotRef.current;
+    const toSlot = fromSlot === 0 ? 1 : 0;
+    const fromPlayer = fromSlot === 0 ? bgmA : bgmB;
+    const toPlayer = toSlot === 0 ? bgmA : bgmB;
+
+    const targetVol = musicMuted ? 0 : bgmVolume;
+
+    // Fade out current
+    fadeVolume(fromPlayer, fromSlot === 0 ? bgmA.volume : bgmB.volume, 0, () => {
+      try { fromPlayer.pause(); } catch {}
+    });
+
+    // Set up the new player
     try {
-      musicPlayer.loop = true;
-      musicPlayer.volume = MUSIC_VOLUME;
+      toPlayer.replace(bgmAsset(currentBgm) as Parameters<typeof toPlayer.replace>[0]);
+      toPlayer.loop = true;
+      toPlayer.seekTo(0);
+      toPlayer.volume = 0;
     } catch {
-      // Idle/web players can throw on attribute set before load — fine.
-    }
-    // Native: kick music immediately on mount. Web: wait for first SFX.
-    tryStartMusic();
-    return () => {
-      try {
-        musicPlayer.pause();
-      } catch {
-        /* idle-player throw on web — fine */
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [musicPlayer]);
-
-  useEffect(() => {
-    if (musicMuted) {
-      try {
-        musicPlayer.pause();
-      } catch {
-        /* see above */
-      }
       return;
     }
-    tryStartMusic();
+    safePlay(toPlayer);
+
+    // Fade in new
+    fadeVolume(toPlayer, 0, targetVol);
+
+    activeSlotRef.current = toSlot;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [musicMuted, musicPlayer]);
+  }, [currentBgm]);
+
+  // ── BGM initial load
+  useEffect(() => {
+    try {
+      bgmA.replace(bgmAsset(currentBgm) as Parameters<typeof bgmA.replace>[0]);
+      bgmA.loop = true;
+      bgmA.volume = bgmVolume;
+    } catch {}
+
+    try {
+      bgmB.loop = true;
+      bgmB.volume = 0;
+    } catch {}
+
+    try {
+      ambiencePlayer.loop = true;
+      ambiencePlayer.volume = 0;
+    } catch {}
+
+    // Native: kick music immediately. Web: wait for first SFX.
+    if (!REQUIRES_USER_GESTURE) {
+      safePlay(bgmA);
+    }
+
+    return () => {
+      try { bgmA.pause(); } catch {}
+      try { bgmB.pause(); } catch {}
+      try { ambiencePlayer.pause(); } catch {}
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Volume/slider reactivity
+  useEffect(() => {
+    const player = activeSlotRef.current === 0 ? bgmA : bgmB;
+    const targetVol = musicMuted ? 0 : duckedRef.current ? bgmVolume * DUCK_FACTOR : bgmVolume;
+    fadeVolume(player, player.volume, targetVol);
+    prevBgmVolumeRef.current = bgmVolume;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bgmVolume, musicMuted]);
+
+  // ── Music mute toggle
+  useEffect(() => {
+    const player = activeSlotRef.current === 0 ? bgmA : bgmB;
+    if (musicMuted) {
+      fadeVolume(player, player.volume, 0, () => {
+        try { player.pause(); } catch {}
+      });
+    } else {
+      safePlay(player);
+      fadeVolume(player, player.volume, bgmVolume);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [musicMuted]);
+
+  // ── Ambience lifecycle
+  const prevAmbienceRef = useRef<AmbienceName | null>(currentAmbience);
+
+  useEffect(() => {
+    if (currentAmbience === prevAmbienceRef.current) return;
+    prevAmbienceRef.current = currentAmbience;
+
+    if (!currentAmbience) {
+      fadeVolume(ambiencePlayer, ambiencePlayer.volume, 0, () => {
+        try { ambiencePlayer.pause(); } catch {}
+      });
+      return;
+    }
+
+    try {
+      ambiencePlayer.replace(
+        ambienceAsset(currentAmbience) as Parameters<typeof ambiencePlayer.replace>[0],
+      );
+      ambiencePlayer.loop = true;
+      ambiencePlayer.seekTo(0);
+      ambiencePlayer.volume = 0;
+    } catch {
+      return;
+    }
+    safePlay(ambiencePlayer);
+    fadeVolume(ambiencePlayer, 0, storedAmbienceVolume);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentAmbience]);
+
+  useEffect(() => {
+    const targetVol = musicMuted
+      ? 0
+      : duckedRef.current
+        ? storedAmbienceVolume * DUCK_FACTOR
+        : storedAmbienceVolume;
+    fadeVolume(ambiencePlayer, ambiencePlayer.volume, targetVol);
+    prevAmbienceVolumeRef.current = storedAmbienceVolume;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storedAmbienceVolume, musicMuted]);
+
+  // ── Ducking: expose handle
+  const duckHandle: AudioDuckHandle = useMemo(
+    () => ({
+      duck: () => {
+        if (duckedRef.current) return;
+        duckedRef.current = true;
+        const bgmTarget = bgmVolume * DUCK_FACTOR;
+        const ambTarget = storedAmbienceVolume * DUCK_FACTOR;
+        fadeVolume(activeSlotRef.current === 0 ? bgmA : bgmB, bgmVolume, bgmTarget);
+        fadeVolume(ambiencePlayer, storedAmbienceVolume, ambTarget);
+      },
+      unduck: () => {
+        if (!duckedRef.current) return;
+        duckedRef.current = false;
+        fadeVolume(activeSlotRef.current === 0 ? bgmA : bgmB, bgmVolume * DUCK_FACTOR, bgmVolume);
+        fadeVolume(ambiencePlayer, storedAmbienceVolume * DUCK_FACTOR, storedAmbienceVolume);
+      },
+    }),
+    [bgmVolume, storedAmbienceVolume, bgmA, bgmB, ambiencePlayer],
+  );
+
+  useEffect(() => {
+    audioDuckRef.current = duckHandle;
+    return () => { audioDuckRef.current = null; };
+  }, [duckHandle]);
 
   // ── SFX bus subscription
   useEffect(() => {
     const handler = (name: SfxName): void => {
-      // Mark gesture & retry music start on EVERY SFX — a previous
-      // autoplay-blocked attempt would have left music paused, so
-      // each successive tap is another chance to satisfy the policy.
       if (!userInteractedRef.current) {
         userInteractedRef.current = true;
       }
       tryStartMusic();
-      // Honor mute *at fire time* — the store may have flipped between
-      // when the event was emitted and when we got here.
+
       if (useGameState.getState().sfxMuted) {
         if (__DEV__) {
           recordDebug({ lastSuppressed: name, lastSuppressedAt: Date.now() });
@@ -280,16 +401,11 @@ export function AudioProvider({ children }: Props) {
       sfxCursor.current = (sfxCursor.current + 1) % sfxPool.length;
       try {
         player.replace(sfxAsset(name) as Parameters<typeof player.replace>[0]);
-        player.volume = SFX_VOLUME;
+        player.volume = sfxVolume;
         player.seekTo(0);
       } catch {
-        // A pool slot may be mid-decode of its previous source — we
-        // don't want a single dropped click to crash the whole bus.
         return;
       }
-      // play() lives outside the try because its async failure mode
-      // (a rejected promise) wouldn't be caught here anyway. safePlay
-      // handles both sync throws and promise rejections.
       safePlay(player);
       if (__DEV__) {
         recordDebug({
@@ -300,32 +416,27 @@ export function AudioProvider({ children }: Props) {
       }
     };
     return subscribeSfx(handler);
-  }, [musicPlayer, sfxPool]);
+  }, [sfxPool, sfxVolume, tryStartMusic]);
 
-  // ── Dev-only debug shim
-  // Exposes minimal player state on `window.__catfishAudio` so the e2e
-  // test agent can verify behavior without trying to introspect the
-  // (detached) HTMLAudioElement nodes that expo-audio creates.
+  // ── Debug shim
   useEffect(() => {
     if (!__DEV__) return;
     const tick = (): void => {
+      const active = activeSlotRef.current === 0 ? bgmA : bgmB;
       recordDebug({
-        musicPaused: safeRead(() => musicPlayer.paused, true),
-        musicPlaying: safeRead(() => musicPlayer.playing, false),
-        musicCurrentTime: safeRead(() => musicPlayer.currentTime, 0),
+        musicPaused: safeRead(() => active.paused, true),
+        musicPlaying: safeRead(() => active.playing, false),
         userInteracted: userInteractedRef.current,
         sfxMuted: useGameState.getState().sfxMuted,
         musicMuted: useGameState.getState().musicMuted,
-        voiceMuted: useGameState.getState().voiceMuted,
+        currentBgm,
       });
     };
     tick();
     const id = setInterval(tick, 250);
-    return () => {
-      clearInterval(id);
-    };
-  }, [musicPlayer]);
+    return () => { clearInterval(id); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bgmA, bgmB, currentBgm]);
 
-  // No need to render anything — we're a side-effect provider.
   return <>{children}</>;
 }

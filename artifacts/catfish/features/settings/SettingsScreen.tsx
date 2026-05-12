@@ -2,6 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import { ScrollView, StyleSheet, Switch, View } from "react-native";
 
 import { PixelPanel, PixelText } from "@/components/PixelChrome";
+import { PixelSlider } from "@/components/PixelSlider";
 import { cfPalette } from "@/constants/colors";
 import { useGameState } from "@/core/gameStore";
 
@@ -15,9 +16,11 @@ interface Row {
   iconColor: string;
   label: string;
   description?: string;
-  kind: "toggle";
-  value: boolean;
-  onToggle: (v: boolean) => void;
+  kind: "toggle" | "slider";
+  value: boolean | number;
+  onToggle?: (v: boolean) => void;
+  onSlider?: (v: number) => void;
+  disabled?: boolean;
 }
 
 function SettingsRow({ row }: { row: Row }) {
@@ -34,12 +37,22 @@ function SettingsRow({ row }: { row: Row }) {
           ) : null}
         </View>
       </View>
-      <Switch
-        value={row.value}
-        onValueChange={row.onToggle}
-        trackColor={{ false: cfPalette.iron, true: cfPalette.pinkHot }}
-        thumbColor={row.value ? cfPalette.bone : cfPalette.ash}
-      />
+      {row.kind === "toggle" ? (
+        <Switch
+          value={!!row.value}
+          onValueChange={row.onToggle ?? (() => {})}
+          trackColor={{ false: cfPalette.iron, true: cfPalette.pinkHot }}
+          thumbColor={row.value ? cfPalette.bone : cfPalette.ash}
+        />
+      ) : (
+        <View style={rowStyles.sliderWrap}>
+          <PixelSlider
+            value={row.value as number}
+            onValueChange={row.onSlider ?? (() => {})}
+            disabled={row.disabled}
+          />
+        </View>
+      )}
     </View>
   );
 }
@@ -49,9 +62,15 @@ export default function SettingsScreen() {
   const screenShakeEnabled = useGameState((s) => s.screenShakeEnabled);
   const reduceMotionEnabled = useGameState((s) => s.reduceMotionEnabled);
   const highContrastTextEnabled = useGameState((s) => s.highContrastTextEnabled);
+
   const voiceMuted = useGameState((s) => s.voiceMuted);
   const sfxMuted = useGameState((s) => s.sfxMuted);
   const musicMuted = useGameState((s) => s.musicMuted);
+  const bgmVolume = useGameState((s) => s.bgmVolume);
+  const sfxVolume = useGameState((s) => s.sfxVolume);
+  const voiceVolume = useGameState((s) => s.voiceVolume);
+  const ambienceVolume = useGameState((s) => s.ambienceVolume);
+
   const setScanlinesEnabled = useGameState((s) => s.setScanlinesEnabled);
   const setScreenShakeEnabled = useGameState((s) => s.setScreenShakeEnabled);
   const setReduceMotionEnabled = useGameState((s) => s.setReduceMotionEnabled);
@@ -59,6 +78,10 @@ export default function SettingsScreen() {
   const setVoiceMuted = useGameState((s) => s.setVoiceMuted);
   const setSfxMuted = useGameState((s) => s.setSfxMuted);
   const setMusicMuted = useGameState((s) => s.setMusicMuted);
+  const setBgmVolume = useGameState((s) => s.setBgmVolume);
+  const setSfxVolume = useGameState((s) => s.setSfxVolume);
+  const setVoiceVolume = useGameState((s) => s.setVoiceVolume);
+  const setAmbienceVolume = useGameState((s) => s.setAmbienceVolume);
 
   const sections: Section[] = [
     {
@@ -73,6 +96,15 @@ export default function SettingsScreen() {
           onToggle: (v) => setMusicMuted(!v),
         },
         {
+          icon: "music",
+          iconColor: cfPalette.fog,
+          label: "Music Volume",
+          kind: "slider",
+          value: bgmVolume,
+          onSlider: setBgmVolume,
+          disabled: musicMuted,
+        },
+        {
           icon: "volume-2",
           iconColor: cfPalette.cyan,
           label: "Sound Effects",
@@ -81,12 +113,38 @@ export default function SettingsScreen() {
           onToggle: (v) => setSfxMuted(!v),
         },
         {
+          icon: "volume-2",
+          iconColor: cfPalette.fog,
+          label: "SFX Volume",
+          kind: "slider",
+          value: sfxVolume,
+          onSlider: setSfxVolume,
+          disabled: sfxMuted,
+        },
+        {
           icon: "mic",
           iconColor: cfPalette.cyan,
           label: "Voice (TTS)",
           kind: "toggle",
           value: !voiceMuted,
           onToggle: (v) => setVoiceMuted(!v),
+        },
+        {
+          icon: "mic",
+          iconColor: cfPalette.fog,
+          label: "Voice Volume",
+          kind: "slider",
+          value: voiceVolume,
+          onSlider: setVoiceVolume,
+          disabled: voiceMuted,
+        },
+        {
+          icon: "radio",
+          iconColor: cfPalette.cyan,
+          label: "Ambience",
+          kind: "slider",
+          value: ambienceVolume,
+          onSlider: setAmbienceVolume,
         },
       ],
     },
@@ -194,6 +252,9 @@ const rowStyles = StyleSheet.create({
   },
   textCol: {
     flex: 1,
+  },
+  sliderWrap: {
+    width: 100,
   },
 });
 

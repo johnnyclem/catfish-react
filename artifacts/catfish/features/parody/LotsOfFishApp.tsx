@@ -31,6 +31,7 @@ import { SocialFeedScreen } from "@/features/dating/SocialFeedScreen";
 import { SuspectBoardScreen } from "@/features/journal/SuspectBoardScreen";
 import { SwipeScreen } from "@/features/dating/SwipeScreen";
 
+import { emitSfx } from "@/features/audio/audioEvents";
 import { LotsOfFishSplash } from "./LotsOfFishSplash";
 import { type LotsOfFishView, usePhoneShell } from "./phoneShellState";
 
@@ -92,7 +93,7 @@ export function LotsOfFishApp() {
               accessibilityRole="tab"
               accessibilityState={{ selected: active }}
               accessibilityLabel={`${tab.label} tab`}
-              onPress={() => setView(tab.view)}
+              onPress={() => { emitSfx("tab_switch"); setView(tab.view); }}
               style={({ pressed }) => [
                 styles.tab,
                 pressed && { opacity: 0.6 },

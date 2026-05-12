@@ -194,6 +194,16 @@ interface GameStateValue {
    */
   musicMuted: boolean;
   /**
+   * Persistent per-bus volume levels (0.0–1.0). Each backed by its
+   * own AsyncStorage key so a single slider change doesn't rewrite
+   * the full run blob. Defaults match the old hardcoded constants
+   * in AudioProvider.
+   */
+  bgmVolume: number;
+  sfxVolume: number;
+  voiceVolume: number;
+  ambienceVolume: number;
+  /**
    * Persistent display preference — CRT scanline overlay visibility.
    * Lives at the top of the store (not on CaseRun) so it survives
    * `resetRun()`. Defaults to true (scanlines on). Backed by its own
@@ -272,6 +282,14 @@ interface GameStateValue {
   setSfxMuted: (muted: boolean) => Promise<void>;
   /** Toggle background music. Persists to AsyncStorage immediately. */
   setMusicMuted: (muted: boolean) => Promise<void>;
+  /** Set BGM volume (0–1). Persists to AsyncStorage immediately. */
+  setBgmVolume: (v: number) => Promise<void>;
+  /** Set SFX volume (0–1). Persists to AsyncStorage immediately. */
+  setSfxVolume: (v: number) => Promise<void>;
+  /** Set voice volume (0–1). Persists to AsyncStorage immediately. */
+  setVoiceVolume: (v: number) => Promise<void>;
+  /** Set ambience volume (0–1). Persists to AsyncStorage immediately. */
+  setAmbienceVolume: (v: number) => Promise<void>;
   /** Toggle CRT scanline overlay. Persists to AsyncStorage immediately. */
   setScanlinesEnabled: (enabled: boolean) => Promise<void>;
   /** Toggle screen shake. Persists to AsyncStorage immediately. */
@@ -915,6 +933,10 @@ const SCANLINES_KEY = "catfish/prefs/scanlines/v1";
 const SCREEN_SHAKE_KEY = "catfish/prefs/screen_shake/v1";
 const REDUCE_MOTION_KEY = "catfish/prefs/reduce_motion/v1";
 const HIGH_CONTRAST_KEY = "catfish/prefs/high_contrast/v1";
+const BGM_VOLUME_KEY = "catfish/prefs/bgm_volume/v1";
+const SFX_VOLUME_KEY = "catfish/prefs/sfx_volume/v1";
+const VOICE_VOLUME_KEY = "catfish/prefs/voice_volume/v1";
+const AMBIENCE_VOLUME_KEY = "catfish/prefs/ambience_volume/v1";
 /**
  * AsyncStorage row for the parody mini-game high scores. Versioned
  * (`/v1`) so a future schema change (e.g. per-day Wordle history,
@@ -944,6 +966,25 @@ async function saveBoolPref(key: string, value: boolean): Promise<void> {
   } catch {
     // Persistence failure is non-fatal — the in-memory toggle still
     // works for the rest of the session.
+  }
+}
+
+async function loadFloatPref(key: string, fallback: number): Promise<number> {
+  try {
+    const raw = await AsyncStorage.getItem(key);
+    if (raw === null) return fallback;
+    const v = parseFloat(raw);
+    return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+async function saveFloatPref(key: string, value: number): Promise<void> {
+  try {
+    await AsyncStorage.setItem(key, String(Math.max(0, Math.min(1, value))));
+  } catch {
+    // Persistence failure is non-fatal.
   }
 }
 
@@ -1393,6 +1434,10 @@ export const useGameState = create<GameStateValue>((set, get) => ({
   voiceMuted: false,
   sfxMuted: false,
   musicMuted: false,
+  bgmVolume: 0.32,
+  sfxVolume: 0.85,
+  voiceVolume: 0.9,
+  ambienceVolume: 0.25,
   scanlinesEnabled: true,
   screenShakeEnabled: true,
   reduceMotionEnabled: false,
@@ -1413,6 +1458,10 @@ export const useGameState = create<GameStateValue>((set, get) => ({
         voiceMuted,
         sfxMuted,
         musicMuted,
+        bgmVolume,
+        sfxVolume,
+        voiceVolume,
+        ambienceVolume,
         scanlinesEnabled,
         screenShakeEnabled,
         reduceMotionEnabled,
@@ -1425,6 +1474,10 @@ export const useGameState = create<GameStateValue>((set, get) => ({
         loadVoiceMuted(),
         loadBoolPref(SFX_MUTED_KEY),
         loadBoolPref(MUSIC_MUTED_KEY),
+        loadFloatPref(BGM_VOLUME_KEY, 0.32),
+        loadFloatPref(SFX_VOLUME_KEY, 0.85),
+        loadFloatPref(VOICE_VOLUME_KEY, 0.9),
+        loadFloatPref(AMBIENCE_VOLUME_KEY, 0.25),
         loadBoolPref(SCANLINES_KEY),
         loadBoolPref(SCREEN_SHAKE_KEY),
         loadBoolPref(REDUCE_MOTION_KEY),
@@ -1449,6 +1502,10 @@ export const useGameState = create<GameStateValue>((set, get) => ({
         voiceMuted,
         sfxMuted,
         musicMuted,
+        bgmVolume,
+        sfxVolume,
+        voiceVolume,
+        ambienceVolume,
         scanlinesEnabled: scanlinesEnabled ?? true,
         screenShakeEnabled: screenShakeEnabled ?? true,
         reduceMotionEnabled: reduceMotionEnabled ?? false,
@@ -1488,6 +1545,27 @@ export const useGameState = create<GameStateValue>((set, get) => ({
   setMusicMuted: async (muted) => {
     set({ musicMuted: muted });
     await saveBoolPref(MUSIC_MUTED_KEY, muted);
+  },
+
+  setBgmVolume: async (v) => {
+    const clamped = Math.max(0, Math.min(1, v));
+    set({ bgmVolume: clamped });
+    await saveFloatPref(BGM_VOLUME_KEY, clamped);
+  },
+  setSfxVolume: async (v) => {
+    const clamped = Math.max(0, Math.min(1, v));
+    set({ sfxVolume: clamped });
+    await saveFloatPref(SFX_VOLUME_KEY, clamped);
+  },
+  setVoiceVolume: async (v) => {
+    const clamped = Math.max(0, Math.min(1, v));
+    set({ voiceVolume: clamped });
+    await saveFloatPref(VOICE_VOLUME_KEY, clamped);
+  },
+  setAmbienceVolume: async (v) => {
+    const clamped = Math.max(0, Math.min(1, v));
+    set({ ambienceVolume: clamped });
+    await saveFloatPref(AMBIENCE_VOLUME_KEY, clamped);
   },
 
   setScanlinesEnabled: async (enabled) => {

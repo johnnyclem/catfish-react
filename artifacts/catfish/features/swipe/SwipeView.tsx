@@ -114,6 +114,7 @@ export function SwipeView() {
     // Run card is about to take over (it gives the close a beat of
     // its own). The win/lose sting then plays on top a moment later.
     emitSfx("day_end");
+    emitSfx("day_advance");
     if (announcements.length > 0) return;
     // Don't congratulate the player on reaching Day 7 — the End-of-
     // Run card is about to take over and own the screen.

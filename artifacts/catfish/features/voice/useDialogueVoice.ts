@@ -190,6 +190,7 @@ export function useDialogueVoice(): DialogueVoiceController {
       /* see above */
     }
     playingRef.current = false;
+    audioDuckRef.current?.unduck();
   }, [player]);
 
   // Belt-and-braces cleanup — Expo's AudioPlayer is auto-released when

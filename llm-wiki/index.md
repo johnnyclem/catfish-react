@@ -51,6 +51,7 @@ Catalog of all wiki pages. Auto-updated by agents during `wiki-ingest`.
 |------|------|
 | [[features/handoff-phase10-to-11]] | 2026-05-12 |
 | [[features/handoff-phase11-to-12]] | 2026-05-12 |
+| [[features/handoff-phase12-to-13]] | 2026-05-12 |
 
 ## Statistics
 

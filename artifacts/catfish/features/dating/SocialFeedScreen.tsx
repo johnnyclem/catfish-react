@@ -27,7 +27,7 @@ import {
 } from "@/components/PixelChrome";
 import { cfPalette } from "@/constants/colors";
 import { useGameState } from "@/core/gameStore";
-import { Candidate, Fact, FactSourceKind } from "@/core/models";
+import { Candidate, Fact, FactSource } from "@/core/models";
 
 /** Social image asset ids per character (first IG post per char). */
 const SOCIAL_IMAGE: Record<string, string> = {

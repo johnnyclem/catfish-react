@@ -27,12 +27,14 @@ function evidenceGrid(facts: Fact[]) {
 
 export function PhotosApp() {
   const run = useGameState((s) => s.run);
-  const [selected, setSelected] = useState<Fact | null>(null);
 
   const facts = run?.facts ?? [];
   const evidence = facts.filter(
     (f) => f.committed && f.payload.imageAssetID != null,
   ) as Array<Fact & { payload: { imageAssetID: string; text: string; subject?: string } }>;
+
+  type EvidenceFact = (typeof evidence)[number];
+  const [selected, setSelected] = useState<EvidenceFact | null>(null);
 
   if (evidence.length === 0) {
     return (

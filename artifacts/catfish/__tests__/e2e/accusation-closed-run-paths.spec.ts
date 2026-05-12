@@ -154,7 +154,7 @@ async function longPressFactGesture(page: Page, messageId: string): Promise<void
   await page.mouse.up();
 }
 
-async function readPersistedFacts(page: Page): Promise<PersistedRun["facts"]> {
+async function readPersistedFacts(page: Page): Promise<NonNullable<PersistedRun["facts"]>> {
   const blob = await page.evaluate(
     (key) => window.localStorage.getItem(key),
     ACTIVE_RUN_KEY,

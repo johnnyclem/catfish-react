@@ -64,6 +64,7 @@ import {
   SugarCoatSession,
 } from "./parodySessions";
 import { loadActiveRun, saveActiveRun } from "./repository";
+import { voiceForCandidate } from "./voiceProfiles";
 
 /**
  * Task #39 — Parody mini-game persistent best scores.
@@ -2252,12 +2253,7 @@ const playerMsg: Message = {
           name: candidate.displayName,
           bio: candidate.bio,
         },
-        voiceProfile: {
-          voiceId: profile.voiceId,
-          modelId: profile.modelId,
-          settings: profile.settings,
-          notes: profile.notes,
-        },
+        voiceProfile: voiceForCandidate(candidate),
         transcript: tail,
       });
       // Re-read the thread off the *current* state — the player may

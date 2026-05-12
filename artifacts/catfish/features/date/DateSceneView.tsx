@@ -138,9 +138,9 @@ function parseVoiceLineId(id: string): { characterKey: string; beatKey: string }
 
 function useVoicePlayer(partner: string) {
   const playerRef = useRef<ReturnType<typeof useAudioPlayer> | null>(null);
-  const [voiceState, setVoiceState] = useState({ playing: false, lineId: null });
+  const [voiceState, setVoiceState] = useState<{ playing: boolean; lineId: string | null }>({ playing: false, lineId: null });
   const voiceMuted = useGameState((s) => s.voiceMuted);
-  const abortRef = useRef<AbortSignal | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const getPlayer = useCallback(() => {
     if (!playerRef.current) {
@@ -151,7 +151,7 @@ function useVoicePlayer(partner: string) {
 
   const stop = useCallback(() => {
     try {
-      abortRef.current?.throwIfAborted();
+      abortRef.current?.signal.throwIfAborted();
     } catch {
       // already aborted — ignore
     }
@@ -170,8 +170,9 @@ function useVoicePlayer(partner: string) {
 
       // Cancel any in-flight playback for this line.
       abortRef.current?.abort();
-      const signal = new AbortController().signal;
-      abortRef.current = signal;
+      const controller = new AbortController();
+      abortRef.current = controller;
+      const signal = controller.signal;
 
       const { characterKey } = parseVoiceLineId(lineId);
       const profile = getVoiceForCharacterKey(characterKey);

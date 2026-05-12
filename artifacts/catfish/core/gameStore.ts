@@ -392,6 +392,11 @@ interface GameStateValue {
    */
   buildChain: (factIdA: FactId, factIdB: FactId) => Promise<EvidenceChain | null>;
   /**
+   * Task #10.3 — write or clear a player's free-form note on a fact.
+   * Idempotent — calling with an empty string clears the note.
+   */
+  updateFactNote: (factId: FactId, note: string) => Promise<void>;
+  /**
    * Flip a match's `unmatched` flag to true. The thread itself is
    * preserved on the run so Pass 3's Journal can still cite anything
    * the suspect said. Idempotent — re-calling on an already-unmatched
@@ -2403,6 +2408,20 @@ const playerMsg: Message = {
     if (!current.some((f) => f.id === factId)) return;
     cancelDiscardTimer(factId);
     set({ recentlyDiscarded: current.filter((f) => f.id !== factId) });
+  },
+
+  updateFactNote: async (factId, note) => {
+    const prev = get().run;
+    if (!prev) return;
+    const trimmed = note.trim();
+    const updated = prev.facts.map((f) =>
+      f.id === factId
+        ? { ...f, playerNote: trimmed.length > 0 ? trimmed : undefined }
+        : f,
+    );
+    const next: CaseRun = { ...prev, facts: updated };
+    set({ run: next });
+    await saveActiveRun(next);
   },
 
   unmatchThread: async (matchId) => {

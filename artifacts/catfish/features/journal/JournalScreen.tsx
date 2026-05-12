@@ -41,6 +41,7 @@ import {
   JournalSortMode,
 } from "@/features/journal/JournalControls";
 import { SuspectGroup } from "@/features/journal/SuspectGroup";
+import { FactDetailView } from "@/features/journal/FactDetailView";
 import { UndoDiscardBanner } from "@/features/journal/UndoDiscardBanner";
 import { EvidenceChainBuilder } from "@/features/journal/EvidenceChainBuilder";
 
@@ -61,6 +62,7 @@ export function JournalScreen() {
   const [accuseOpen, setAccuseOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [chainBuilderOpen, setChainBuilderOpen] = useState(false);
+  const [selectedFact, setSelectedFact] = useState<Fact | null>(null);
   const [recoveryBusy, setRecoveryBusy] = useState(false);
 
   const committed = useMemo<Fact[]>(
@@ -206,7 +208,7 @@ export function JournalScreen() {
           </View>
           <View style={styles.authoredCards}>
             {sortedAuthored.map((f) => (
-              <FactCard key={f.id} fact={f} />
+              <FactCard key={f.id} fact={f} onPress={setSelectedFact} />
             ))}
           </View>
         </View>
@@ -292,6 +294,7 @@ export function JournalScreen() {
               onDiscardFact={(id) => {
                 void removeFact(id);
               }}
+              onPressFact={setSelectedFact}
             />
           ))
         )}
@@ -314,6 +317,13 @@ export function JournalScreen() {
         onClose={() => setChainBuilderOpen(false)}
         onChainBuilt={() => {}}
       />
+
+      {selectedFact && (
+        <FactDetailView
+          fact={selectedFact}
+          onClose={() => setSelectedFact(null)}
+        />
+      )}
     </View>
   );
 }

@@ -18,12 +18,14 @@ interface SuspectGroupProps {
   candidate: Candidate;
   facts: Fact[];
   onDiscardFact: (factId: string) => void;
+  onPressFact?: (fact: Fact) => void;
 }
 
 export function SuspectGroup({
   candidate,
   facts,
   onDiscardFact,
+  onPressFact,
 }: SuspectGroupProps) {
   if (facts.length === 0) return null;
 
@@ -50,7 +52,7 @@ export function SuspectGroup({
 
       <View style={styles.cards}>
         {facts.map((f) => (
-          <FactCard key={f.id} fact={f} onDiscard={onDiscardFact} />
+          <FactCard key={f.id} fact={f} onDiscard={onDiscardFact} onPress={onPressFact} />
         ))}
       </View>
     </View>

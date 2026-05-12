@@ -474,6 +474,12 @@ export interface Fact {
   capturedQuote?: string;
   capturedOnDay?: number;
   capturedAt?: string;
+  /**
+   * Task #10.3 — free-form player note attached to this fact.
+   * Persisted on the Fact row so it travels with the fact across
+   * runs and survives migration. Optional; undefined means no note.
+   */
+  playerNote?: string;
 }
 
 export type SwipeDirection = "left" | "right";

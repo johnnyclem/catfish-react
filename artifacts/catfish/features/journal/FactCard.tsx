@@ -21,6 +21,7 @@ import { Fact } from "@/core/models";
 interface FactCardProps {
   fact: Fact;
   onDiscard?: (factId: string) => void;
+  onPress?: (fact: Fact) => void;
 }
 
 function SourceBadge({ source }: { source: Fact["source"] }): React.ReactElement {
@@ -108,18 +109,24 @@ function CapturedContent({ quote, day }: { quote: string; day: number }) {
   );
 }
 
-export function FactCard({ fact, onDiscard }: FactCardProps) {
+export function FactCard({ fact, onDiscard, onPress }: FactCardProps) {
   const isCaptured = fact.kind === "captured";
   const quote = fact.capturedQuote ?? "(missing quote)";
   const day = isCaptured ? fact.capturedOnDay ?? 0 : fact.day;
 
   return (
     <PixelPanel variant="default" style={styles.card}>
-      {isCaptured ? (
-        <CapturedContent quote={quote} day={day} />
-      ) : (
-        <AuthoredContent text={fact.payload.text ?? ""} day={fact.day} source={fact.source} />
-      )}
+      <Pressable
+        onPress={() => onPress?.(fact)}
+        style={({ pressed }) => [pressed && onPress && { opacity: 0.75 }]}
+        disabled={!onPress}
+      >
+        {isCaptured ? (
+          <CapturedContent quote={quote} day={day} />
+        ) : (
+          <AuthoredContent text={fact.payload.text ?? ""} day={fact.day} source={fact.source} />
+        )}
+      </Pressable>
 
       {isCaptured && onDiscard && (
         <Pressable

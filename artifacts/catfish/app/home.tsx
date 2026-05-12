@@ -33,8 +33,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useGameState } from "@/core/gameStore";
 
+import { BrowserApp } from "@/features/phone/BrowserApp";
 import { PhotosApp } from "@/features/parody/PhotosApp";
 import { PhoneApp } from "@/features/phone/PhoneApp";
+import { FaceTimeApp } from "@/features/phone/FaceTimeApp";
 import { GameCenter } from "@/features/parody/GameCenter";
 import { HomeGrid } from "@/features/parody/HomeGrid";
 import { HomeIndicator } from "@/features/parody/HomeIndicator";
@@ -85,6 +87,8 @@ export default function PhoneHomeShell() {
         {currentApp === "lotsOfFish" && <LotsOfFishApp />}
         {currentApp === "journal" && <JournalApp />}
         {currentApp === "phone" && <PhoneApp />}
+        {currentApp === "browser" && <BrowserApp />}
+        {currentApp === "facetime" && <FaceTimeApp />}
         {currentApp === "photos" && <PhotosApp />}
         {currentApp === "gameCenter" && (
           <GameCenter

@@ -18,7 +18,7 @@ import { cfPalette } from "@/constants/colors";
 import { useGameState } from "@/core/gameStore";
 import type { FriendID, Voicemail } from "@/core/models";
 
-import { PhoneIcon } from "./PhoneIcon";
+import { PhoneIcon } from "@/features/parody/PhoneIcon";
 import { FriendCallDialogue } from "./FriendCallDialogue";
 import { VoicemailDetail } from "./VoicemailDetail";
 
@@ -83,7 +83,7 @@ function VoicemailListItem({
             <PixelText size={8} color={cfPalette.pinkHot}> · new</PixelText>
           )}
         </PixelText>
-        <PixelText size={6} color={cfPalette.ash} numberOfLines={2} style={{ marginTop: 2, lineHeight: 10 }}>
+        <PixelText size={6} color={cfPalette.ash}  style={{ marginTop: 2, lineHeight: 10 }}>
           {voicemail.text}
         </PixelText>
       </View>

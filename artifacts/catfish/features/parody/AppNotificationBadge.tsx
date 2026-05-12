@@ -68,7 +68,7 @@ export function AppNotificationBadge({ count, accessibilityLabel }: Props) {
       accessibilityLabel={accessibilityLabel}
       style={[styles.badge, { transform: [{ scale }] }]}
     >
-      <Text style={styles.text} numberOfLines={1}>
+      <Text style={styles.text} >
         {label}
       </Text>
     </Animated.View>

@@ -13,7 +13,7 @@ import { cfPalette } from "@/constants/colors";
 import { useGameState } from "@/core/gameStore";
 import type { Voicemail } from "@/core/models";
 
-import { PhoneIcon } from "./PhoneIcon";
+import { PhoneIcon } from "@/features/parody/PhoneIcon";
 
 interface Props {
   voicemail: Voicemail;

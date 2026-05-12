@@ -85,7 +85,7 @@ function SuspectCard({
           uppercase
           align="center"
           style={styles.name}
-          numberOfLines={1}
+          
         >
           {candidate.displayName}
         </PixelText>

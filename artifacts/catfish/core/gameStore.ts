@@ -21,9 +21,11 @@ import { create } from "zustand";
 
 import { AccusationOutcome, resolveAccusation } from "./accusation";
 import { freshDecoysForDay } from "./decoyPool";
+import { getFaceTimeCallsForDay } from "./facetimeContent";
 import { buildAuthoredFacts } from "./factBootstrap";
 import { getIdentityModule, getScriptForThread } from "./identities";
 import { INNOCENT_TREE_IDS } from "./innocentTrees";
+import { getVoicemailsForDay, materializeVoicemail } from "./voicemailContent";
 import {
   AccusationResult,
   ALL_KILLERS,
@@ -47,6 +49,8 @@ import {
   newMessageId,
   newRunId,
   newThreadId,
+  newVoicemailId,
+  newFacetimeCallId,
   PendingSuspectLine,
   SwipeRecord,
   ThreadId,
@@ -1620,6 +1624,42 @@ export const useGameState = create<GameStateValue>((set, get) => ({
     };
     set({ run: next });
     await saveActiveRun(next);
+
+    // ── Voicemail generation on day advance ─────────────────────────
+    // Materialize authored voicemails for the new day. Filter by killer
+    // awareness, then stamp each with a stable id.
+    const newVmAuthored = getVoicemailsForDay(nextDay, prev.killer);
+    const newVms = newVmAuthored.map((a) => ({
+      ...materializeVoicemail(a),
+      id: newVoicemailId(),
+    }));
+    // Refill the phone credit budget when entering a new day.
+    const credits = prev.phoneCredits ?? {
+      lastRefillDay: prev.day,
+      devCalls: 3,
+      niaCalls: 3,
+    };
+    const refilledCredits =
+      credits.lastRefillDay < nextDay
+        ? { lastRefillDay: nextDay, devCalls: 3, niaCalls: 3 }
+        : credits;
+
+    // ── Facetime call scheduling ──────────────────────────────────
+    // Surface incoming FaceTime calls for matched characters on day gates.
+    const matchedCandidateIds = matches.map((m) => m.candidateId);
+    const newFaceTimeCalls = getFaceTimeCallsForDay(nextDay, matchedCandidateIds);
+
+    const withVms: CaseRun = {
+      ...next,
+      voicemails: [...(next.voicemails ?? []), ...newVms],
+      phoneCredits: refilledCredits,
+      pendingFacetimeCalls: [
+        ...(next.pendingFacetimeCalls ?? []),
+        ...newFaceTimeCalls,
+      ],
+    };
+    set({ run: withVms });
+    await saveActiveRun(withVms);
   },
 
   accuse: async ({ accused, accusedCandidateId, outcome = "accuse" }) => {

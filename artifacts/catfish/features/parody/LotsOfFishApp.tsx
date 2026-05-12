@@ -106,7 +106,7 @@ export function LotsOfFishApp() {
                 />
                 {badge > 0 ? (
                   <View style={styles.badge} pointerEvents="none">
-                    <Text style={styles.badgeText} numberOfLines={1}>
+                    <Text style={styles.badgeText} >
                       {badge > 9 ? "9+" : String(badge)}
                     </Text>
                   </View>

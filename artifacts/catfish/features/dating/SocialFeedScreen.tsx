@@ -72,7 +72,7 @@ function SocialCard({ fact, imageId }: SocialCardProps) {
           size={8}
           color={cfPalette.bone}
           style={styles.caption}
-          numberOfLines={0}
+          
         >
           {caption}
         </PixelText>

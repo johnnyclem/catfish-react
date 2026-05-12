@@ -34,6 +34,8 @@ const palette = {
   warn: "#ffb347",
   err: "#ff3860",
   ok: "#3cd296",
+  greenBright: "#3effa0",
+  redHot: "#ff4060",
 };
 
 const colors = {

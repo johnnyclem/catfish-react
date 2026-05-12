@@ -66,7 +66,7 @@ export function PhotosApp() {
             <PixelText
               size={5}
               color={cfPalette.fog}
-              numberOfLines={2}
+              
               style={styles.thumbLabel}
             >
               {fact.payload.text}

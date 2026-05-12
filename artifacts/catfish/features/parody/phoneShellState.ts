@@ -33,6 +33,8 @@ export type PhoneShellApp =
   | "lotsOfFish"
   | "journal"
   | "phone"
+  | "browser"
+  | "facetime"
   | "photos"
   | "gameCenter"
   | "egoTrip"

@@ -29,7 +29,9 @@ import { cfPalette } from "@/constants/colors";
 import { useGameState } from "@/core/gameStore";
 
 import { AppNotificationBadge } from "./AppNotificationBadge";
+import { BrowserIcon } from "./BrowserIcon";
 import { EgoTripIcon } from "./EgoTripIcon";
+import { FaceTimeIcon } from "./FaceTimeIcon";
 import { JournalIcon } from "./JournalIcon";
 import { LotsOfFishIcon } from "./LotsOfFishIcon";
 import { PhoneIcon } from "./PhoneIcon";
@@ -39,6 +41,8 @@ import { SugarCoatIcon } from "./SugarCoatIcon";
 import { WordLowIcon } from "./WordLowIcon";
 
 export type ParodyAppId =
+  | "browser"
+  | "facetime"
   | "egoTrip"
   | "sugarCoat"
   | "safeSpot"
@@ -67,7 +71,9 @@ const APPS: AppTileSpec[] = [
   { id: "wordLow", name: "Word-Low", Icon: WordLowIcon },
   { id: "lotsOfFish", name: "Lots 'o Fish", Icon: LotsOfFishIcon },
   { id: "journal", name: "Journal", Icon: JournalIcon },
+  { id: "browser", name: "Browser", Icon: BrowserIcon },
   { id: "phone", name: "Phone", Icon: PhoneIcon },
+  { id: "facetime", name: "FaceTime", Icon: FaceTimeIcon },
   { id: "photos", name: "Photos", Icon: PhotosIcon },
 ];
 
@@ -216,7 +222,7 @@ function AppTile({
               accessibilityLabel={badgeAccessibilityLabel}
             />
           </View>
-          <Text style={styles.tileLabel} numberOfLines={1}>
+          <Text style={styles.tileLabel} >
             {spec.name}
           </Text>
         </View>

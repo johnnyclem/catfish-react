@@ -43,11 +43,18 @@ Catalog of all wiki pages. Auto-updated by agents during `wiki-ingest`.
 
 | Page | Date |
 |------|------|
-| [[_activity/changelog]] | 2026-05-09 |
+| [[_activity/changelog]] | 2026-05-12 |
+
+## Handoffs
+
+| Page | Date |
+|------|------|
+| [[features/handoff-phase10-to-11]] | 2026-05-12 |
+| [[features/handoff-phase11-to-12]] | 2026-05-12 |
 
 ## Statistics
 
-- Total pages: 15 (excluding templates and this index)
+- Total pages: 17 (excluding templates and this index)
 - Avg confidence: 0.93
 - Stale pages: 0
 - Orphan pages: 0

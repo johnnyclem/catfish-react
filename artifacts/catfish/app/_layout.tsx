@@ -13,6 +13,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useGameHydration } from "@/core/gameStore";
 import { EndOfRunCard } from "@/features/accusation/EndOfRunCard";
 import { AudioProvider } from "@/features/audio/AudioProvider";
+import { OnboardingGate } from "@/features/onboarding/OnboardingGate";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -21,7 +22,7 @@ function RootLayoutNav() {
   // exposes `hydrated`; consumers gate their UI on that flag.
   useGameHydration();
   return (
-    <>
+    <OnboardingGate>
       <Stack
         screenOptions={{
           headerShown: false,
@@ -34,6 +35,14 @@ function RootLayoutNav() {
           name="chat/[threadId]"
           options={{ animation: "slide_from_right" }}
         />
+        <Stack.Screen
+          name="run-history/index"
+          options={{ animation: "slide_from_right" }}
+        />
+        <Stack.Screen
+          name="run-detail/[runId]"
+          options={{ animation: "slide_from_right" }}
+        />
       </Stack>
       {/* Mounted at the root so a closed run surfaces its End-of-Run
           overlay no matter which screen is visible — Day 7 face-to-
@@ -41,7 +50,7 @@ function RootLayoutNav() {
           player accusation can fire from the journal. The card
           renders nothing while `run.ending` is null. */}
       <EndOfRunCard />
-    </>
+    </OnboardingGate>
   );
 }
 

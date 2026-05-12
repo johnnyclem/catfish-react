@@ -4,6 +4,123 @@ Session logs and activity records. Append newest entries at the top.
 
 ---
 
+## 2026-05-12 — Phase 11 Full Implementation
+
+**Agent**: opencode (big-pickle)
+**Session type**: Implementation
+
+### What happened
+
+Implemented all 5 Phase 11 items: Settings screen, Title Screen polish, Continue Run Flow, Run History, and Onboarding Flow.
+
+#### 11.1 Title Screen Polish
+- Added run-status preview: suspect count (deck.length) + evidence count (committed facts)
+- Added subtle parallax phone graphic animation (Animated translateY loop)
+- Added confirmation dialog (`Alert.alert`) on "New Case (Reset)" with Cancel/Start New
+- Added "View Run History" button routing to `/run-history`
+
+#### 11.2 Onboarding Flow
+- Created `features/onboarding/onboardingStore.ts` — Zustand store + AsyncStorage persistence for onboarding state
+- Created `features/onboarding/OnboardingGate.tsx` — wraps root layout, gates onboarding on fresh install (no run, no archive)
+- Created `features/onboarding/OnboardingManager.tsx` — 6-step flow:
+  - Step 1: Welcome splash with story setup
+  - Step 2: Phone tour with app callout list
+  - Step 3: Swipe tutorial — auto-navigates to swipe, advances on first swipe
+  - Step 4: Chat tutorial — auto-navigates to matches, advances on first player message
+  - Step 5: Journal intro — navigates to journal, manual advance
+  - Step 6: Accusation warning — final screen, marks onboarding complete
+- Gate shows onboarding only on fresh install (no active run, no archive), skips for returning players
+
+#### 11.3 Settings Screen
+- Added `scanlinesEnabled`, `screenShakeEnabled`, `reduceMotionEnabled`, `highContrastTextEnabled` to `gameStore.ts` with AsyncStorage persistence and hydrate loading
+- Added `"settings"` to `PhoneShellApp` union type
+- Created `features/settings/SettingsIcon.tsx` — Feather gear icon in PixelIconFrame
+- Created `features/settings/SettingsScreen.tsx` — Audio/Display/Accessibility/About sections with RN Switch toggles
+- Added tile to `HomeGrid.APPS` array + routing case in `home.tsx`
+
+#### 11.4 Run History
+- Added `RunSummary` interface to `core/models.ts`
+- Added `loadRunArchive()`/`saveRunArchive()` to `core/repository.ts` (AsyncStorage, capped at 10 entries)
+- Added `runArchive` state to `gameStore.ts` — hydrates on load, saves when `startNewRun()` archives a closed run
+- Created `features/title/RunHistoryScreen.tsx` — list of archived runs with killer name, outcome, stats
+- Created `features/title/RunDetailScreen.tsx` — detail view with full stats, "Play Again" button
+- Added `run-history/index` and `run-detail/[runId]` routes in `_layout.tsx` + expo-router files
+
+#### 11.5 Continue Run Flow
+- Added `Checkpoint` interface and optional `checkpoint` field to `CaseRun` model
+- Added checkpoint-based routing in `app/home.tsx` — auto-navigates to the appropriate shell surface (date/facetime/chat) on mount if a checkpoint exists
+
+### Files created
+- `artifacts/catfish/features/settings/SettingsScreen.tsx`
+- `artifacts/catfish/features/settings/SettingsIcon.tsx`
+- `artifacts/catfish/features/title/RunHistoryScreen.tsx`
+- `artifacts/catfish/features/title/RunDetailScreen.tsx`
+- `artifacts/catfish/features/onboarding/onboardingStore.ts`
+- `artifacts/catfish/features/onboarding/OnboardingGate.tsx`
+- `artifacts/catfish/features/onboarding/OnboardingManager.tsx`
+- `artifacts/catfish/app/run-history/index.tsx`
+- `artifacts/catfish/app/run-detail/[runId].tsx`
+
+### Files modified
+- `artifacts/catfish/core/models.ts` — RunSummary, Checkpoint types
+- `artifacts/catfish/core/repository.ts` — loadRunArchive, saveRunArchive
+- `artifacts/catfish/core/gameStore.ts` — display prefs (fields+keys+loaders+setters), runArchive, archive-on-startNewRun
+- `artifacts/catfish/features/parody/phoneShellState.ts` — +"settings" to PhoneShellApp
+- `artifacts/catfish/features/parody/HomeGrid.tsx` — SettingsIcon import, "settings" in APPS + ParodyAppId
+- `artifacts/catfish/app/home.tsx` — SettingsScreen import, settings routing, checkpoint restoration
+- `artifacts/catfish/app/index.tsx` — parallax anim, run-status preview, Alert confirmation, View Run History
+- `artifacts/catfish/app/_layout.tsx` — OnboardingGate wrap, run-history/run-detail Stack.Screen entries
+- `llm-wiki/_activity/changelog.md` — this entry
+
+### Verification
+- `pnpm run typecheck` — **clean** across all 4 workspace packages
+
+---
+
+## 2026-05-12 — Phase 10 Remaining Items + Phase 11 Handoff
+
+**Agent**: opencode (big-pickle)
+**Session type**: Implementation + handoff
+
+### What happened
+
+Completed the last two items from the Phase 10 remaining-items checklist, then prepared a handoff document for Phase 10 residual work + Phase 11 build plan.
+
+#### 10.1 SuspectBoard card tap → filter Journal
+
+- Added `journalFilterCandidateId` + `setJournalFilter()` to `phoneShellState.ts` — a cross-app navigation parameter so SuspectBoard can tell Journal which suspect to filter on.
+- Changed `SuspectBoardScreen.handleCardTap` to set the filter then navigate via `openApp("journal")` instead of opening a chat thread.
+- Card hint: "tap to chat ▸" → "tap to review ▸".
+- `JournalScreen` reads the filter from phoneShell on mount via `useEffect`, initializes `selectedSuspectId`, then clears the filter.
+
+#### 10.4 Evidence strength breakdown in AccusationStep2
+
+- Replaced single `EvidenceBar` with `EvidenceBreakdownBar`: three color-coded segments for strong (cyan `s`), contradiction (red `c`), unexplained (grey `u`).
+- Added `strongFacts`, `contradictionFacts`, `unexplainedFacts` to `AccuseRow`.
+- Breakdown computation builds a `chainAboutByFactId` map from evidence chains to categorize each captured fact.
+
+#### Handoff document
+
+Created `llm-wiki/features/handoff-phase10-to-11.md` with:
+- Summary of this session's work
+- Phase 10 remaining gaps vs PRD spec (SuspectBoard evidence counts per card)
+- Full Phase 11 build plan with effort estimates, key files, dependency graph, and risk areas
+
+### Files modified
+
+- `artifacts/catfish/features/parody/phoneShellState.ts`
+- `artifacts/catfish/features/journal/SuspectBoardScreen.tsx`
+- `artifacts/catfish/features/journal/JournalScreen.tsx`
+- `artifacts/catfish/features/accusation/AccusationStep2.tsx`
+- `llm-wiki/features/handoff-phase10-to-11.md` (new)
+- `llm-wiki/_activity/changelog.md` (this entry)
+
+### Verification
+
+- `pnpm run typecheck` — **clean** across all 4 workspace packages
+
+---
+
 ## 2026-05-09 — React Port: SocialFeed, SuspectBoard, Journal P2
 
 **Agent**: opencode (MiniMax-M2.7)

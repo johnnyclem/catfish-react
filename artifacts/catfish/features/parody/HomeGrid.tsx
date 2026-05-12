@@ -37,6 +37,7 @@ import { LotsOfFishIcon } from "./LotsOfFishIcon";
 import { PhoneIcon } from "./PhoneIcon";
 import { PhotosIcon } from "./PhotosIcon";
 import { SafeSpotIcon } from "./SafeSpotIcon";
+import { SettingsIcon } from "@/features/settings/SettingsIcon";
 import { SugarCoatIcon } from "./SugarCoatIcon";
 import { WordLowIcon } from "./WordLowIcon";
 
@@ -51,7 +52,8 @@ export type ParodyAppId =
   | "journal"
   | "phone"
   | "photos"
-  | "gameCenter";
+  | "gameCenter"
+  | "settings";
 
 interface Props {
   onOpenApp: (id: ParodyAppId) => void;
@@ -75,6 +77,7 @@ const APPS: AppTileSpec[] = [
   { id: "phone", name: "Phone", Icon: PhoneIcon },
   { id: "facetime", name: "FaceTime", Icon: FaceTimeIcon },
   { id: "photos", name: "Photos", Icon: PhotosIcon },
+  { id: "settings", name: "Settings", Icon: SettingsIcon },
 ];
 
 export function HomeGrid({ onOpenApp }: Props) {

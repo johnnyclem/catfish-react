@@ -40,7 +40,8 @@ export type PhoneShellApp =
   | "egoTrip"
   | "sugarCoat"
   | "safeSpot"
-  | "wordLow";
+  | "wordLow"
+  | "settings";
 
 /**
  * Lots 'o Fish has three real "screens" plus its splash intro. We

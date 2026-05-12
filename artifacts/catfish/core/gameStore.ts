@@ -52,6 +52,7 @@ import {
   newVoicemailId,
   newFacetimeCallId,
   PendingSuspectLine,
+  RunSummary,
   SwipeRecord,
   ThreadId,
   EvidenceChain,
@@ -64,7 +65,7 @@ import {
   SafeSpotSession,
   SugarCoatSession,
 } from "./parodySessions";
-import { loadActiveRun, saveActiveRun } from "./repository";
+import { loadActiveRun, loadRunArchive, saveActiveRun, saveRunArchive } from "./repository";
 import { voiceForCandidate } from "./voiceProfiles";
 
 /**
@@ -193,6 +194,29 @@ interface GameStateValue {
    */
   musicMuted: boolean;
   /**
+   * Persistent display preference — CRT scanline overlay visibility.
+   * Lives at the top of the store (not on CaseRun) so it survives
+   * `resetRun()`. Defaults to true (scanlines on). Backed by its own
+   * AsyncStorage key.
+   */
+  scanlinesEnabled: boolean;
+  /**
+   * Persistent display preference — screen shake on interactions.
+   * Default true. Same persistence contract as `scanlinesEnabled`.
+   */
+  screenShakeEnabled: boolean;
+  /**
+   * Persistent accessibility preference — reduce motion (disables
+   * non-essential animations). Default false. Same persistence
+   * contract as `scanlinesEnabled`.
+   */
+  reduceMotionEnabled: boolean;
+  /**
+   * Persistent accessibility preference — high contrast text.
+   * Default false. Same persistence contract as `scanlinesEnabled`.
+   */
+  highContrastTextEnabled: boolean;
+  /**
    * In-memory only — Facts removed via `removeFact`, stashed so the
    * Journal tab can offer a brief undo affordance. A small queue (not
    * a single slot) so a player triaging several facts in quick
@@ -239,6 +263,8 @@ interface GameStateValue {
    * outlive `resetRun()`.
    */
   parodySessions: ParodySessions;
+  /** Persisted archive of closed-run summaries for the Run History screen. */
+  runArchive: RunSummary[];
   hydrate: () => Promise<void>;
   /** Toggle voice playback. Persists to AsyncStorage immediately. */
   setVoiceMuted: (muted: boolean) => Promise<void>;
@@ -246,6 +272,14 @@ interface GameStateValue {
   setSfxMuted: (muted: boolean) => Promise<void>;
   /** Toggle background music. Persists to AsyncStorage immediately. */
   setMusicMuted: (muted: boolean) => Promise<void>;
+  /** Toggle CRT scanline overlay. Persists to AsyncStorage immediately. */
+  setScanlinesEnabled: (enabled: boolean) => Promise<void>;
+  /** Toggle screen shake. Persists to AsyncStorage immediately. */
+  setScreenShakeEnabled: (enabled: boolean) => Promise<void>;
+  /** Toggle reduce-motion accessibility mode. Persists to AsyncStorage immediately. */
+  setReduceMotionEnabled: (enabled: boolean) => Promise<void>;
+  /** Toggle high-contrast text. Persists to AsyncStorage immediately. */
+  setHighContrastTextEnabled: (enabled: boolean) => Promise<void>;
   /**
    * Record a parody mini-game result. No-op (returns `false`) if the
    * supplied value isn't strictly higher than the current best —
@@ -877,6 +911,10 @@ let hydrationPromise: Promise<void> | null = null;
 const VOICE_MUTED_KEY = "catfish/prefs/voice_muted/v1";
 const SFX_MUTED_KEY = "catfish/prefs/sfx_muted/v1";
 const MUSIC_MUTED_KEY = "catfish/prefs/music_muted/v1";
+const SCANLINES_KEY = "catfish/prefs/scanlines/v1";
+const SCREEN_SHAKE_KEY = "catfish/prefs/screen_shake/v1";
+const REDUCE_MOTION_KEY = "catfish/prefs/reduce_motion/v1";
+const HIGH_CONTRAST_KEY = "catfish/prefs/high_contrast/v1";
 /**
  * AsyncStorage row for the parody mini-game high scores. Versioned
  * (`/v1`) so a future schema change (e.g. per-day Wordle history,
@@ -1355,10 +1393,15 @@ export const useGameState = create<GameStateValue>((set, get) => ({
   voiceMuted: false,
   sfxMuted: false,
   musicMuted: false,
+  scanlinesEnabled: true,
+  screenShakeEnabled: true,
+  reduceMotionEnabled: false,
+  highContrastTextEnabled: false,
   recentlyDiscarded: [],
   journalNewSinceLastVisit: 0,
   parody: { ...EMPTY_PARODY_SCORES },
   parodySessions: { ...EMPTY_PARODY_SESSIONS },
+  runArchive: [],
 
   hydrate: async () => {
     if (hydrationPromise) return hydrationPromise;
@@ -1370,15 +1413,25 @@ export const useGameState = create<GameStateValue>((set, get) => ({
         voiceMuted,
         sfxMuted,
         musicMuted,
+        scanlinesEnabled,
+        screenShakeEnabled,
+        reduceMotionEnabled,
+        highContrastTextEnabled,
         parody,
         sessionsLoaded,
+        runArchive,
       ] = await Promise.all([
         loadActiveRun().then(migrateRun),
         loadVoiceMuted(),
         loadBoolPref(SFX_MUTED_KEY),
         loadBoolPref(MUSIC_MUTED_KEY),
+        loadBoolPref(SCANLINES_KEY),
+        loadBoolPref(SCREEN_SHAKE_KEY),
+        loadBoolPref(REDUCE_MOTION_KEY),
+        loadBoolPref(HIGH_CONTRAST_KEY),
         loadParodyScores(),
         loadParodySessions(),
+        loadRunArchive(),
       ]);
       // Cold-start invariant: undo state is in-memory only, so a
       // dangling stash from a prior process is impossible. Still,
@@ -1396,9 +1449,14 @@ export const useGameState = create<GameStateValue>((set, get) => ({
         voiceMuted,
         sfxMuted,
         musicMuted,
+        scanlinesEnabled: scanlinesEnabled ?? true,
+        screenShakeEnabled: screenShakeEnabled ?? true,
+        reduceMotionEnabled: reduceMotionEnabled ?? false,
+        highContrastTextEnabled: highContrastTextEnabled ?? false,
         recentlyDiscarded: [],
         parody,
         parodySessions: sessionsLoaded.parsed,
+        runArchive,
       });
       // If the on-disk blob was carrying same-day-gated snapshots
       // that the parser just dropped (stale dateKey, malformed row),
@@ -1430,6 +1488,23 @@ export const useGameState = create<GameStateValue>((set, get) => ({
   setMusicMuted: async (muted) => {
     set({ musicMuted: muted });
     await saveBoolPref(MUSIC_MUTED_KEY, muted);
+  },
+
+  setScanlinesEnabled: async (enabled) => {
+    set({ scanlinesEnabled: enabled });
+    await saveBoolPref(SCANLINES_KEY, enabled);
+  },
+  setScreenShakeEnabled: async (enabled) => {
+    set({ screenShakeEnabled: enabled });
+    await saveBoolPref(SCREEN_SHAKE_KEY, enabled);
+  },
+  setReduceMotionEnabled: async (enabled) => {
+    set({ reduceMotionEnabled: enabled });
+    await saveBoolPref(REDUCE_MOTION_KEY, enabled);
+  },
+  setHighContrastTextEnabled: async (enabled) => {
+    set({ highContrastTextEnabled: enabled });
+    await saveBoolPref(HIGH_CONTRAST_KEY, enabled);
   },
 
   recordParodyScore: async (game, value) => {
@@ -1492,6 +1567,28 @@ export const useGameState = create<GameStateValue>((set, get) => ({
   },
 
   startNewRun: async (forced) => {
+    const prevRun = get().run;
+    // Archive the previous run if it was closed — capture a summary
+    // before overwriting so the Run History screen can show it.
+    let archive = get().runArchive;
+    if (prevRun?.closed) {
+      const summary: RunSummary = {
+        runId: prevRun.id,
+        killer: prevRun.killer,
+        startedAt: prevRun.startedAt,
+        endedAt: prevRun.ending?.narrativeBeat
+          ? new Date().toISOString()
+          : prevRun.startedAt,
+        outcome: prevRun.ending?.ending ?? "escapedStub",
+        daysTaken: prevRun.day,
+        factsDiscovered: prevRun.facts.filter((f) => f.committed).length,
+        caughtKiller: prevRun.ending?.correct ?? false,
+        accusedCandidateId: prevRun.ending?.accusedCandidateId,
+        matchCount: prevRun.matches.length,
+        swipeCount: prevRun.swipes.length,
+      };
+      archive = [summary, ...archive];
+    }
     const next = buildRun(forced);
     // Starting a fresh run forfeits any pending undos — facts stashed
     // against the previous run must not be restorable into the new one.
@@ -1505,8 +1602,13 @@ export const useGameState = create<GameStateValue>((set, get) => ({
     // run's authored facts are not "new evidence to triage", they're
     // the starting case file. The counter only tracks player-captured
     // facts going forward.
-    set({ run: next, recentlyDiscarded: [], journalNewSinceLastVisit: 0 });
-    await saveActiveRun(next);
+    set({
+      run: next,
+      recentlyDiscarded: [],
+      journalNewSinceLastVisit: 0,
+      runArchive: archive,
+    });
+    await Promise.all([saveActiveRun(next), saveRunArchive(archive)]);
     return next;
   },
 

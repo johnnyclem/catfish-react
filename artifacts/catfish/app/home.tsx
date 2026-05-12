@@ -27,7 +27,7 @@
  * gesture, not a navigation history primitive — so it's much simpler
  * to drive from local state than from `router.back`.
  */
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { Platform, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -40,6 +40,7 @@ import { FaceTimeApp } from "@/features/phone/FaceTimeApp";
 import { GameCenter } from "@/features/parody/GameCenter";
 import { HomeGrid } from "@/features/parody/HomeGrid";
 import { HomeIndicator } from "@/features/parody/HomeIndicator";
+import SettingsScreen from "@/features/settings/SettingsScreen";
 import { JournalApp } from "@/features/parody/JournalApp";
 import { LotsOfFishApp } from "@/features/parody/LotsOfFishApp";
 import { PhoneStatusBar } from "@/features/parody/PhoneStatusBar";
@@ -71,6 +72,35 @@ export default function PhoneHomeShell() {
     }
   }, [currentApp, markJournalVisited]);
 
+  // Phase 11.5 — checkpoint restoration on mount. If the run has a
+  // mid-game checkpoint (e.g. an active Date scene), auto-navigate
+  // to the appropriate phone-shell surface instead of the home grid.
+  const run = useGameState((s) => s.run);
+  const checkpointHandled = useRef(false);
+  useEffect(() => {
+    if (checkpointHandled.current) return;
+    if (!run?.checkpoint) return;
+    const cp = run.checkpoint;
+    switch (cp.type) {
+      case "facetime":
+        openApp("facetime");
+        break;
+      case "chat":
+        if (cp.screen) {
+          setLotsOfFishView(cp.screen as any);
+        }
+        openApp("lotsOfFish");
+        break;
+      case "date":
+        // Date scenes are handled by Lots 'o Fish's swipe tab.
+        // Landing on the home grid is the safe default until the
+        // full Date mode surface lands in a future phase.
+        openApp("lotsOfFish", "swipe");
+        break;
+    }
+    checkpointHandled.current = true;
+  }, [run, openApp, setLotsOfFishView]);
+
   return (
     <View
       style={[
@@ -100,6 +130,7 @@ export default function PhoneHomeShell() {
         {currentApp === "egoTrip" && <EgoTrip onExit={goHome} />}
         {currentApp === "safeSpot" && <SafeSpot onExit={goHome} />}
         {currentApp === "sugarCoat" && <SugarCoat onExit={goHome} />}
+        {currentApp === "settings" && <SettingsScreen />}
       </View>
 
       <HomeIndicator

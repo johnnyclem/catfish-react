@@ -8,9 +8,12 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import { CaseRun } from "./models";
+import { CaseRun, RunSummary } from "./models";
 
 const ACTIVE_RUN_KEY = "catfish/active_run/v1";
+const RUN_ARCHIVE_KEY = "catfish/run_archive/v1";
+
+const MAX_ARCHIVE_SIZE = 10;
 
 export async function loadActiveRun(): Promise<CaseRun | null> {
   try {
@@ -32,4 +35,25 @@ export async function saveActiveRun(run: CaseRun | null): Promise<void> {
 
 export async function clearActiveRun(): Promise<void> {
   await AsyncStorage.removeItem(ACTIVE_RUN_KEY);
+}
+
+export async function loadRunArchive(): Promise<RunSummary[]> {
+  try {
+    const raw = await AsyncStorage.getItem(RUN_ARCHIVE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed as RunSummary[];
+  } catch {
+    return [];
+  }
+}
+
+export async function saveRunArchive(
+  summaries: RunSummary[],
+): Promise<void> {
+  await AsyncStorage.setItem(
+    RUN_ARCHIVE_KEY,
+    JSON.stringify(summaries.slice(0, MAX_ARCHIVE_SIZE)),
+  );
 }

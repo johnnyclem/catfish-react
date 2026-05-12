@@ -30,6 +30,7 @@ The PhoneShell wraps the entire game experience. Apps within the phone include:
 - **Photos** — Evidence gallery showing discovered fact images (`PhotosGalleryView`)
 - **Journal** — Captured + authored fact browser with accusation entry point
 - **Word-Low**, **Ego Trip**, **Sugar Coat**, **Safe Spot** — Mini-games launched directly from the home screen
+- **Settings** — Audio/Display/Accessibility toggles. Persisted to separate AsyncStorage keys (not on CaseRun). Uses RN `Switch` components with `cfPalette` styling. Added Phase 11.
 - Other app stubs for future features (phone, FaceTime, mail, browser)
 
 ### Journal Badge

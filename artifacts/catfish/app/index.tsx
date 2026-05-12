@@ -6,7 +6,8 @@
  */
 
 import { router } from "expo-router";
-import { Platform, ScrollView, StyleSheet, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Alert, Animated, Platform, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AssetImage } from "@/components/AssetImage";
@@ -20,7 +21,6 @@ import { cfPalette } from "@/constants/colors";
 import { useGameState } from "@/core/gameStore";
 import { ALL_KILLERS, KillerIdentity } from "@/core/models";
 import { getIdentityModule } from "@/core/identities";
-import { useState } from "react";
 
 export default function TitleScreen() {
   const insets = useSafeAreaInsets();
@@ -32,22 +32,65 @@ export default function TitleScreen() {
   const topPad = Math.max(insets.top, Platform.OS === "web" ? 24 : 16);
   const bottomPad = Math.max(insets.bottom, 16);
 
-  const enterCase = () => {
-    // Land the player on the parody phone home grid; from there the
-    // dating app is one tile away. Routing to /home (the new shell)
-    // replaces the legacy /(tabs) entry from the pre-#59 layout.
+  // Parallax phone graphic animation
+  const parallaxAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(parallaxAnim, {
+          toValue: 1,
+          duration: 4000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(parallaxAnim, {
+          toValue: 0,
+          duration: 4000,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [parallaxAnim]);
+
+  const parallaxY = parallaxAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -8],
+  });
+
+  const evidenceCount = run ? run.facts.filter((f) => f.committed).length : 0;
+
+  const enterCase = useCallback(() => {
     router.replace("/home" as never);
-  };
+  }, []);
 
-  const handleNewCase = async () => {
-    await startNewRun();
-    enterCase();
-  };
+  const handleNewCase = useCallback(async () => {
+    if (run && !run.closed) {
+      Alert.alert(
+        "Start New Case?",
+        "This will end your current investigation. All progress will be lost.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Start New", style: "destructive", onPress: async () => {
+            await startNewRun();
+            enterCase();
+          }},
+        ],
+      );
+    } else {
+      await startNewRun();
+      enterCase();
+    }
+  }, [run, startNewRun, enterCase]);
 
-  const handleForceKiller = async (identity: KillerIdentity) => {
+  const handleForceKiller = useCallback(async (identity: KillerIdentity) => {
     await startNewRun(identity);
     enterCase();
-  };
+  }, [startNewRun, enterCase]);
+
+  const handleViewRunHistory = useCallback(() => {
+    router.push("/run-history" as never);
+  }, []);
 
   if (!hydrated) {
     return (
@@ -66,14 +109,16 @@ export default function TitleScreen() {
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.logoWrap}>
-          <AssetImage
-            id="A001_title_logo"
-            style={styles.logo}
-            containerStyle={styles.logo}
-            resizeMode="contain"
-          />
-        </View>
+        <Animated.View style={{ transform: [{ translateY: parallaxY }] }}>
+          <View style={styles.logoWrap}>
+            <AssetImage
+              id="A001_title_logo"
+              style={styles.logo}
+              containerStyle={styles.logo}
+              resizeMode="contain"
+            />
+          </View>
+        </Animated.View>
 
         <PixelText
           size={9}
@@ -106,7 +151,7 @@ export default function TitleScreen() {
                 onPress={enterCase}
               />
               <PixelText size={7} color={cfPalette.ash} align="center" style={{ marginTop: 12 }}>
-                {`day ${run.day}  ·  ${run.matches.length} matches  ·  ${run.swipes.length} swipes`}
+                {`day ${run.day}  ·  ${run.deck.length} suspects  ·  ${evidenceCount} clues  ·  ${run.swipes.length} swipes`}
               </PixelText>
               <NeonButton
                 label="New Case (Reset)"
@@ -127,8 +172,6 @@ export default function TitleScreen() {
                 onPress={handleNewCase}
               />
               {run && run.closed ? (
-                // Closed-run footnote — explains why "Continue" is gone
-                // so the player doesn't think their save was wiped.
                 <PixelText
                   size={7}
                   color={cfPalette.ash}
@@ -140,6 +183,16 @@ export default function TitleScreen() {
               ) : null}
             </>
           )}
+        </View>
+
+        <View style={styles.runHistoryWrap}>
+          <NeonButton
+            label="View Run History"
+            variant="ghost"
+            size="sm"
+            fullWidth
+            onPress={handleViewRunHistory}
+          />
         </View>
 
         <View style={styles.debugWrap}>
@@ -222,6 +275,9 @@ const styles = StyleSheet.create({
   },
   buttons: {
     marginTop: 36,
+  },
+  runHistoryWrap: {
+    marginTop: 24,
   },
   debugWrap: {
     marginTop: 28,

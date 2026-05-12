@@ -611,6 +611,23 @@ export interface CaseRun {
    * to `[]`.
    */
   evidenceChains?: EvidenceChain[];
+  /**
+   * Optional mid-game checkpoint — set when the player enters a
+   * Date, Facetime call, or other interactive scene that should be
+   * resumed on cold start. Cleared when the scene ends normally.
+   */
+  checkpoint?: Checkpoint;
+}
+
+/**
+ * A resume point for an interactive scene. When the app cold-starts
+ * with a `CaseRun` that has a checkpoint, the phone shell auto-
+ * navigates to the corresponding surface instead of the home grid.
+ */
+export interface Checkpoint {
+  type: "date" | "facetime" | "chat";
+  threadId?: ThreadId;
+  screen?: string;
 }
 
 /**
@@ -646,6 +663,27 @@ export interface EvidenceChain {
   aboutCandidate?: KillerIdentity;
   /** ISO timestamp when the chain was built. */
   builtAt: string;
+}
+
+/**
+ * Archived run summary — the viewer-friendly schema for Run History.
+ * Saved when a run closes, storing just the info needed for the history
+ * list and detail screen rather than the full CaseRun blob.
+ */
+export interface RunSummary {
+  runId: RunId;
+  killer: KillerIdentity;
+  startedAt: string;
+  endedAt: string;
+  outcome: CaseEnding;
+  daysTaken: number;
+  factsDiscovered: number;
+  caughtKiller: boolean;
+  accusedCandidateId?: CandidateId;
+  /** Number of matches made during the run. */
+  matchCount: number;
+  /** Number of swipes made during the run. */
+  swipeCount: number;
 }
 
 /* ───────── id helpers (no `uuid` package — crashes on iOS/Android) ──── */

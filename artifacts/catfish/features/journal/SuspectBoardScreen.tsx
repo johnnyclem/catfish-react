@@ -15,7 +15,6 @@
  * study the board after the run ends to review how close they got.
  */
 
-import { router } from "expo-router";
 import { useMemo } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 
@@ -28,6 +27,7 @@ import {
 import { cfPalette } from "@/constants/colors";
 import { useGameState } from "@/core/gameStore";
 import { Candidate, CandidateId } from "@/core/models";
+import { usePhoneShell } from "@/features/parody/phoneShellState";
 
 interface SuspectCardProps {
   candidate: Candidate;
@@ -100,11 +100,9 @@ function SuspectCard({
 
         <RiskMeter level={riskLevel} />
 
-        {matchId && !isDropped && (
-          <PixelText size={5} color={cfPalette.ash} uppercase style={styles.tapHint}>
-            tap to chat ▸
-          </PixelText>
-        )}
+        <PixelText size={5} color={cfPalette.ash} uppercase style={styles.tapHint}>
+          tap to review ▸
+        </PixelText>
       </PixelPanel>
     </Pressable>
   );
@@ -163,12 +161,10 @@ function RiskMeter({ level }: { level: RiskLevel }) {
   );
 }
 
-function openThread(threadId: string) {
-  router.push(`/chat/${threadId}` as never);
-}
-
 export function SuspectBoardScreen() {
   const run = useGameState((s) => s.run);
+  const openApp = usePhoneShell((s) => s.openApp);
+  const setJournalFilter = usePhoneShell((s) => s.setJournalFilter);
 
   const { candidates, matchInfo, factCounts } = useMemo<{
     candidates: Candidate[];
@@ -199,8 +195,9 @@ export function SuspectBoardScreen() {
     return { candidates: run.deck, matchInfo: info, factCounts: counts };
   }, [run]);
 
-  function handleCardTap(candidateId: CandidateId, threadId: string | null) {
-    if (threadId) openThread(threadId);
+  function handleCardTap(candidateId: CandidateId, _threadId: string | null) {
+    setJournalFilter(candidateId);
+    openApp("journal");
   }
 
   if (!run) {

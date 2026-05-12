@@ -15,7 +15,7 @@
  * be discarded via the ✕ chip on each FactCard.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import {
@@ -56,7 +56,7 @@ export function JournalScreen() {
   const reopenEnding = useGameState((s) => s.reopenEnding);
   const startNewRun = useGameState((s) => s.startNewRun);
 
-  const [selectedSuspectId, setSelectedSuspectId] =
+  const [selectedSuspectId, setSelectedSuspectId_] =
     useState<CandidateId | null>(null);
   const [sortMode, setSortMode] = useState<JournalSortMode>("newest");
   const [accuseOpen, setAccuseOpen] = useState(false);
@@ -64,6 +64,19 @@ export function JournalScreen() {
   const [chainBuilderOpen, setChainBuilderOpen] = useState(false);
   const [selectedFact, setSelectedFact] = useState<Fact | null>(null);
   const [recoveryBusy, setRecoveryBusy] = useState(false);
+
+  function setSelectedSuspectId(id: CandidateId | null) {
+    setSelectedSuspectId_(id);
+  }
+
+  const journalFilterId = usePhoneShell((s) => s.journalFilterCandidateId);
+  const setJournalFilter = usePhoneShell((s) => s.setJournalFilter);
+  useEffect(() => {
+    if (journalFilterId) {
+      setSelectedSuspectId_(journalFilterId);
+      setJournalFilter(undefined);
+    }
+  }, [journalFilterId, setJournalFilter]);
 
   const committed = useMemo<Fact[]>(
     () => (run?.facts ?? []).filter((f) => f.committed),

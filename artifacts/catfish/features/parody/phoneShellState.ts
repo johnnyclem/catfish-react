@@ -66,6 +66,14 @@ interface PhoneShellState {
   goHome: () => void;
   /** Switch the dating-app bottom tab without re-mounting the shell. */
   setLotsOfFishView: (view: LotsOfFishView) => void;
+  /**
+   * Candidate id to pre-filter the Journal by when navigating from
+   * the SuspectBoard. Set before calling openApp("journal"); the
+   * JournalApp reads it on mount then clears it.
+   */
+  journalFilterCandidateId?: string;
+  /** Set the journal filter and optionally navigate to the journal app. */
+  setJournalFilter: (candidateId?: string) => void;
 }
 
 export const usePhoneShell = create<PhoneShellState>((set) => ({
@@ -79,4 +87,7 @@ export const usePhoneShell = create<PhoneShellState>((set) => ({
     })),
   goHome: () => set({ currentApp: "home" }),
   setLotsOfFishView: (view) => set({ lotsOfFishView: view }),
+  journalFilterCandidateId: undefined,
+  setJournalFilter: (candidateId) =>
+    set({ journalFilterCandidateId: candidateId }),
 }));

@@ -21,7 +21,7 @@ import {
 } from "@/components/PixelChrome";
 import { cfPalette } from "@/constants/colors";
 import { useGameState } from "@/core/gameStore";
-import { Candidate, CandidateId, EvidenceChain } from "@/core/models";
+import { Candidate, CandidateId, FactId } from "@/core/models";
 
 interface AccusationStep2Props {
   onNext: (selectedId: CandidateId) => void;
@@ -35,6 +35,9 @@ interface AccuseRow {
   factCount: number;
   chainCount: number;
   evidenceStrength: number;
+  strongFacts: number;
+  contradictionFacts: number;
+  unexplainedFacts: number;
 }
 
 const STRENGTH_THRESHOLD = 30;
@@ -54,13 +57,35 @@ export function AccusationStep2({ onNext, onBack }: AccusationStep2Props) {
       run.matches.filter((m) => m.unmatched).map((m) => m.candidateId),
     );
 
-    const factsByCandidate = new Map<CandidateId, number>();
+    // Map candidate id → killer identity for chain matching
+    const identityByCandidate = new Map<CandidateId, string>();
+    for (const cd of run.deck) {
+      if (cd.isKillerCandidate && cd.identity) {
+        identityByCandidate.set(cd.id, cd.identity);
+      }
+    }
+
+    // Build a set of all fact ids that appear in any chain
+    const chainedFactIds = new Set<FactId>();
+    // Map fact id → the aboutCandidate of its chain
+    const chainAboutByFactId = new Map<FactId, string | undefined>();
+    for (const c of run.evidenceChains ?? []) {
+      chainedFactIds.add(c.factIdA);
+      chainedFactIds.add(c.factIdB);
+      chainAboutByFactId.set(c.factIdA, c.aboutCandidate);
+      chainAboutByFactId.set(c.factIdB, c.aboutCandidate);
+    }
+
+    // Per-candidate fact lists
+    const factsByCandidate = new Map<CandidateId, FactId[]>();
     for (const f of run.facts) {
       if (!f.committed) continue;
       if (f.kind !== "captured") continue;
       const cid = f.capturedFromCandidateId;
       if (!cid) continue;
-      factsByCandidate.set(cid, (factsByCandidate.get(cid) ?? 0) + 1);
+      const list = factsByCandidate.get(cid) ?? [];
+      list.push(f.id);
+      factsByCandidate.set(cid, list);
     }
 
     const chainsByCandidate = new Map<CandidateId, number>();
@@ -75,10 +100,30 @@ export function AccusationStep2({ onNext, onBack }: AccusationStep2Props) {
     }
 
     const out: AccuseRow[] = seen.map((c) => {
-      const fCount = factsByCandidate.get(c.id) ?? 0;
+      const fCount = factsByCandidate.get(c.id)?.length ?? 0;
       const chCount = chainsByCandidate.get(c.id) ?? 0;
       const totalEvidence = fCount + chCount * 2;
       const strength = Math.min(100, totalEvidence * 12);
+
+      // Breakdown: strong / contradiction / unexplained
+      const candidateFacts = factsByCandidate.get(c.id) ?? [];
+      const myIdentity = identityByCandidate.get(c.id);
+      let strong = 0;
+      let contradiction = 0;
+      let unexplained = 0;
+      for (const fid of candidateFacts) {
+        if (!chainedFactIds.has(fid)) {
+          unexplained++;
+        } else {
+          const chainAbout = chainAboutByFactId.get(fid);
+          if (chainAbout && chainAbout === myIdentity) {
+            strong++;
+          } else {
+            contradiction++;
+          }
+        }
+      }
+
       return {
         candidate: c,
         matched: matchedIds.has(c.id),
@@ -86,6 +131,9 @@ export function AccusationStep2({ onNext, onBack }: AccusationStep2Props) {
         factCount: fCount,
         chainCount: chCount,
         evidenceStrength: strength,
+        strongFacts: strong,
+        contradictionFacts: contradiction,
+        unexplainedFacts: unexplained,
       };
     });
 
@@ -175,7 +223,14 @@ export function AccusationStep2({ onNext, onBack }: AccusationStep2Props) {
                   {r.factCount > 0 ? `  ·  ${r.factCount} fact${r.factCount === 1 ? "" : "s"}` : "  ·  no facts"}
                   {r.chainCount > 0 ? `  ·  ${r.chainCount} chain${r.chainCount === 1 ? "" : "s"}` : ""}
                 </PixelText>
-                <EvidenceBar strength={r.evidenceStrength} compact />
+                {r.factCount > 0 && (
+                  <EvidenceBreakdownBar
+                    strong={r.strongFacts}
+                    contradiction={r.contradictionFacts}
+                    unexplained={r.unexplainedFacts}
+                    compact
+                  />
+                )}
               </View>
               {isSel && (
                 <PixelText size={9} color={cfPalette.pinkHot} glow>
@@ -222,30 +277,76 @@ export function AccusationStep2({ onNext, onBack }: AccusationStep2Props) {
   );
 }
 
-interface EvidenceBarProps {
-  strength: number;
+interface EvidenceBreakdownBarProps {
+  strong: number;
+  contradiction: number;
+  unexplained: number;
   compact?: boolean;
 }
 
-function EvidenceBar({ strength, compact }: EvidenceBarProps) {
-  const color =
-    strength >= 60 ? cfPalette.cyan :
-    strength >= 30 ? cfPalette.cyanHot :
-    cfPalette.redHot;
+function EvidenceBreakdownBar({
+  strong,
+  contradiction,
+  unexplained,
+  compact,
+}: EvidenceBreakdownBarProps) {
+  const total = strong + contradiction + unexplained;
+  if (total === 0) return null;
 
   return (
     <View style={[styles.evidenceBar, compact && styles.evidenceBarCompact]}>
-      <View style={styles.evidenceBarTrack}>
-        <View
-          style={[
-            styles.evidenceBarFill,
-            { width: `${strength}%`, backgroundColor: color },
-          ]}
-        />
+      <View style={styles.breakdownTrack}>
+        {strong > 0 && (
+          <View
+            style={[
+              styles.breakdownSegment,
+              {
+                flex: strong,
+                backgroundColor: cfPalette.cyan,
+              },
+            ]}
+          />
+        )}
+        {contradiction > 0 && (
+          <View
+            style={[
+              styles.breakdownSegment,
+              {
+                flex: contradiction,
+                backgroundColor: cfPalette.redHot,
+              },
+            ]}
+          />
+        )}
+        {unexplained > 0 && (
+          <View
+            style={[
+              styles.breakdownSegment,
+              {
+                flex: unexplained,
+                backgroundColor: cfPalette.iron,
+              },
+            ]}
+          />
+        )}
       </View>
-      <PixelText size={5} color={color} uppercase>
-        {strength}%
-      </PixelText>
+      <View style={styles.breakdownLegend}>
+        {strong > 0 && (
+          <PixelText size={4} color={cfPalette.cyan} uppercase>
+            {strong}s
+          </PixelText>
+        )}
+        {contradiction > 0 && (
+          <PixelText size={4} color={cfPalette.redHot} uppercase>
+            {contradiction}c
+          </PixelText>
+        )}
+        {unexplained > 0 && (
+          <PixelText size={4} color={cfPalette.iron} uppercase>
+            {unexplained}u
+          </PixelText>
+        )}
+      </View>
     </View>
   );
 }
@@ -304,21 +405,26 @@ const styles = StyleSheet.create({
   evidenceBar: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 6,
     marginTop: 4,
   },
   evidenceBarCompact: {
     marginTop: 2,
   },
-  evidenceBarTrack: {
+  breakdownTrack: {
     flex: 1,
     height: 4,
-    backgroundColor: cfPalette.iron,
+    flexDirection: "row",
     borderRadius: 2,
     overflow: "hidden",
+    gap: 1,
   },
-  evidenceBarFill: {
+  breakdownSegment: {
     height: "100%",
-    borderRadius: 2,
+    borderRadius: 1,
+  },
+  breakdownLegend: {
+    flexDirection: "row",
+    gap: 4,
   },
 });

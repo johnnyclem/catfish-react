@@ -1,5 +1,32 @@
 {
-  "buildCommand": "cd artifacts/catfish && EXPO_PUBLIC_DOMAIN=$VERCEL_URL pnpm exec expo export --platform web --output-dir dist",
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
   "installCommand": "cd artifacts/catfish && pnpm install",
-  "outputDirectory": "artifacts/catfish/dist"
+  "buildCommand": "cd artifacts/catfish && EXPO_PUBLIC_DOMAIN=${VERCEL_PROJECT_PRODUCTION_URL:-$VERCEL_URL} pnpm exec expo export --platform web --output-dir dist",
+  "outputDirectory": "artifacts/catfish/dist",
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ],
+  "headers": [
+    {
+      "source": "/_expo/static/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    },
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    },
+    {
+      "source": "/(.*)\\.html",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
+      ]
+    }
+  ]
 }

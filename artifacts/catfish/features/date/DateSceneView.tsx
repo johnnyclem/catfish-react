@@ -87,9 +87,22 @@ const EXPRESSION_OVERLAY: Record<ExpressionState, string> = {
 function portraitAssetId(
   character: string,
   expression: ExpressionState,
+  candidatePortraitAssetId?: string,
 ): string {
-  const base = PORTRAIT_BASE[character] ?? "A500_avatar_placeholder";
+  // Decoys aren't in PORTRAIT_BASE because the killer-portrait set was
+  // hand-authored. Fall through to the candidate's own portrait when
+  // we have one — that way a date with a decoy at least shows their
+  // matchmaking-app face instead of the generic placeholder.
+  const base =
+    PORTRAIT_BASE[character] ??
+    candidatePortraitAssetId ??
+    "A500_avatar_placeholder";
   if (expression === "neutral") return base;
+  // Expression overlays only exist for the hand-authored killer
+  // sprites. For a decoy-portrait fallback, leave the base portrait
+  // alone — swapping in a "_uneasy" suffix would produce a missing
+  // asset id.
+  if (!PORTRAIT_BASE[character]) return base;
   const suffix = expression.replace("neutral_saintmask", "neutral_smt");
   return base.replace("_portrait_smile", `_portrait_${suffix}`);
 }
@@ -346,10 +359,12 @@ export function DateSceneView({ scene, onDateEnd }: DateSceneViewProps) {
       onCameraChange: (mode) => setCameraMode(mode),
       onMusicModeChange: (mode) => setMusicMode(mode),
       onDiscover: (factId) => {
-        useGameState.getState().commitFact({
-          candidateId: scene.partner,
-          quote: `[Date clue] ${factId}`,
-        });
+        // Force-reveal the authored fact so it surfaces in the journal
+        // immediately, regardless of its day or source gate. Earlier
+        // wiring here called `commitFact` with a synthetic quote, which
+        // created a duplicate captured row that never matched the
+        // accusation resolver's required-fact ids.
+        void useGameState.getState().revealAuthoredFact(factId);
       },
       onEnd: (outcome) => {
         onDateEnd(outcome);
@@ -414,7 +429,17 @@ export function DateSceneView({ scene, onDateEnd }: DateSceneViewProps) {
 
   const partner = scene.partner;
   const expression = currentBeat?.expression ?? "neutral";
-  const portraitId = portraitAssetId(partner, expression);
+  // Look up the partner candidate so we can fall back to their
+  // dating-app portrait when the partner isn't one of the eight
+  // hand-authored killer sprites (i.e. when dating a decoy).
+  const partnerCandidate = run?.deck.find(
+    (c) => c.id === partner || c.identity === partner,
+  );
+  const portraitId = portraitAssetId(
+    partner,
+    expression,
+    partnerCandidate?.portraitAssetId,
+  );
   const envId = ENVIRONMENTS[scene.environment] ?? "env_coffee_shop_day";
 
   return (

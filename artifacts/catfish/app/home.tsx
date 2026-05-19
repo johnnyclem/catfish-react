@@ -27,11 +27,12 @@
  * gesture, not a navigation history primitive — so it's much simpler
  * to drive from local state than from `router.back`.
  */
-import { useCallback, useEffect, useRef } from "react";
-import { Platform, StyleSheet, View } from "react-native";
+import { useEffect, useRef } from "react";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useGameState } from "@/core/gameStore";
+import { buildDateSceneFor } from "@/core/dateSceneFactory";
 
 import { BrowserApp } from "@/features/phone/BrowserApp";
 import { PhotosApp } from "@/features/parody/PhotosApp";
@@ -49,6 +50,7 @@ import { EgoTrip } from "@/features/parody/games/EgoTrip";
 import { SafeSpot } from "@/features/parody/games/SafeSpot";
 import { SugarCoat } from "@/features/parody/games/SugarCoat";
 import { WordLow } from "@/features/parody/games/WordLow";
+import { DateSceneView } from "@/features/date/DateSceneView";
 import { emitSfx } from "@/features/audio/audioEvents";
 
 export default function PhoneHomeShell() {
@@ -57,7 +59,10 @@ export default function PhoneHomeShell() {
   const openApp = usePhoneShell((s) => s.openApp);
   const goHome = usePhoneShell((s) => s.goHome);
   const setLotsOfFishView = usePhoneShell((s) => s.setLotsOfFishView);
+  const activeDateScene = usePhoneShell((s) => s.activeDateScene);
+  const setActiveDateScene = usePhoneShell((s) => s.setActiveDateScene);
   const markJournalVisited = useGameState((s) => s.markJournalVisited);
+  const endDate = useGameState((s) => s.endDate);
 
   const topPad = Math.max(insets.top, Platform.OS === "web" ? 16 : 8);
   const bottomPad = Math.max(0, insets.bottom);
@@ -98,15 +103,25 @@ export default function PhoneHomeShell() {
         }
         openApp("lotsOfFish");
         break;
-      case "date":
-        // Date scenes are handled by Lots 'o Fish's swipe tab.
-        // Landing on the home grid is the safe default until the
-        // full Date mode surface lands in a future phase.
-        openApp("lotsOfFish", "swipe");
+      case "date": {
+        // Re-synthesize the date scene for the partner the player was
+        // mid-conversation with. The DateDirector independently
+        // recovers its per-beat session from AsyncStorage, so the
+        // scene resumes at the last completed beat.
+        const cand = cp.candidateId
+          ? run.deck.find((c) => c.id === cp.candidateId)
+          : undefined;
+        if (cand) {
+          setActiveDateScene(buildDateSceneFor(cand));
+        }
         break;
+      }
     }
     checkpointHandled.current = true;
-  }, [run, openApp, setLotsOfFishView]);
+  }, [run, openApp, setLotsOfFishView, setActiveDateScene]);
+
+  const showLastDayBanner =
+    !!run && !run.closed && run.day >= 6 && currentApp !== "journal";
 
   return (
     <View
@@ -116,6 +131,10 @@ export default function PhoneHomeShell() {
       ]}
     >
       <PhoneStatusBar />
+
+      {showLastDayBanner && (
+        <LastDayBanner onOpenJournal={() => openApp("journal")} />
+      )}
 
       <View style={styles.surface}>
         {currentApp === "home" && (
@@ -155,9 +174,67 @@ export default function PhoneHomeShell() {
         }}
         disabled={currentApp === "home"}
       />
+
+      {activeDateScene && (
+        <View style={styles.dateOverlay} pointerEvents="auto">
+          <DateSceneView
+            scene={activeDateScene}
+            onDateEnd={() => {
+              setActiveDateScene(null);
+              void endDate();
+            }}
+          />
+        </View>
+      )}
     </View>
   );
 }
+
+interface LastDayBannerProps {
+  onOpenJournal: () => void;
+}
+
+/**
+ * Final-day prompt rendered above the phone shell when the run is
+ * about to time out. Tapping it jumps straight to the Journal so the
+ * "Accuse A Suspect" button is one tap away — the user playtest
+ * showed players couldn't find the accusation flow inside the case.
+ */
+function LastDayBanner({ onOpenJournal }: LastDayBannerProps) {
+  return (
+    <Pressable
+      onPress={onOpenJournal}
+      accessibilityRole="button"
+      accessibilityLabel="Last day to accuse — open the journal"
+      style={({ pressed }) => [
+        bannerStyles.wrap,
+        pressed && { opacity: 0.75 },
+      ]}
+    >
+      <Text style={bannerStyles.text}>
+        LAST DAY  ·  TAP TO ACCUSE
+      </Text>
+    </Pressable>
+  );
+}
+
+const bannerStyles = StyleSheet.create({
+  wrap: {
+    backgroundColor: "#7a0e1e",
+    paddingVertical: 6,
+    alignItems: "center",
+    justifyContent: "center",
+    borderBottomWidth: 2,
+    borderBottomColor: "#ff3050",
+  },
+  text: {
+    color: "#ffe6ea",
+    fontSize: 11,
+    fontFamily: Platform.select({ ios: "Menlo", default: "monospace" }),
+    letterSpacing: 1.5,
+    fontWeight: "700",
+  },
+});
 
 const styles = StyleSheet.create({
   root: {
@@ -167,5 +244,9 @@ const styles = StyleSheet.create({
   surface: {
     flex: 1,
     overflow: "hidden",
+  },
+  dateOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 50,
   },
 });

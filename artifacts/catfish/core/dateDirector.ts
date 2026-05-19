@@ -33,6 +33,7 @@ import {
   ResolvedBeat,
   SAINT_MASK_EXPRESSION,
 } from "./dateScene";
+import type { KillerIdentity } from "./models";
 import { emitSfx } from "../features/audio/audioEvents";
 
 /* ───────────────────── persistence key ───────────────────── */
@@ -267,11 +268,28 @@ export class DateDirector {
 
   #beatToResolved(
     beat: Beat,
-    variant: { condition: string; voiceLineID?: string; expression?: ExpressionState; factReveal?: string } | undefined,
+    variant:
+      | {
+          condition: string;
+          voiceLineID?: string;
+          text?: string;
+          expression?: ExpressionState;
+          factReveal?: string;
+        }
+      | undefined,
     ctx: ConditionContext,
   ): ResolvedBeat {
     const actor = this.#resolveActor(beat.actor, ctx);
     const expression = variant?.expression ?? this.#defaultExpression(ctx);
+
+    // Text-only scenes ship without recorded voice lines but still have
+    // an authored `text` field on each variant. Prefer that over the
+    // "voice line missing" placeholder.
+    const text = variant?.text
+      ? variant.text
+      : variant?.voiceLineID
+        ? undefined
+        : `Beat ${beat.beatID} — voice line missing`;
 
     return {
       beatID: beat.beatID,
@@ -279,9 +297,7 @@ export class DateDirector {
       actor,
       voiceLineID: variant?.voiceLineID,
       expression,
-      text: variant?.voiceLineID
-        ? undefined
-        : `Beat ${beat.beatID} — voice line missing`,
+      text,
       choices: beat.type === "choice" ? beat.choices : undefined,
       focusShift: beat.focusShift ?? false,
       factReveal: variant?.factReveal,
@@ -304,7 +320,12 @@ export class DateDirector {
   #defaultExpression(ctx: ConditionContext): ExpressionState {
     const isKiller = ctx.killerId === ctx.partnerId;
     if (isKiller) {
-      return SAINT_MASK_EXPRESSION[ctx.partnerId] ?? "neutral_saintmask";
+      // isKiller === true implies partnerId equals a real KillerIdentity
+      // (it's structurally equal to killerId, which is typed as such).
+      return (
+        SAINT_MASK_EXPRESSION[ctx.partnerId as KillerIdentity] ??
+        "neutral_saintmask"
+      );
     }
     return "neutral";
   }

@@ -617,6 +617,16 @@ export interface CaseRun {
    * resumed on cold start. Cleared when the scene ends normally.
    */
   checkpoint?: Checkpoint;
+  /**
+   * Authoring-key set of authored facts that have been revealed early
+   * (out-of-day-order) by player action — currently only DateDirector's
+   * `factReveal` beats. The Journal reveal filter (`isFactRevealedYet`)
+   * defaults to a day+source gate, but any fact id present here is
+   * force-shown regardless of those gates so a clue earned during a
+   * date doesn't vanish back into the fog. Optional for back-compat;
+   * `migrateRun` defaults to `[]`.
+   */
+  earlyRevealedFactIds?: string[];
 }
 
 /**
@@ -628,6 +638,12 @@ export interface Checkpoint {
   type: "date" | "facetime" | "chat";
   threadId?: ThreadId;
   screen?: string;
+  /**
+   * For date checkpoints — which candidate the player is dating.
+   * Used by the phone shell to re-synthesize the generic date scene
+   * with the correct `partner` on cold-start resume.
+   */
+  candidateId?: CandidateId;
 }
 
 /**

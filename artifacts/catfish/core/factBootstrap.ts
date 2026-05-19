@@ -20,6 +20,7 @@
 import { getIdentityModule } from "./identities";
 import factUniverseJson from "./factUniverse.json";
 import {
+  CaseRun,
   Fact,
   FactKind,
   FactPayload,
@@ -116,4 +117,73 @@ export function buildAuthoredFacts(
     out.push(fact);
   }
   return out;
+}
+
+/**
+ * Render-time reveal gate for authored facts.
+ *
+ * Authored facts are materialized up-front by `buildAuthoredFacts` so
+ * the resolver's deduction-chain subset check stays simple, but the
+ * Journal would otherwise dump the entire mystery on the player at
+ * Day 1. This helper hides any authored fact whose narrative source
+ * isn't plausibly reachable yet.
+ *
+ * Hybrid gate: day floor (`fact.day <= run.day`) AND source-specific
+ * reachability. Captured facts always pass; the date system also
+ * force-shows facts in `run.earlyRevealedFactIds` so a clue earned on
+ * a date doesn't disappear back into the fog.
+ *
+ * Note on `aboutCharacter`: only the killer-candidate carries a
+ * `Candidate.identity`. Every authored fact in `factUniverse.json` is
+ * about the eventual killer slot, so resolving the candidate via
+ * `deck.find(c => c.isKillerCandidate && c.identity === fact.aboutCharacter)`
+ * works for all authored rows we ship today.
+ */
+export function isFactRevealedYet(fact: Fact, run: CaseRun): boolean {
+  // Captured facts are always visible — the player promoted them by
+  // hand and would be confused to see them vanish.
+  if (fact.kind === "captured") return true;
+
+  // Force-show any fact the player earned via a date.
+  if (run.earlyRevealedFactIds?.includes(fact.id)) return true;
+
+  // Day floor — never reveal a fact stamped to a future day.
+  if (fact.day > run.day) return false;
+
+  // Source-specific reachability. The only source kinds with authored
+  // rows today are bio / instagram / portrait / devText, but the rest
+  // are listed explicitly so future content lands with sensible
+  // defaults instead of an accidental "always visible".
+  const source = fact.source;
+  switch (source.kind) {
+    case "bio":
+    case "instagram":
+    case "portrait": {
+      // These come from the candidate's profile — only meaningful once
+      // the player has seen the candidate.
+      const cand = run.deck.find(
+        (c) => c.isKillerCandidate && c.identity === fact.aboutCharacter,
+      );
+      if (!cand) return false;
+      const matched = run.matches.some((m) => m.candidateId === cand.id);
+      if (matched) return true;
+      // Bio is the only source that's accessible from the swipe card
+      // itself — a player who has passed the card has already seen the
+      // bio text. IG / portrait facts are profile-deep so require a
+      // match to feel earned.
+      if (source.kind === "bio") {
+        const seenInDeck = run.deck.findIndex((c) => c.id === cand.id);
+        return seenInDeck >= 0 && seenInDeck < run.deckCursor;
+      }
+      return false;
+    }
+    case "devText":
+    case "friendText":
+    case "narratorBeat":
+    case "chatMessage":
+      // These arrive independently — day gate is the only check.
+      return true;
+    default:
+      return true;
+  }
 }

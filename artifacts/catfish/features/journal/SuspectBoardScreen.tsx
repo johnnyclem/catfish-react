@@ -26,13 +26,13 @@ import {
 } from "@/components/PixelChrome";
 import { cfPalette } from "@/constants/colors";
 import { useGameState } from "@/core/gameStore";
+import { isFactRevealedYet } from "@/core/factBootstrap";
 import { Candidate, CandidateId } from "@/core/models";
 import { usePhoneShell } from "@/features/parody/phoneShellState";
 
 interface SuspectCardProps {
   candidate: Candidate;
   factCount: number;
-  isKiller: boolean;
   matchId: string | null;
   isDropped: boolean;
   hasThread: boolean;
@@ -42,7 +42,6 @@ interface SuspectCardProps {
 function SuspectCard({
   candidate,
   factCount,
-  isKiller,
   matchId,
   isDropped,
   hasThread,
@@ -59,18 +58,7 @@ function SuspectCard({
         isDropped && { opacity: 0.55 },
       ]}
     >
-      <PixelPanel
-        variant="raised"
-        borderColor={isKiller ? cfPalette.redHot : undefined}
-        style={styles.card}
-      >
-        {isKiller && (
-          <View style={styles.killerBadge}>
-            <PixelText size={5} color={cfPalette.bone} uppercase>
-              suspect
-            </PixelText>
-          </View>
-        )}
+      <PixelPanel variant="raised" style={styles.card}>
         <View style={styles.portraitWrap}>
           <AssetImage
             id={candidate.portraitAssetId ?? "A500_avatar_placeholder"}
@@ -178,6 +166,10 @@ export function SuspectBoardScreen() {
     const counts: Record<CandidateId, number> = {};
     for (const f of run.facts) {
       if (!f.committed || !f.capturedFromCandidateId) continue;
+      // Mirror the Journal's reveal gate so the risk meter doesn't
+      // leak a high-risk reading from facts the player can't actually
+      // see yet.
+      if (!isFactRevealedYet(f, run)) continue;
       counts[f.capturedFromCandidateId] = (counts[f.capturedFromCandidateId] ?? 0) + 1;
     }
     const info: Record<
@@ -236,7 +228,6 @@ export function SuspectBoardScreen() {
               key={c.id}
               candidate={c}
               factCount={factCounts[c.id] ?? 0}
-              isKiller={c.isKillerCandidate}
               matchId={info?.matchId ?? null}
               isDropped={info?.isDropped ?? false}
               hasThread={info?.threadId != null}
@@ -269,14 +260,6 @@ const styles = StyleSheet.create({
   },
   card: {
     padding: 12,
-    alignItems: "center",
-  },
-  killerBadge: {
-    backgroundColor: cfPalette.redHot,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    marginBottom: 8,
-    alignSelf: "stretch",
     alignItems: "center",
   },
   portraitWrap: {

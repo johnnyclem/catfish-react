@@ -28,6 +28,7 @@ import { router } from "expo-router";
 
 import { cfPalette } from "@/constants/colors";
 import { useGameState } from "@/core/gameStore";
+import { isFactRevealedYet } from "@/core/factBootstrap";
 import { getIdentityModule } from "@/core/identities";
 import { CaseRun, Candidate, CandidateId, Fact } from "@/core/models";
 import { AccusationSheet } from "@/features/accusation/AccusationSheet";
@@ -88,12 +89,20 @@ export function JournalScreen() {
     [committed],
   );
 
+  // Authored facts go through the reveal gate so the Journal doesn't
+  // dump the entire mystery at Day 1. The day floor plus source-based
+  // reachability (bio/IG/portrait need deck/match progress) means clues
+  // trickle in as the case unfolds.
   const authoredFacts = useMemo<Fact[]>(() => {
+    if (!run) return [];
     const capturedIds = new Set(capturedFacts.map((f) => f.id));
     return committed.filter(
-      (f) => f.kind !== "captured" && !capturedIds.has(f.id),
+      (f) =>
+        f.kind !== "captured" &&
+        !capturedIds.has(f.id) &&
+        isFactRevealedYet(f, run),
     );
-  }, [committed, capturedFacts]);
+  }, [run, committed, capturedFacts]);
 
   const capturedGroups = useMemo<CandidateGroup[]>(() => {
     if (!run) return [];

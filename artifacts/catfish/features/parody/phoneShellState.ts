@@ -22,6 +22,8 @@
  */
 import { create } from "zustand";
 
+import type { DateScene } from "@/core/dateScene";
+
 /**
  * Every surface the phone shell can render. `home` is the parody
  * grid itself. Mini-games and the dating-app shortcut are siblings
@@ -75,6 +77,17 @@ interface PhoneShellState {
   journalFilterCandidateId?: string;
   /** Set the journal filter and optionally navigate to the journal app. */
   setJournalFilter: (candidateId?: string) => void;
+  /**
+   * Currently-mounted date scene, or null when no date is active. The
+   * phone shell renders a full-screen DateSceneView overlay above the
+   * normal surface whenever this is set. Kept in memory only — the
+   * DateDirector persists its own session to AsyncStorage for crash
+   * recovery, and the run's `checkpoint` field re-seeds this slot on
+   * cold start.
+   */
+  activeDateScene: DateScene | null;
+  /** Mount a date scene as a full-screen overlay. */
+  setActiveDateScene: (scene: DateScene | null) => void;
 }
 
 export const usePhoneShell = create<PhoneShellState>((set) => ({
@@ -91,4 +104,6 @@ export const usePhoneShell = create<PhoneShellState>((set) => ({
   journalFilterCandidateId: undefined,
   setJournalFilter: (candidateId) =>
     set({ journalFilterCandidateId: candidateId }),
+  activeDateScene: null,
+  setActiveDateScene: (scene) => set({ activeDateScene: scene }),
 }));

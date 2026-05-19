@@ -22,7 +22,7 @@ import { create } from "zustand";
 import { AccusationOutcome, resolveAccusation } from "./accusation";
 import { freshDecoysForDay } from "./decoyPool";
 import { getFaceTimeCallsForDay } from "./facetimeContent";
-import { buildAuthoredFacts } from "./factBootstrap";
+import { buildAuthoredFacts, isFactRevealedYet } from "./factBootstrap";
 import { getIdentityModule, getScriptForThread } from "./identities";
 import { INNOCENT_TREE_IDS } from "./innocentTrees";
 import { getVoicemailsForDay, materializeVoicemail } from "./voicemailContent";
@@ -388,6 +388,28 @@ interface GameStateValue {
   /** Discard a previously captured Fact. */
   removeFact: (factId: FactId) => Promise<void>;
   /**
+   * Force-reveal an authored fact in the Journal regardless of its
+   * day/source gate. Wired from the DateDirector when a `factReveal`
+   * beat fires — the player earned the clue, so it shouldn't slip
+   * back into the fog because the calendar hasn't caught up yet.
+   * Idempotent.
+   */
+  revealAuthoredFact: (factId: FactId) => Promise<void>;
+  /**
+   * Enter a date with the named candidate. Stamps a date checkpoint on
+   * the run for cold-start resume; the in-memory active scene lives on
+   * `usePhoneShell` so the phone shell can mount the date overlay.
+   * No-op if the run is missing, closed, or the candidate is not a
+   * current match.
+   */
+  startDate: (candidateId: CandidateId) => Promise<void>;
+  /**
+   * Clear the date checkpoint. Called when the player either completes
+   * the scene normally or cuts it short. The phone shell unmounts the
+   * date overlay separately via its own state.
+   */
+  endDate: () => Promise<void>;
+  /**
    * Reset the per-session "new facts captured since the player last
    * opened the Journal" counter back to zero. The phone-home shell
    * fires this whenever the player opens the Journal app surface so
@@ -563,6 +585,7 @@ function buildRun(forced?: KillerIdentity): CaseRun {
     closed: false,
     ending: null,
     usedInnocentScriptIds: [],
+    earlyRevealedFactIds: [],
   };
 }
 
@@ -807,6 +830,14 @@ export function migrateRun(run: CaseRun | null): CaseRun | null {
             typeof c.factIdA === "string" &&
             typeof c.factIdB === "string",
         )
+      : [],
+    // Default the early-reveal set for runs persisted before progressive
+    // clue reveal landed. Empty array means the player hasn't earned
+    // any date-revealed facts yet; the journal still shows everything
+    // the day+source gate naturally lets through.
+    earlyRevealedFactIds: Array.isArray(run.earlyRevealedFactIds)
+      ? run.earlyRevealedFactIds
+          .filter((id): id is string => typeof id === "string")
       : [],
   };
 }
@@ -1913,15 +1944,21 @@ export const useGameState = create<GameStateValue>((set, get) => ({
       return null;
     }
 
-    // Discovered set = every committed authored OR captured fact, keyed
-    // by authoring key (NOT the random per-row Fact.id). The resolver
-    // subset-checks against `solvingDeduction.requiredFactIDs`, which
-    // are themselves authoring keys — see the comment block on
-    // `ResolveAccusationInput.discoveredFactIds`. This is the
-    // workaround the typed-key follow-up will eventually clean up.
+    // Discovered set = every committed authored OR captured fact that
+    // has actually been revealed to the player, keyed by authoring key
+    // (NOT the random per-row Fact.id). The resolver subset-checks
+    // against `solvingDeduction.requiredFactIDs`, which are themselves
+    // authoring keys — see the comment block on
+    // `ResolveAccusationInput.discoveredFactIds`.
+    //
+    // We gate by `isFactRevealedYet` so a deduction chain only
+    // "matches" when the player actually saw the underlying clues. A
+    // chain that requires a Day 5 portrait fact shouldn't auto-fire on
+    // a Day 2 accusation just because the authored row exists in the
+    // run blob.
     const discoveredFactIds = new Set<FactId>(
       prev.facts
-        .filter((f) => f.committed)
+        .filter((f) => f.committed && isFactRevealedYet(f, prev))
         .map((f) => f.authoringKey as unknown as FactId),
     );
 
@@ -2156,6 +2193,48 @@ export const useGameState = create<GameStateValue>((set, get) => ({
       }
     }, UNDO_WINDOW_MS);
     discardClearTimers.set(removed.id, timer);
+  },
+
+  revealAuthoredFact: async (factId) => {
+    const prev = get().run;
+    if (!prev) return;
+    const current = prev.earlyRevealedFactIds ?? [];
+    if (current.includes(factId)) return;
+    // Make sure the fact actually exists on this run before recording
+    // the reveal — silently dropping unknown ids keeps the date system
+    // from accumulating stale ids if scene authoring drifts from the
+    // fact universe.
+    if (!prev.facts.some((f) => f.id === factId)) return;
+    const next: CaseRun = {
+      ...prev,
+      earlyRevealedFactIds: [...current, factId],
+    };
+    set({ run: next });
+    await saveActiveRun(next);
+  },
+
+  startDate: async (candidateId) => {
+    const prev = get().run;
+    if (!prev || prev.closed) return;
+    const match = prev.matches.find(
+      (m) => m.candidateId === candidateId && !m.unmatched,
+    );
+    if (!match) return;
+    const next: CaseRun = {
+      ...prev,
+      checkpoint: { type: "date", candidateId, threadId: match.threadId },
+    };
+    set({ run: next });
+    await saveActiveRun(next);
+  },
+
+  endDate: async () => {
+    const prev = get().run;
+    if (!prev) return;
+    if (!prev.checkpoint || prev.checkpoint.type !== "date") return;
+    const next: CaseRun = { ...prev, checkpoint: undefined };
+    set({ run: next });
+    await saveActiveRun(next);
   },
 
   openThread: async (threadId) => {

@@ -1,0 +1,153 @@
+{
+  "sceneID": "generic_date_coffee",
+  "partner": "kai",
+  "environment": "env_coffee_shop_day",
+  "openingNarration": {
+    "text": "You meet at a quiet corner table. They look up as you arrive, half a smile pulling at the corner of their mouth."
+  },
+  "beats": [
+    {
+      "beatID": "generic_coffee_01_greeting",
+      "type": "scripted",
+      "actor": "CURRENT_MATCH",
+      "focusShift": false,
+      "variants": [
+        {
+          "condition": "isKiller",
+          "text": "You came. I wasn't sure you would.",
+          "expression": "neutral_saintmask"
+        },
+        {
+          "condition": "default",
+          "text": "Hey — glad you made it. Was starting to think I'd been stood up.",
+          "expression": "smile"
+        }
+      ]
+    },
+    {
+      "beatID": "generic_coffee_02_smalltalk",
+      "type": "scripted",
+      "actor": "CURRENT_MATCH",
+      "focusShift": false,
+      "variants": [
+        {
+          "condition": "isKiller",
+          "text": "I almost canceled. Didn't sleep. Bad week. But here we are.",
+          "expression": "uneasy"
+        },
+        {
+          "condition": "default",
+          "text": "Honestly this whole app thing is weird. I never know what to say.",
+          "expression": "curious"
+        }
+      ]
+    },
+    {
+      "beatID": "generic_coffee_03_player_choice",
+      "type": "choice",
+      "actor": "PLAYER",
+      "choices": [
+        {
+          "id": "ask_about_them",
+          "label": "Tell me about yourself.",
+          "affinityDelta": 1,
+          "tellEligible": false,
+          "nextBeatID": "generic_coffee_04a_warm"
+        },
+        {
+          "id": "ask_about_alibi",
+          "label": "Where were you last night?",
+          "affinityDelta": -1,
+          "tellEligible": true,
+          "nextBeatID": "generic_coffee_04b_alibi"
+        }
+      ]
+    },
+    {
+      "beatID": "generic_coffee_04a_warm",
+      "type": "scripted",
+      "actor": "CURRENT_MATCH",
+      "focusShift": false,
+      "variants": [
+        {
+          "condition": "isKiller",
+          "text": "I keep to myself, mostly. Easier that way. People get the wrong idea.",
+          "expression": "neutral_saintmask"
+        },
+        {
+          "condition": "default",
+          "text": "Not much to tell. Work, friends, the usual. You?",
+          "expression": "flirty"
+        }
+      ]
+    },
+    {
+      "beatID": "generic_coffee_04b_alibi",
+      "type": "scripted",
+      "actor": "CURRENT_MATCH",
+      "focusShift": true,
+      "variants": [
+        {
+          "condition": "isKiller",
+          "text": "Last night? Why would you — I was home. Alone. Like every other night.",
+          "expression": "uneasy"
+        },
+        {
+          "condition": "default",
+          "text": "Out with friends until late. Why, what's up?",
+          "expression": "curious"
+        }
+      ]
+    },
+    {
+      "beatID": "generic_coffee_05_recovery",
+      "type": "scripted",
+      "actor": "CURRENT_MATCH",
+      "focusShift": false,
+      "variants": [
+        {
+          "condition": "isKiller",
+          "text": "Sorry. I get defensive. It's been a strange month.",
+          "expression": "neutral_saintmask"
+        },
+        {
+          "condition": "default",
+          "text": "Anyway. This is nice. We should do it again.",
+          "expression": "smile"
+        }
+      ]
+    },
+    {
+      "beatID": "generic_coffee_06_date_close",
+      "type": "choice",
+      "actor": "PLAYER",
+      "choices": [
+        {
+          "id": "see_again",
+          "label": "I'd like to see you again.",
+          "affinityDelta": 2,
+          "tellEligible": false,
+          "nextBeatID": "generic_coffee_end"
+        },
+        {
+          "id": "keep_distance",
+          "label": "Let's see how it goes.",
+          "affinityDelta": 0,
+          "tellEligible": false,
+          "nextBeatID": "generic_coffee_end"
+        }
+      ]
+    },
+    {
+      "beatID": "generic_coffee_end",
+      "type": "scripted",
+      "actor": "NARRATOR",
+      "variants": [
+        {
+          "condition": "default",
+          "text": "You leave the cafe. A new detail has stuck. You should write it down."
+        }
+      ]
+    }
+  ]
+}

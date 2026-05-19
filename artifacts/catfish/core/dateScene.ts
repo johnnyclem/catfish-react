@@ -29,6 +29,14 @@ export interface BeatVariant {
   /** Pre-generated voice line id (e.g. "kai_coffee_greeting_warm"). */
   voiceLineID?: string;
   /**
+   * Inline dialogue text. Used for scenes that haven't had voice lines
+   * recorded yet — the resolver prefers `voiceLineID` when set,
+   * otherwise falls back to this string. Authoring contract: every
+   * variant should have at least one of `voiceLineID` or `text` so the
+   * player never sees the "voice line missing" placeholder.
+   */
+  text?: string;
+  /**
    * Expression state for this beat's sprite.
    * Values: neutral, neutral_saintmask, smile, flirty, curious,
    *         uneasy, sinister
@@ -101,8 +109,14 @@ export interface OpeningNarration {
 
 export interface DateScene {
   sceneID: string;
-  /** Which character this date is with. */
-  partner: KillerIdentity;
+  /**
+   * Identifier of the partner this date is with. Equal to a
+   * `KillerIdentity` when the partner is the killer-candidate (so the
+   * "isKiller" condition variant matches the run's killer), or a
+   * decoy's `CandidateId` otherwise. Treated as an opaque string by
+   * the director — only the killer comparison cares about the value.
+   */
+  partner: string;
   /** Which environment background to show. */
   environment: EnvironmentId;
   openingNarration: OpeningNarration;
@@ -181,7 +195,7 @@ export interface DateSession {
   /** Which run this date belongs to. */
   runId: string;
   sceneID: string;
-  partner: KillerIdentity;
+  partner: string;
   environment: EnvironmentId;
   /** Index of the next beat to play in `DateScene.beats`. */
   beatIndex: number;
@@ -228,7 +242,13 @@ export function evaluateCondition(
 
 export interface ConditionContext {
   killerId: KillerIdentity;
-  partnerId: KillerIdentity;
+  /**
+   * Opaque partner id — equals the killer identity when the partner
+   * IS the killer-candidate, or a decoy candidate id otherwise. The
+   * `isKiller` check only matches when this is structurally equal to
+   * `killerId`.
+   */
+  partnerId: string;
   affinity: number;
   dayNumber: number;
   discoveredFactIds: ReadonlySet<string>;
@@ -238,7 +258,7 @@ export interface ConditionContext {
 
 export interface DateOutcome {
   runId: string;
-  partner: KillerIdentity;
+  partner: string;
   day: number;
   /** Total affinity delta accumulated during the date. */
   affinityDelta: number;

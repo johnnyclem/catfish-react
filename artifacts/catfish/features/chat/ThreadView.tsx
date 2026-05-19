@@ -29,9 +29,11 @@ import {
 } from "@/components/PixelChrome";
 import { cfPalette } from "@/constants/colors";
 import { useGameState } from "@/core/gameStore";
+import { buildDateSceneFor } from "@/core/dateSceneFactory";
 import { getScriptForThread } from "@/core/identities";
 import { ThreadId } from "@/core/models";
 import { MessageFactGesture } from "@/features/journal/MessageFactGesture";
+import { usePhoneShell } from "@/features/parody/phoneShellState";
 import { useDialogueVoice } from "@/features/voice/useDialogueVoice";
 import type { Message } from "@/core/models";
 import { emitSfx } from "@/features/audio/audioEvents";
@@ -155,8 +157,12 @@ export function ThreadView({ threadId }: ThreadViewProps) {
   const markThreadRead = useGameState((s) => s.markThreadRead);
   const requestImprovTurn = useGameState((s) => s.requestImprovTurn);
 
+  const startDate = useGameState((s) => s.startDate);
+  const setActiveDateScene = usePhoneShell((s) => s.setActiveDateScene);
+
   const [pending, setPending] = useState(false);
   const [unmatchPending, setUnmatchPending] = useState(false);
+  const [datePending, setDatePending] = useState(false);
   // Task #62 — animated "is typing" ellipsis. Cycles through 1/2/3
   // dots roughly every ~400ms so the indicator feels alive instead
   // of static. Lives in component state (not a render-time clock)
@@ -344,6 +350,23 @@ export function ThreadView({ threadId }: ThreadViewProps) {
     [thread, pending, sendReply],
   );
 
+  const handlePlanDate = useCallback(async () => {
+    if (!candidate || datePending) return;
+    if (run?.closed) return;
+    setDatePending(true);
+    try {
+      const scene = buildDateSceneFor(candidate);
+      await startDate(candidate.id);
+      // Mount the date overlay in the phone shell and pop back to it.
+      // The shell hosts DateSceneView as a full-screen overlay
+      // sibling to the normal app surface.
+      setActiveDateScene(scene);
+      router.back();
+    } finally {
+      setDatePending(false);
+    }
+  }, [candidate, datePending, run?.closed, startDate, setActiveDateScene]);
+
   const handleUnmatch = useCallback(async () => {
     if (!match || match.unmatched || unmatchPending) return;
     setUnmatchPending(true);
@@ -468,6 +491,22 @@ export function ThreadView({ threadId }: ThreadViewProps) {
             {candidate.tagline}
           </PixelText>
         </View>
+        {match && !isUnmatched && !run?.closed && (
+          <Pressable
+            onPress={handlePlanDate}
+            disabled={datePending}
+            hitSlop={8}
+            style={({ pressed }) => [
+              styles.dateBtn,
+              { opacity: pressed ? 0.6 : datePending ? 0.4 : 1 },
+            ]}
+            testID="thread-plan-date"
+          >
+            <PixelText size={7} color={cfPalette.pinkHot} uppercase>
+              date
+            </PixelText>
+          </Pressable>
+        )}
         {match && (
           <UnmatchControl
             isUnmatched={isUnmatched}
@@ -687,6 +726,13 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderWidth: 1,
     borderColor: cfPalette.err,
+  },
+  dateBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: cfPalette.pinkHot,
+    marginRight: 6,
   },
   unmatchedTag: {
     paddingHorizontal: 6,

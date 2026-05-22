@@ -46,17 +46,28 @@ export type PhoneShellApp =
   | "settings";
 
 /**
- * Lots 'o Fish has three real "screens" plus its splash intro. We
- * keep splash separate from the three bottom-tab views so a return
- * visit doesn't re-show the splash unless the caller explicitly
- * asks for it.
+ * Lots 'o Fish has two real "screens" (Swipe + Matches) plus its
+ * splash intro. The sleuthing-flavored views (suspect board, social
+ * feed, detective profile) used to live here too, but were pulled
+ * out into the Journal app so the dating-app shell stays focused on
+ * matching + messaging.
  */
-export type LotsOfFishView = "splash" | "swipe" | "matches" | "profile" | "social" | "board";
+export type LotsOfFishView = "splash" | "swipe" | "matches";
+
+/**
+ * Journal has three sub-sections selected by a top pill bar:
+ *   - notes: captured + authored facts (the original Journal body)
+ *   - suspects: card-grid SuspectBoard
+ *   - social: per-character Instagram-style feed
+ */
+export type JournalSection = "notes" | "suspects" | "social";
 
 interface PhoneShellState {
   currentApp: PhoneShellApp;
   /** Active sub-screen within Lots 'o Fish. Ignored by other apps. */
   lotsOfFishView: LotsOfFishView;
+  /** Active section within the Journal app. Ignored by other apps. */
+  journalSection: JournalSection;
   /**
    * Flip to a new app surface. If the target is `lotsOfFish`, the
    * caller can also seed the inner view; otherwise the inner view
@@ -69,6 +80,8 @@ interface PhoneShellState {
   goHome: () => void;
   /** Switch the dating-app bottom tab without re-mounting the shell. */
   setLotsOfFishView: (view: LotsOfFishView) => void;
+  /** Switch the Journal sub-section without re-mounting the shell. */
+  setJournalSection: (section: JournalSection) => void;
   /**
    * Candidate id to pre-filter the Journal by when navigating from
    * the SuspectBoard. Set before calling openApp("journal"); the
@@ -93,6 +106,7 @@ interface PhoneShellState {
 export const usePhoneShell = create<PhoneShellState>((set) => ({
   currentApp: "home",
   lotsOfFishView: "splash",
+  journalSection: "notes",
   openApp: (app, view) =>
     set((prev) => ({
       currentApp: app,
@@ -101,6 +115,7 @@ export const usePhoneShell = create<PhoneShellState>((set) => ({
     })),
   goHome: () => set({ currentApp: "home" }),
   setLotsOfFishView: (view) => set({ lotsOfFishView: view }),
+  setJournalSection: (section) => set({ journalSection: section }),
   journalFilterCandidateId: undefined,
   setJournalFilter: (candidateId) =>
     set({ journalFilterCandidateId: candidateId }),

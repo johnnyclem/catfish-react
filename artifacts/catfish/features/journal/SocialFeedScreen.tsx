@@ -1,5 +1,6 @@
 /**
- * SocialFeedScreen — Instagram-style social feed for Lots 'o Fish.
+ * SocialFeedScreen — Instagram-style social feed, rendered as a
+ * sub-section of the Journal app.
  *
  * Renders the active candidate's authored social posts as a vertical
  * scroll of square photo cards with caption overlays. Each card shows
@@ -8,7 +9,9 @@
  *
  * The feed surfaces one character at a time — the player selects from
  * the candidates they've matched with, and the feed shows that
- * character's social posts for the current run.
+ * character's social posts for the current run. This is a sleuthing
+ * surface (caption clues, killer-variant tells) so it lives in the
+ * Journal, not in the dating-app shell.
  *
  * Layer 2 of the Saint Mask system: variable facts in `run.facts`
  * carry killer-variant caption text via `variableOverrides` at
@@ -27,7 +30,7 @@ import {
 } from "@/components/PixelChrome";
 import { cfPalette } from "@/constants/colors";
 import { useGameState } from "@/core/gameStore";
-import { Candidate, Fact, FactSource } from "@/core/models";
+import { Candidate, Fact } from "@/core/models";
 
 /** Social image asset ids per character (first IG post per char). */
 const SOCIAL_IMAGE: Record<string, string> = {

@@ -98,8 +98,14 @@ export default function PhoneHomeShell() {
         openApp("facetime");
         break;
       case "chat":
-        if (cp.screen) {
-          setLotsOfFishView(cp.screen as any);
+        // Older saves may have stored screen values that no longer
+        // exist in the dating-app shell (e.g. "social", "board",
+        // "profile"). Drop them onto Matches since that's where chats
+        // resume from anyway.
+        if (cp.screen === "swipe" || cp.screen === "matches") {
+          setLotsOfFishView(cp.screen);
+        } else if (cp.screen) {
+          setLotsOfFishView("matches");
         }
         openApp("lotsOfFish");
         break;

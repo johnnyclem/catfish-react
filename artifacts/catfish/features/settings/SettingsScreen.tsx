@@ -1,10 +1,14 @@
 import { Feather } from "@expo/vector-icons";
+import { router } from "expo-router";
+import { useState } from "react";
 import { ScrollView, StyleSheet, Switch, View } from "react-native";
 
-import { PixelPanel, PixelText } from "@/components/PixelChrome";
+import { NeonButton, PixelPanel, PixelText } from "@/components/PixelChrome";
 import { PixelSlider } from "@/components/PixelSlider";
 import { cfPalette } from "@/constants/colors";
 import { useGameState } from "@/core/gameStore";
+import { ALL_KILLERS, KillerIdentity } from "@/core/models";
+import { getIdentityModule } from "@/core/identities";
 
 interface Section {
   title: string;
@@ -227,11 +231,117 @@ export default function SettingsScreen() {
             </PixelPanel>
           </View>
         ))}
+
+        <DebugSection />
+
         <View style={{ height: 40 }} />
       </ScrollView>
     </View>
   );
 }
+
+/**
+ * Debug section — force a killer for the NEXT run, or wipe the
+ * current case file. Lives in Settings since it's a tester-facing
+ * tool, not a player-facing one; previously lived in the dating-app
+ * "Profile" tab.
+ */
+function DebugSection() {
+  const startNewRun = useGameState((s) => s.startNewRun);
+  const resetRun = useGameState((s) => s.resetRun);
+  const [busy, setBusy] = useState(false);
+  const [debugMessage, setDebugMessage] = useState<string | null>(null);
+
+  const handleForce = async (identity: KillerIdentity) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await startNewRun(identity);
+      setDebugMessage(
+        `New run started — killer forced to ${getIdentityModule(identity).displayName}.`,
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleReset = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await resetRun();
+      setDebugMessage("Active run cleared. Returning to title…");
+      setTimeout(() => router.replace("/"), 600);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <View style={styles.section}>
+      <PixelText size={7} color={cfPalette.warn} uppercase style={styles.sectionTitle}>
+        ⚠ Debug
+      </PixelText>
+      <PixelPanel variant="raised" style={styles.panel} borderColor={cfPalette.warn}>
+        <PixelText size={7} color={cfPalette.ash} style={{ lineHeight: 11 }}>
+          Force a killer for the next run, or wipe the current case file.
+          Identity of the active case is hidden on purpose.
+        </PixelText>
+
+        <PixelText size={7} color={cfPalette.cyan} uppercase style={{ marginTop: 14 }}>
+          force killer (starts new run)
+        </PixelText>
+        <View style={debugStyles.killerGrid}>
+          {ALL_KILLERS.map((id) => {
+            const mod = getIdentityModule(id);
+            return (
+              <NeonButton
+                key={id}
+                label={mod.displayName}
+                variant="ghost"
+                size="sm"
+                onPress={() => handleForce(id)}
+                style={debugStyles.killerButton}
+              />
+            );
+          })}
+        </View>
+
+        <NeonButton
+          label="Reset Active Run"
+          variant="danger"
+          size="md"
+          fullWidth
+          onPress={handleReset}
+          style={{ marginTop: 18 }}
+        />
+
+        {debugMessage && (
+          <PixelText
+            size={7}
+            color={cfPalette.ok}
+            align="center"
+            style={{ marginTop: 12, lineHeight: 11 }}
+          >
+            {debugMessage}
+          </PixelText>
+        )}
+      </PixelPanel>
+    </View>
+  );
+}
+
+const debugStyles = StyleSheet.create({
+  killerGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 8,
+  },
+  killerButton: {
+    marginTop: 4,
+  },
+});
 
 const rowStyles = StyleSheet.create({
   row: {

@@ -6,10 +6,12 @@
  * name, and a risk level derived from the number of committed facts captured
  * FROM that candidate.
  *
- * P2 additions:
- *   - Tap a card → open that candidate's chat thread via expo-router.
- *   - Matched-but-dropped candidates show a "dropped" chip on their card.
- *   - "Board" tab in LotsOfFishApp exposes this screen.
+ * Lives inside the Journal app as the "Suspects" section. Tapping a card
+ * pre-filters the Journal's Notes section by that candidate and flips the
+ * section pill back to Notes so the player drops straight into that
+ * suspect's captured-fact list.
+ *
+ * Matched-but-dropped candidates show a "dropped" chip on their card.
  *
  * The board is accessible even when the case is closed — the player can
  * study the board after the run ends to review how close they got.
@@ -151,7 +153,7 @@ function RiskMeter({ level }: { level: RiskLevel }) {
 
 export function SuspectBoardScreen() {
   const run = useGameState((s) => s.run);
-  const openApp = usePhoneShell((s) => s.openApp);
+  const setJournalSection = usePhoneShell((s) => s.setJournalSection);
   const setJournalFilter = usePhoneShell((s) => s.setJournalFilter);
 
   const { candidates, matchInfo, factCounts } = useMemo<{
@@ -189,7 +191,7 @@ export function SuspectBoardScreen() {
 
   function handleCardTap(candidateId: CandidateId, _threadId: string | null) {
     setJournalFilter(candidateId);
-    openApp("journal");
+    setJournalSection("notes");
   }
 
   if (!run) {

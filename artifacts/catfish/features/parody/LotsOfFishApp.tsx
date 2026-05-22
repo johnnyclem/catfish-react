@@ -1,19 +1,18 @@
 /**
  * Lots 'o Fish — internal app shell.
  *
- * Task #59 collapsed the previous root tab bar (Swipe / Matches /
- * Journal / Profile / Apps) into a parody phone home grid where
- * each app is a tile. Lots 'o Fish is one such tile, and it's the
- * only one with multiple sub-screens — so it gets its own
- * dating-app-style bottom tab bar that lives entirely inside the
- * phone shell. Picking a tab does NOT navigate the expo-router
- * stack; it just flips a value in `usePhoneShell`.
+ * The dating app intentionally exposes only two tabs — Swipe and
+ * Matches — so the home grid's "parody phone OS" framing isn't
+ * undercut by yet another mini-app stacked with sub-screens. The
+ * sleuthing-flavored views (suspect board, social feed, detective
+ * profile / debug menu) all live in the Journal app instead so the
+ * dating app stays focused on matching + messaging.
  *
  * The first time the player opens Lots 'o Fish in a session they
  * land on the dating-app splash (the "OPEN APP" reveal). After they
  * tap "OPEN APP" they're dropped on the Swipe deck inside this
  * shell, and the bottom tab bar appears so they can move between
- * Swipe / Matches / Profile without ever leaving the phone surface.
+ * Swipe + Matches without ever leaving the phone surface.
  *
  * The internal tab bar uses Feather icons + tiny pixel labels rather
  * than the larger PixelChrome buttons because it has to read as a
@@ -26,9 +25,6 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { cfPalette } from "@/constants/colors";
 import { useGameState } from "@/core/gameStore";
 import { MatchesScreen } from "@/features/dating/MatchesScreen";
-import { ProfileScreen } from "@/features/dating/ProfileScreen";
-import { SocialFeedScreen } from "@/features/dating/SocialFeedScreen";
-import { SuspectBoardScreen } from "@/features/journal/SuspectBoardScreen";
 import { SwipeScreen } from "@/features/dating/SwipeScreen";
 
 import { emitSfx } from "@/features/audio/audioEvents";
@@ -44,9 +40,6 @@ interface TabSpec {
 const TABS: TabSpec[] = [
   { view: "swipe", label: "Swipe", icon: "heart" },
   { view: "matches", label: "Matches", icon: "message-circle" },
-  { view: "social", label: "Social", icon: "grid" },
-  { view: "board", label: "Board", icon: "book-open" },
-  { view: "profile", label: "Profile", icon: "user" },
 ];
 
 export function LotsOfFishApp() {
@@ -78,9 +71,6 @@ export function LotsOfFishApp() {
       <View style={styles.body}>
         {view === "swipe" && <SwipeScreen />}
         {view === "matches" && <MatchesScreen />}
-        {view === "social" && <SocialFeedScreen />}
-        {view === "board" && <SuspectBoardScreen />}
-        {view === "profile" && <ProfileScreen />}
       </View>
       <View style={styles.tabBar}>
         {TABS.map((tab) => {

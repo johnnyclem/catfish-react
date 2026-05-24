@@ -113,13 +113,6 @@ function resolveBgm(
       return "bgm_chat";
     case "journal":
       return "bgm_phone_os";
-    case "wordLow":
-      return "bgm_arcade_wordlow";
-    case "egoTrip":
-      return "bgm_arcade_ego_trip";
-    case "safeSpot":
-    case "sugarCoat":
-      return "bgm_arcade_general";
     default:
       return "noir_loop";
   }

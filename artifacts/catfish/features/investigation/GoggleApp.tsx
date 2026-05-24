@@ -1,22 +1,37 @@
 /**
- * BrowserApp — investigation web search.
+ * GoggleApp — investigation search.
  *
- * Phase 9 surface: a pixel-noir "web browser" that lets the player
- * search for investigation keywords and surface pre-authored evidence
- * results. Each search commits the associated fact to the journal if
- * the player hasn't already discovered it.
+ * The detective's web-search surface. Two result sources, served from a
+ * single search bar:
  *
- * Search content is keyed by keyword strings. Results are day-gated
- * (some results only appear after certain days). Searching a keyword
- * the player has already found produces a "you already know about X"
- * message rather than duplicating the fact.
+ *   1. Evidence keywords (canal warehouse fire, trail camera, …) —
+ *      pre-authored news/forensics blurbs keyed by query string. This
+ *      is the original Browser app's keyword database; results are
+ *      day-gated and commit a fact to the journal on first open.
+ *
+ *   2. Match names (Miles, Lola, Tessa, …) — per-candidate "Google
+ *      yourself" hits authored in `core/onlineFootprint.ts`. Innocents
+ *      have rich day-gated footprints; the killer's footprint is
+ *      almost empty until the player captures specific facts that
+ *      pull the thread.
+ *
+ * GoggleApp also reads `usePhoneShell.pendingGoggleCandidate` on mount —
+ * the chat header's "background check" button deep-links into this
+ * app prefilled with a candidate's displayName, fires the search once,
+ * and clears the slot.
  */
-import { useState } from "react";
-import { FlatList, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { useEffect, useState } from "react";
+import { Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 
 import { PixelText, ScanlineOverlay } from "@/components/PixelChrome";
 import { cfPalette } from "@/constants/colors";
 import { useGameState } from "@/core/gameStore";
+import {
+  type GoggleHit,
+  getGoggleHitsFor,
+  hasFootprint,
+} from "@/core/onlineFootprint";
+import { usePhoneShell } from "@/features/parody/phoneShellState";
 
 interface SearchResult {
   id: string;
@@ -34,7 +49,7 @@ interface SearchHistoryEntry {
   day: number;
 }
 
-/** Pre-authored search results keyed by the keyword the player types. */
+/** Pre-authored evidence-keyword results (the legacy Browser database). */
 const SEARCH_DATABASE: SearchResult[] = [
   {
     id: "sr_canal_warehouse",
@@ -182,7 +197,7 @@ function normalizeQuery(q: string): string {
   return q.toLowerCase().trim();
 }
 
-function matchResult(query: string, day: number): SearchResult | null {
+function matchEvidenceResult(query: string): SearchResult | null {
   const norm = normalizeQuery(query);
   return (
     SEARCH_DATABASE.find(
@@ -198,83 +213,195 @@ function isRedHerring(query: string): boolean {
   return RED_HERRINGS.some((rh) => normalizeQuery(rh) === normalizeQuery(query));
 }
 
-function ResultRow({
+/** Does the query match a known background-check name? Returns the
+    raw query string trimmed (used as the lookup key). */
+function detectNameQuery(query: string): string | null {
+  const norm = normalizeQuery(query);
+  if (!norm) return null;
+  // Try the whole query first (handles "Miles Carver"), then first token
+  // (handles "Miles"). Lookup is by first token because Candidate.displayName
+  // is the short name; "Miles Carver" hits via the first-token fallback.
+  if (hasFootprint(norm)) return norm;
+  const first = norm.split(/\s+/)[0];
+  if (first && hasFootprint(first)) return first;
+  return null;
+}
+
+function ResultDetail({
   result,
   alreadyKnown,
-  onTap,
+  onBack,
 }: {
   result: SearchResult;
   alreadyKnown: boolean;
-  onTap: () => void;
+  onBack: () => void;
 }) {
   return (
-    <Pressable
-      onPress={onTap}
-      style={({ pressed }) => [
-        styles.resultRow,
-        pressed && { opacity: 0.7 },
-        alreadyKnown && { opacity: 0.55 },
-      ]}
-    >
-      <View style={styles.resultHeader}>
-        <PixelText size={7} color={cfPalette.cyan} style={{ flex: 1 }}>
+    <View style={styles.root}>
+      <ScanlineOverlay />
+      <View style={styles.header}>
+        <Pressable onPress={onBack} style={styles.backBtn}>
+          <PixelText size={8} color={cfPalette.cyan}>← back</PixelText>
+        </Pressable>
+        <PixelText size={9} color={cfPalette.bone} style={{ flex: 1, textAlign: "center" }}>
+          goggle
+        </PixelText>
+        <View style={{ width: 40 }} />
+      </View>
+      <View style={styles.resultDetail}>
+        <PixelText size={10} color={cfPalette.bone} style={{ marginBottom: 8 }}>
           {result.headline}
         </PixelText>
-        {alreadyKnown && (
-          <PixelText size={5} color={cfPalette.ash} style={{ marginLeft: 6 }}>
-            saved
+        <PixelText size={7} color={cfPalette.fog} style={{ marginBottom: 16 }}>
+          day {result.day} · "{result.keyword}"
+        </PixelText>
+        <PixelText size={7} color={cfPalette.ash} style={{ lineHeight: 13 }}>
+          {result.excerpt}
+        </PixelText>
+        {alreadyKnown ? (
+          <PixelText size={6} color={cfPalette.ash} style={{ marginTop: 20 }}>
+            (already in journal)
+          </PixelText>
+        ) : (
+          <PixelText size={7} color={cfPalette.greenBright} style={{ marginTop: 20 }}>
+            ✓ evidence committed to journal
           </PixelText>
         )}
       </View>
-      <PixelText size={6} color={cfPalette.fog}  style={{ marginTop: 4 }}>
-        {result.excerpt}
-      </PixelText>
-      {alreadyKnown ? null : (
-        <PixelText size={5} color={cfPalette.greenBright} style={{ marginTop: 6 }}>
-          evidence saved to journal
-        </PixelText>
-      )}
-    </Pressable>
-  );
-}
-
-function EmptyState({ query }: { query: string }) {
-  const isRH = isRedHerring(query);
-  return (
-    <View style={styles.emptyState}>
-      <PixelText size={8} color={cfPalette.ash} align="center">
-        {isRH ? "no results found" : `no results for "${query}"`}
-      </PixelText>
-      <PixelText size={6} color={cfPalette.fog} align="center" style={{ marginTop: 6 }}>
-        {isRH
-          ? "check the spelling or try a different term"
-          : "try searching for evidence-related keywords"}
-      </PixelText>
     </View>
   );
 }
 
-export function BrowserApp() {
+function NameHitsView({
+  name,
+  hits,
+  onHitTap,
+  onBack,
+}: {
+  name: string;
+  hits: GoggleHit[];
+  onHitTap: (hit: GoggleHit) => void;
+  onBack: () => void;
+}) {
+  return (
+    <View style={styles.root}>
+      <ScanlineOverlay />
+      <View style={styles.header}>
+        <Pressable onPress={onBack} style={styles.backBtn}>
+          <PixelText size={8} color={cfPalette.cyan}>← back</PixelText>
+        </Pressable>
+        <PixelText size={9} color={cfPalette.bone} style={{ flex: 1, textAlign: "center" }}>
+          goggle
+        </PixelText>
+        <View style={{ width: 40 }} />
+      </View>
+      <View style={styles.nameHeader}>
+        <PixelText size={11} color={cfPalette.bone}>
+          "{name}"
+        </PixelText>
+        <PixelText size={6} color={cfPalette.ash} style={{ marginTop: 4 }}>
+          {hits.length === 0 ? "no results" : `${hits.length} result${hits.length === 1 ? "" : "s"}`}
+        </PixelText>
+      </View>
+      {hits.length === 0 ? (
+        <View style={styles.emptyState}>
+          <PixelText size={8} color={cfPalette.ash} align="center">
+            not much online for this one yet
+          </PixelText>
+          <PixelText size={6} color={cfPalette.fog} align="center" style={{ marginTop: 8, paddingHorizontal: 24, lineHeight: 11 }}>
+            keep digging — a lead from chat, the journal, or another app might surface results that aren't here yet
+          </PixelText>
+        </View>
+      ) : (
+        <ScrollView style={{ flex: 1 }}>
+          {hits.map((hit) => (
+            <Pressable
+              key={hit.id}
+              onPress={() => onHitTap(hit)}
+              style={({ pressed }) => [styles.resultRow, pressed && { opacity: 0.6 }]}
+            >
+              <View style={styles.kindPill}>
+                <PixelText size={5} color={cfPalette.navyDeep}>
+                  {hit.kind}
+                </PixelText>
+              </View>
+              <PixelText size={7} color={cfPalette.cyan} style={{ marginTop: 6 }}>
+                {hit.headline}
+              </PixelText>
+              <PixelText size={6} color={cfPalette.fog} style={{ marginTop: 4, lineHeight: 11 }}>
+                {hit.excerpt}
+              </PixelText>
+            </Pressable>
+          ))}
+        </ScrollView>
+      )}
+    </View>
+  );
+}
+
+export function GoggleApp() {
   const run = useGameState((s) => s.run);
   const commitFact = useGameState((s) => s.commitFact);
+  const pendingGoggleCandidate = usePhoneShell((s) => s.pendingGoggleCandidate);
+  const consumePendingGoggleCandidate = usePhoneShell((s) => s.consumePendingGoggleCandidate);
+  const clearBackgroundCheck = usePhoneShell((s) => s.clearBackgroundCheck);
+
   const [query, setQuery] = useState("");
   const [searched, setSearched] = useState<SearchHistoryEntry[]>([]);
   const [currentResult, setCurrentResult] = useState<SearchResult | null>(null);
+  const [currentName, setCurrentName] = useState<string | null>(null);
   const [noResult, setNoResult] = useState(false);
 
   const day = run?.day ?? 1;
   const knownFactIds = new Set<string>((run?.facts ?? []).map((f) => f.authoringKey));
 
-  function handleSearch() {
-    const trimmed = query.trim();
+  // Consume any deep-link from the chat header on mount. Prefills the
+  // query with the candidate's displayName, fires the search once,
+  // and clears the pending slot so a second mount doesn't re-fire.
+  useEffect(() => {
+    if (!pendingGoggleCandidate) return;
+    const candidate = run?.deck.find((c) => c.id === pendingGoggleCandidate);
+    if (!candidate) {
+      consumePendingGoggleCandidate();
+      return;
+    }
+    const name = candidate.displayName;
+    setQuery(name);
+    runSearch(name);
+    clearBackgroundCheck(candidate.id);
+    consumePendingGoggleCandidate();
+    // We intentionally omit `run` from deps — re-running on every run
+    // mutation would clobber an in-progress search. The effect should
+    // fire exactly once per deep-link.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingGoggleCandidate]);
+
+  function runSearch(rawQuery: string) {
+    const trimmed = rawQuery.trim();
     if (!trimmed) return;
 
-    const result = matchResult(trimmed, day);
+    // 1. Name-search takes precedence — if the query matches a known
+    //    candidate's footprint key, render the per-name results view.
+    const nameKey = detectNameQuery(trimmed);
+    if (nameKey) {
+      setCurrentName(trimmed);
+      setCurrentResult(null);
+      setNoResult(false);
+      setSearched((prev) => [
+        { query: trimmed, resultId: null, day },
+        ...prev.filter((e) => e.query !== trimmed),
+      ]);
+      return;
+    }
+
+    // 2. Otherwise fall back to the evidence-keyword database.
+    const result = matchEvidenceResult(trimmed);
     setNoResult(!result && !isRedHerring(trimmed));
 
     if (result) {
       const alreadyKnown = knownFactIds.has(result.linkedFactId);
       setCurrentResult(result);
+      setCurrentName(null);
       setSearched((prev) => [
         { query: trimmed, resultId: result.id, day },
         ...prev.filter((e) => e.query !== trimmed),
@@ -282,11 +409,12 @@ export function BrowserApp() {
       if (!alreadyKnown) {
         void commitFact({
           candidateId: result.aboutCharacter ?? "miles",
-          quote: `[Browser] ${result.headline}: ${result.excerpt}`,
+          quote: `[Goggle] ${result.headline}: ${result.excerpt}`,
         });
       }
     } else {
       setCurrentResult(null);
+      setCurrentName(null);
       setSearched((prev) => [
         { query: trimmed, resultId: null, day },
         ...prev.filter((e) => e.query !== trimmed),
@@ -294,63 +422,38 @@ export function BrowserApp() {
     }
   }
 
+  function handleSearch() {
+    runSearch(query);
+  }
+
   function handleHistoryTap(entry: SearchHistoryEntry) {
-    if (!entry.resultId) return;
-    const result = SEARCH_DATABASE.find((r) => r.id === entry.resultId);
-    if (result && result.day <= day) {
-      setCurrentResult(result);
-      setNoResult(false);
-      setQuery(entry.query);
-    } else {
-      setQuery(entry.query);
-      setCurrentResult(null);
-      setNoResult(true);
-    }
+    setQuery(entry.query);
+    runSearch(entry.query);
   }
 
   function handleBack() {
     setCurrentResult(null);
+    setCurrentName(null);
     setNoResult(false);
+  }
+
+  function handleNameHitTap(hit: GoggleHit) {
+    if (!hit.linkedFactId) return;
+    if (knownFactIds.has(hit.linkedFactId)) return;
+    void commitFact({
+      candidateId: currentName ?? "miles",
+      quote: `[Goggle] ${hit.headline}: ${hit.excerpt}`,
+    });
   }
 
   if (currentResult) {
     const alreadyKnown = knownFactIds.has(currentResult.linkedFactId);
-    return (
-      <View style={styles.root}>
-        <ScanlineOverlay />
-        <View style={styles.header}>
-          <Pressable onPress={handleBack} style={styles.backBtn}>
-            <PixelText size={8} color={cfPalette.cyan}>
-              ← back
-            </PixelText>
-          </Pressable>
-          <PixelText size={9} color={cfPalette.bone} style={{ flex: 1, textAlign: "center" }}>
-            browser
-          </PixelText>
-          <View style={{ width: 40 }} />
-        </View>
-        <View style={styles.resultDetail}>
-          <PixelText size={10} color={cfPalette.bone} style={{ marginBottom: 8 }}>
-            {currentResult.headline}
-          </PixelText>
-          <PixelText size={7} color={cfPalette.fog} style={{ marginBottom: 16 }}>
-            day {currentResult.day} · "{currentResult.keyword}"
-          </PixelText>
-          <PixelText size={7} color={cfPalette.ash} style={{ lineHeight: 13 }}>
-            {currentResult.excerpt}
-          </PixelText>
-          {alreadyKnown ? (
-            <PixelText size={6} color={cfPalette.ash} style={{ marginTop: 20 }}>
-              (already in journal)
-            </PixelText>
-          ) : (
-            <PixelText size={7} color={cfPalette.greenBright} style={{ marginTop: 20 }}>
-              ✓ evidence committed to journal
-            </PixelText>
-          )}
-        </View>
-      </View>
-    );
+    return <ResultDetail result={currentResult} alreadyKnown={alreadyKnown} onBack={handleBack} />;
+  }
+
+  if (currentName) {
+    const hits = getGoggleHitsFor(currentName, run);
+    return <NameHitsView name={currentName} hits={hits} onHitTap={handleNameHitTap} onBack={handleBack} />;
   }
 
   return (
@@ -358,7 +461,7 @@ export function BrowserApp() {
       <ScanlineOverlay />
       <View style={styles.header}>
         <PixelText size={11} color={cfPalette.bone}>
-          browser
+          goggle
         </PixelText>
       </View>
 
@@ -368,13 +471,14 @@ export function BrowserApp() {
           value={query}
           onChangeText={setQuery}
           onSubmitEditing={handleSearch}
-          placeholder="search..."
+          placeholder="search a name or a clue..."
           placeholderTextColor={cfPalette.ash}
           returnKeyType="search"
           autoCapitalize="none"
           autoCorrect={false}
+          testID="goggle-search-input"
         />
-        <Pressable onPress={handleSearch} style={styles.searchBtn}>
+        <Pressable onPress={handleSearch} style={styles.searchBtn} testID="goggle-search-go">
           <PixelText size={7} color={cfPalette.navyDeep}>
             go
           </PixelText>
@@ -384,7 +488,7 @@ export function BrowserApp() {
       {noResult && (
         <View style={styles.noResultBanner}>
           <PixelText size={6} color={cfPalette.fog}>
-            nothing found for "{query}" — try different keywords
+            nothing found for "{query}" — try a different keyword or a match's name
           </PixelText>
         </View>
       )}
@@ -415,21 +519,19 @@ export function BrowserApp() {
         <PixelText size={6} color={cfPalette.ash} style={styles.historyLabel}>
           try searching
         </PixelText>
-        {["canal warehouse fire", "trail camera", "IG reflection", "marina logs", "badge swipes"].map(
-          (hint) => (
-            <Pressable
-              key={hint}
-              onPress={() => {
-                setQuery(hint);
-              }}
-              style={styles.hintPill}
-            >
-              <PixelText size={5} color={cfPalette.fog}>
-                {hint}
-              </PixelText>
-            </Pressable>
-          ),
-        )}
+        {["a match's name", "canal warehouse fire", "trail camera", "marina logs", "badge swipes"].map((hint) => (
+          <Pressable
+            key={hint}
+            onPress={() => {
+              setQuery(hint);
+            }}
+            style={styles.hintPill}
+          >
+            <PixelText size={5} color={cfPalette.fog}>
+              {hint}
+            </PixelText>
+          </Pressable>
+        ))}
       </View>
     </View>
   );
@@ -448,8 +550,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 2,
     borderBottomColor: cfPalette.iron,
   },
-  backBtn: {
-    width: 40,
+  backBtn: { width: 40 },
+  nameHeader: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: cfPalette.iron,
   },
   searchBar: {
     flexDirection: "row",
@@ -485,9 +591,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: cfPalette.iron,
   },
-  resultHeader: {
-    flexDirection: "row",
-    alignItems: "center",
+  kindPill: {
+    alignSelf: "flex-start",
+    backgroundColor: cfPalette.cyan,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 3,
   },
   resultDetail: {
     flex: 1,

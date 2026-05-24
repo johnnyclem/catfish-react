@@ -1,58 +1,51 @@
 /**
  * iOS-style app grid for the parody phone home screen.
  *
- * Six tiles in a 4-column grid (the 5th + 6th wrap to row two) plus a
- * frosted dock with three shortcuts: a placeholder user tile, a
- * Game Center shortcut, and the Lots 'o Fish icon — both of which
- * route to the same destinations as their grid counterparts.
+ * Nine tiles in a 4-column grid (plus a frosted dock with three
+ * shortcuts: a placeholder user tile, a Goggle shortcut for one-tap
+ * background checks, and the Lots 'o Fish icon).
  *
- * Each parody-app tile renders its own code-drawn icon (no Feather
- * fallback, no SVG/PNG asset) so the grid reads as a cohesive set of
- * pixel-noir app icons in the Lots 'o Fish style.
+ * Each parody-app tile renders its own code-drawn icon so the grid
+ * reads as a cohesive set of pixel-noir app icons in the Lots 'o Fish
+ * style.
  *
- * Task #59: tiles also surface an iOS-style red notification badge
- * in their upper-right corner. The Lots 'o Fish badge sums queued
- * match announcements + unread suspect-message totals across every
- * thread in the active run; the Journal badge counts facts captured
- * since the player last opened the Journal app this session.
+ * Notification badges:
+ *   - Lots 'o Fish: queued match announcements + unread suspect totals
+ *   - Journal: facts captured since the player last opened the Journal
+ *   - Goggle: matched candidates the player hasn't Googled yet
  *
- * The home grid is stateless: tile taps fire the parent's
- * `onOpenApp` callback with one of the `ParodyAppId` values, and the
- * phone shell owns the actual screen routing.
+ * The home grid is stateless: tile taps fire the parent's `onOpenApp`
+ * callback with one of the `ParodyAppId` values, and the phone shell
+ * owns the actual screen routing.
  */
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import type { ComponentType } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import { cfPalette } from "@/constants/colors";
 import { useGameState } from "@/core/gameStore";
 
 import { AppNotificationBadge } from "./AppNotificationBadge";
-import { BrowserIcon } from "./BrowserIcon";
-import { EgoTripIcon } from "./EgoTripIcon";
 import { FaceTimeIcon } from "./FaceTimeIcon";
+import { GoggleIcon } from "./GoggleIcon";
+import { InstagrimIcon } from "./InstagrimIcon";
 import { JournalIcon } from "./JournalIcon";
+import { LinkedOutIcon } from "./LinkedOutIcon";
 import { LotsOfFishIcon } from "./LotsOfFishIcon";
 import { PhoneIcon } from "./PhoneIcon";
 import { PhotosIcon } from "./PhotosIcon";
-import { SafeSpotIcon } from "./SafeSpotIcon";
 import { SettingsIcon } from "@/features/settings/SettingsIcon";
-import { SugarCoatIcon } from "./SugarCoatIcon";
-import { WordLowIcon } from "./WordLowIcon";
+import { usePhoneShell } from "./phoneShellState";
 
 export type ParodyAppId =
-  | "browser"
-  | "facetime"
-  | "egoTrip"
-  | "sugarCoat"
-  | "safeSpot"
-  | "wordLow"
   | "lotsOfFish"
   | "journal"
+  | "goggle"
+  | "linkedOut"
+  | "instagrim"
   | "phone"
+  | "facetime"
   | "photos"
-  | "gameCenter"
   | "settings";
 
 interface Props {
@@ -67,13 +60,11 @@ interface AppTileSpec {
 }
 
 const APPS: AppTileSpec[] = [
-  { id: "egoTrip", name: "Ego Trip", Icon: EgoTripIcon },
-  { id: "sugarCoat", name: "Sugar Coat", Icon: SugarCoatIcon },
-  { id: "safeSpot", name: "Safe Spot", Icon: SafeSpotIcon },
-  { id: "wordLow", name: "Word-Low", Icon: WordLowIcon },
   { id: "lotsOfFish", name: "Lots 'o Fish", Icon: LotsOfFishIcon },
   { id: "journal", name: "Journal", Icon: JournalIcon },
-  { id: "browser", name: "Browser", Icon: BrowserIcon },
+  { id: "goggle", name: "Goggle", Icon: GoggleIcon },
+  { id: "linkedOut", name: "LinkedOut", Icon: LinkedOutIcon },
+  { id: "instagrim", name: "Instagrim", Icon: InstagrimIcon },
   { id: "phone", name: "Phone", Icon: PhoneIcon },
   { id: "facetime", name: "FaceTime", Icon: FaceTimeIcon },
   { id: "photos", name: "Photos", Icon: PhotosIcon },
@@ -81,13 +72,6 @@ const APPS: AppTileSpec[] = [
 ];
 
 export function HomeGrid({ onOpenApp }: Props) {
-  // Lots 'o Fish badge — anything in the active run that wants the
-  // player's attention inside the dating app. We sum pending match
-  // celebrations + unread suspect messages across every thread so a
-  // single number captures both "you have a new match to greet" and
-  // "an existing match wrote back". Hidden when the run is closed
-  // (the End-of-Run card owns the screen) or absent (title screen
-  // path before the player taps "Start New Case").
   const lotsOfFishBadge = useGameState((s) => {
     const run = s.run;
     if (!run || run.closed) return 0;
@@ -99,16 +83,17 @@ export function HomeGrid({ onOpenApp }: Props) {
     return pending + unread;
   });
 
-  // Journal badge — facts captured since the player last opened the
-  // Journal app this session. Cleared by `markJournalVisited` the
-  // moment the player taps the Journal tile (the phone shell calls
-  // it from its surface-router effect).
   const journalBadge = useGameState((s) => s.journalNewSinceLastVisit);
+
+  // Goggle badge — number of matched candidates the player hasn't
+  // background-checked yet. Seeded by ThreadView when a new match
+  // opens; cleared the moment Goggle searches that candidate's name.
+  const goggleBadge = usePhoneShell((s) => s.pendingBackgroundChecks.length);
 
   return (
     <View style={styles.root}>
       <LinearGradient
-        // Indigo → purple → pink, low opacity, per the user's draft.
+        // Indigo → purple → pink, low opacity.
         colors={["rgba(49, 46, 129, 0.65)", "rgba(88, 28, 135, 0.55)", "rgba(131, 24, 67, 0.55)"]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
@@ -118,18 +103,21 @@ export function HomeGrid({ onOpenApp }: Props) {
 
       <View style={styles.grid}>
         {APPS.map((app) => {
-          const badge =
-            app.id === "lotsOfFish"
-              ? lotsOfFishBadge
-              : app.id === "journal"
-                ? journalBadge
-                : 0;
-          const accLabel =
-            app.id === "lotsOfFish" && badge > 0
-              ? `${badge} new ${badge === 1 ? "alert" : "alerts"} in Lots 'o Fish`
-              : app.id === "journal" && badge > 0
-                ? `${badge} new ${badge === 1 ? "fact" : "facts"} in the Journal`
-                : undefined;
+          let badge = 0;
+          let accLabel: string | undefined;
+          if (app.id === "lotsOfFish") {
+            badge = lotsOfFishBadge;
+            if (badge > 0)
+              accLabel = `${badge} new ${badge === 1 ? "alert" : "alerts"} in Lots 'o Fish`;
+          } else if (app.id === "journal") {
+            badge = journalBadge;
+            if (badge > 0)
+              accLabel = `${badge} new ${badge === 1 ? "fact" : "facts"} in the Journal`;
+          } else if (app.id === "goggle") {
+            badge = goggleBadge;
+            if (badge > 0)
+              accLabel = `${badge} new ${badge === 1 ? "lead" : "leads"} to background check`;
+          }
           return (
             <AppTile
               key={app.id}
@@ -150,21 +138,15 @@ export function HomeGrid({ onOpenApp }: Props) {
           </View>
         </View>
         <Pressable
-          testID="parody-dock-gamecenter"
+          testID="parody-dock-goggle"
           accessibilityRole="button"
-          accessibilityLabel="Open Game Center"
-          onPress={() => onOpenApp("gameCenter")}
+          accessibilityLabel="Open Goggle"
+          onPress={() => onOpenApp("goggle")}
           style={styles.dockSlot}
         >
           {({ pressed }) => (
-            <View
-              style={[
-                styles.dockTile,
-                styles.dockGameCenter,
-                pressed && { opacity: 0.7 },
-              ]}
-            >
-              <Feather name="grid" size={26} color="#4f46e5" />
+            <View style={pressed ? { opacity: 0.7 } : undefined}>
+              <GoggleIcon size={52} />
             </View>
           )}
         </Pressable>
@@ -217,9 +199,6 @@ function AppTile({
             ]}
           >
             <Icon size={TILE_SIZE} />
-            {/* Badge sits on the icon (overflow visible) so the pill
-                pokes out over the tile's upper-right corner. The
-                tile label below is unaffected. */}
             <AppNotificationBadge
               count={badgeCount}
               accessibilityLabel={badgeAccessibilityLabel}
@@ -259,9 +238,6 @@ const styles = StyleSheet.create({
   tileFrame: {
     width: TILE_SIZE,
     height: TILE_SIZE,
-    // Allow the notification badge to overflow the tile's frame so
-    // the pill nudges past the icon's upper-right corner instead of
-    // clipping inside it.
     overflow: "visible",
   },
   tileLabel: {
@@ -299,8 +275,5 @@ const styles = StyleSheet.create({
   },
   dockUser: {
     backgroundColor: "rgba(39, 39, 42, 0.8)",
-  },
-  dockGameCenter: {
-    backgroundColor: cfPalette.bone,
   },
 });

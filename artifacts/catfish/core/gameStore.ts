@@ -57,63 +57,8 @@ import {
   ThreadId,
   EvidenceChain,
 } from "./models";
-import {
-  EgoTripSession,
-  EMPTY_PARODY_SESSIONS,
-  ParodySessions,
-  parseParodySessions,
-  SafeSpotSession,
-  SugarCoatSession,
-} from "./parodySessions";
 import { loadActiveRun, loadRunArchive, saveActiveRun, saveRunArchive } from "./repository";
 import { voiceForCandidate } from "./voiceProfiles";
-
-/**
- * Task #39 — Parody mini-game persistent best scores.
- *
- * Each parody app on the new "Apps" tab tracks one durable stat. We
- * keep the slice intentionally flat (one number per game) so the
- * persistence shape is small and the migration story is trivial.
- * Lives at the top of the store (not on `CaseRun`) because these
- * scores must survive `resetRun()` and span runs — they're meta
- * progress, not case progress.
- */
-export type ParodyGame =
-  | "wordLow"
-  | "safeSpot"
-  | "egoTrip"
-  | "sugarCoat";
-
-export interface ParodyScores {
-  /** Best win streak in Word-Low (Wordle parody). */
-  wordLowBestStreak: number;
-  /** Highest wave-survived in Safe Spot (PvZ parody). */
-  safeSpotBestWave: number;
-  /** Highest pillar-passed score in Ego Trip (Flappy parody). */
-  egoTripHighScore: number;
-  /** Highest CLOUT score in Sugar Coat (match-3 parody). */
-  sugarCoatHighClout: number;
-}
-
-export const EMPTY_PARODY_SCORES: ParodyScores = {
-  wordLowBestStreak: 0,
-  safeSpotBestWave: 0,
-  egoTripHighScore: 0,
-  sugarCoatHighClout: 0,
-};
-
-function parodyKeyFor(game: ParodyGame): keyof ParodyScores {
-  switch (game) {
-    case "wordLow":
-      return "wordLowBestStreak";
-    case "safeSpot":
-      return "safeSpotBestWave";
-    case "egoTrip":
-      return "egoTripHighScore";
-    case "sugarCoat":
-      return "sugarCoatHighClout";
-  }
-}
 
 /**
  * Pass 3 — Journal capture input.
@@ -251,28 +196,6 @@ interface GameStateValue {
    * isn't required and would feel like ghost data.
    */
   journalNewSinceLastVisit: number;
-  /**
-   * Persistent high-score slice for the parody mini-games on the
-   * Apps tab. Survives `resetRun()` because these scores are meta
-   * progress, not case progress. Backed by its own AsyncStorage key
-   * so a score bump doesn't rewrite the whole CaseRun blob.
-   */
-  parody: ParodyScores;
-  /**
-   * Per-game session snapshots — Task #44. Holds WordLow's active
-   * win streak (which survives reload until a loss resets it) plus
-   * an in-progress run snapshot for each of the other three parody
-   * games (Safe Spot / Ego Trip / Sugar Coat). The non-WordLow slots
-   * are gated to the local calendar day on hydrate so a player who
-   * comes back the next day starts fresh — the snapshot was already
-   * written, but `parseParodySessions` drops it when its `dateKey`
-   * doesn't match today.
-   *
-   * Lives at the top of the store (not on `CaseRun`) for the same
-   * reason `parody` does: these are meta-progress slices that must
-   * outlive `resetRun()`.
-   */
-  parodySessions: ParodySessions;
   /** Persisted archive of closed-run summaries for the Run History screen. */
   runArchive: RunSummary[];
   hydrate: () => Promise<void>;
@@ -298,36 +221,6 @@ interface GameStateValue {
   setReduceMotionEnabled: (enabled: boolean) => Promise<void>;
   /** Toggle high-contrast text. Persists to AsyncStorage immediately. */
   setHighContrastTextEnabled: (enabled: boolean) => Promise<void>;
-  /**
-   * Record a parody mini-game result. No-op (returns `false`) if the
-   * supplied value isn't strictly higher than the current best —
-   * keeps the bookkeeping monotonic so callers can fire it after
-   * every game-over without worrying about regressions. Returns
-   * `true` and persists when the new value wins, so the UI can play
-   * a "new high" sting only on a real beat.
-   */
-  recordParodyScore: (game: ParodyGame, value: number) => Promise<boolean>;
-  /**
-   * Update WordLow's persisted active win streak — Task #44. Persists
-   * the new value to the parody-sessions blob via the same serialized
-   * write chain that protects the high-score blob, so a sequence of
-   * win→win→loss writes can never land out of order.
-   *
-   * No-op (returns without writing) if `value` is unchanged from the
-   * in-memory slot, so a re-render that re-fires the effect doesn't
-   * spam AsyncStorage.
-   */
-  setWordLowStreak: (value: number) => Promise<void>;
-  /**
-   * Stash an in-progress Safe Spot run so a cold start within the
-   * same calendar day can offer a RESUME affordance. Pass `null` to
-   * clear (game-over, fresh start). Same write-chain as above.
-   */
-  saveSafeSpotSession: (snap: SafeSpotSession | null) => Promise<void>;
-  /** Stash / clear an in-progress Ego Trip run. See `saveSafeSpotSession`. */
-  saveEgoTripSession: (snap: EgoTripSession | null) => Promise<void>;
-  /** Stash / clear an in-progress Sugar Coat run. See `saveSafeSpotSession`. */
-  saveSugarCoatSession: (snap: SugarCoatSession | null) => Promise<void>;
   startNewRun: (forced?: KillerIdentity) => Promise<CaseRun>;
   /**
    * Player-paced clock tick.
@@ -968,19 +861,6 @@ const BGM_VOLUME_KEY = "catfish/prefs/bgm_volume/v1";
 const SFX_VOLUME_KEY = "catfish/prefs/sfx_volume/v1";
 const VOICE_VOLUME_KEY = "catfish/prefs/voice_volume/v1";
 const AMBIENCE_VOLUME_KEY = "catfish/prefs/ambience_volume/v1";
-/**
- * AsyncStorage row for the parody mini-game high scores. Versioned
- * (`/v1`) so a future schema change (e.g. per-day Wordle history,
- * leaderboards) can migrate forward without losing today's scores.
- */
-const PARODY_SCORES_KEY = "catfish/prefs/parody/v1";
-/**
- * AsyncStorage row for the parody session snapshots — Task #44.
- * Separate from `PARODY_SCORES_KEY` so a session-snapshot write (much
- * more frequent: per-swap in Sugar Coat, per-pillar in Ego Trip)
- * doesn't rewrite the high-score blob on every keystroke.
- */
-const PARODY_SESSIONS_KEY = "catfish/prefs/parody-session/v1";
 
 async function loadBoolPref(key: string): Promise<boolean> {
   try {
@@ -1028,161 +908,9 @@ async function saveVoiceMuted(muted: boolean): Promise<void> {
 }
 
 /**
- * Load the parody score blob, defaulting any missing field to 0 so a
- * forward-compatible new game added in a future task can hydrate
- * cleanly without dropping the existing scores.
- */
-async function loadParodyScores(): Promise<ParodyScores> {
-  try {
-    const raw = await AsyncStorage.getItem(PARODY_SCORES_KEY);
-    if (!raw) return { ...EMPTY_PARODY_SCORES };
-    const parsed = JSON.parse(raw) as Partial<ParodyScores>;
-    return {
-      wordLowBestStreak: clampNonNegInt(parsed.wordLowBestStreak),
-      safeSpotBestWave: clampNonNegInt(parsed.safeSpotBestWave),
-      egoTripHighScore: clampNonNegInt(parsed.egoTripHighScore),
-      sugarCoatHighClout: clampNonNegInt(parsed.sugarCoatHighClout),
-    };
-  } catch {
-    return { ...EMPTY_PARODY_SCORES };
-  }
-}
-
-/**
- * Tail of the in-flight parody-score write chain. Every save links
- * onto this promise so two writes can never overlap on disk —
- * `flushParodyScores` always waits for the prior link to finish before
- * serializing and writing the next one.
- *
- * Exported (test-only) via `__getParodyWriteChain` so the regression
- * test can `await` a settled chain instead of racing the event loop.
- */
-let parodyWriteChain: Promise<void> = Promise.resolve();
-
-/**
- * Serialize a parody-score persist. Two saves can never overlap —
- * each link waits for the prior write to settle, then snapshots the
- * latest in-memory `parody` slice via `getLatest` *right before*
- * stringifying. That late read is the safety net: if a second
- * `recordParodyScore` updated the store while an earlier write was
- * still in flight, the earlier write's link picks up the merged
- * state when it finally runs, so no field can be silently overwritten
- * by a stale snapshot.
- *
- * Per-link `try`/`catch` keeps a single failed write from poisoning
- * subsequent saves; the chain itself swallows rejections for the
- * same reason.
- */
-function flushParodyScores(
-  getLatest: () => ParodyScores,
-): Promise<void> {
-  const next = parodyWriteChain.then(async () => {
-    const snapshot = getLatest();
-    try {
-      await AsyncStorage.setItem(
-        PARODY_SCORES_KEY,
-        JSON.stringify(snapshot),
-      );
-    } catch {
-      // Persistence failure is non-fatal — the in-memory score still
-      // shows the new high until the next cold start.
-    }
-  });
-  parodyWriteChain = next.catch(() => undefined);
-  return next;
-}
-
-/**
- * Test-only handle to the parody-write chain so the regression
- * harness can wait for every queued save to settle before
- * inspecting the on-disk blob. Not part of the public store API.
- */
-export function __getParodyWriteChain(): Promise<void> {
-  return parodyWriteChain;
-}
-
-/**
- * Same write-chain pattern as `flushParodyScores`, but for the
- * session-snapshot blob. Independent chain (instead of multiplexing
- * onto `parodyWriteChain`) so a long-running session save can't
- * delay a high-score persist and vice-versa.
- */
-let parodySessionWriteChain: Promise<void> = Promise.resolve();
-
-/**
- * Result shape for `loadParodySessions`. `needsRewrite` is set when the
- * on-disk blob carried a same-day-gated snapshot (Safe Spot, Ego Trip,
- * or Sugar Coat) that the parser dropped because its `dateKey` no
- * longer matches today (or the slot was structurally malformed). When
- * true, `hydrate` immediately persists the cleaned `parsed` slice so
- * the disk row stops carrying stale data forward indefinitely.
- *
- * WordLow's `wordLowStreak` is not date-gated, so it never triggers a
- * rewrite on its own — and the post-hydrate flush still re-serializes
- * the current streak verbatim, so the field is preserved.
- */
-interface LoadedParodySessions {
-  parsed: ParodySessions;
-  needsRewrite: boolean;
-}
-
-async function loadParodySessions(): Promise<LoadedParodySessions> {
-  try {
-    const raw = await AsyncStorage.getItem(PARODY_SESSIONS_KEY);
-    if (!raw) return { parsed: { ...EMPTY_PARODY_SESSIONS }, needsRewrite: false };
-    const obj = JSON.parse(raw) as unknown;
-    const parsed = parseParodySessions(obj);
-    // Detect stale rows: any of the three same-day-gated slots that
-    // had data on disk but the parser dropped to null. This catches
-    // both the routine case (yesterday's blob) and the rare malformed
-    // snapshot — either way the disk row is out of sync with what the
-    // store is now serving, so we tell the caller to rewrite.
-    const r =
-      obj && typeof obj === "object"
-        ? (obj as Partial<ParodySessions>)
-        : ({} as Partial<ParodySessions>);
-    const needsRewrite =
-      (r.safeSpot != null && parsed.safeSpot === null) ||
-      (r.egoTrip != null && parsed.egoTrip === null) ||
-      (r.sugarCoat != null && parsed.sugarCoat === null);
-    return { parsed, needsRewrite };
-  } catch {
-    return { parsed: { ...EMPTY_PARODY_SESSIONS }, needsRewrite: false };
-  }
-}
-
-function flushParodySessions(getLatest: () => ParodySessions): Promise<void> {
-  const next = parodySessionWriteChain.then(async () => {
-    const snapshot = getLatest();
-    try {
-      await AsyncStorage.setItem(
-        PARODY_SESSIONS_KEY,
-        JSON.stringify(snapshot),
-      );
-    } catch {
-      // Persistence failure is non-fatal — the in-memory snapshot still
-      // serves the active app session.
-    }
-  });
-  parodySessionWriteChain = next.catch(() => undefined);
-  return next;
-}
-
-/**
- * Test-only handle to the parody-session write chain so the regression
- * harness can wait for every queued save to settle before inspecting
- * the on-disk blob. Mirrors `__getParodyWriteChain`.
- */
-export function __getParodySessionWriteChain(): Promise<void> {
-  return parodySessionWriteChain;
-}
-
-/**
  * Test-only escape hatch that clears the one-shot hydration promise so
  * a single Node process can simulate multiple cold starts in sequence
- * (the production runtime hydrates exactly once per app launch). Used
- * by the parody-session regression suite to verify that `hydrate()`
- * rewrites a stale on-disk blob.
+ * (the production runtime hydrates exactly once per app launch).
  */
 export function __resetHydrationForTests(): void {
   hydrationPromise = null;
@@ -1475,8 +1203,6 @@ export const useGameState = create<GameStateValue>((set, get) => ({
   highContrastTextEnabled: false,
   recentlyDiscarded: [],
   journalNewSinceLastVisit: 0,
-  parody: { ...EMPTY_PARODY_SCORES },
-  parodySessions: { ...EMPTY_PARODY_SESSIONS },
   runArchive: [],
 
   hydrate: async () => {
@@ -1497,8 +1223,6 @@ export const useGameState = create<GameStateValue>((set, get) => ({
         screenShakeEnabled,
         reduceMotionEnabled,
         highContrastTextEnabled,
-        parody,
-        sessionsLoaded,
         runArchive,
       ] = await Promise.all([
         loadActiveRun().then(migrateRun),
@@ -1513,8 +1237,6 @@ export const useGameState = create<GameStateValue>((set, get) => ({
         loadBoolPref(SCREEN_SHAKE_KEY),
         loadBoolPref(REDUCE_MOTION_KEY),
         loadBoolPref(HIGH_CONTRAST_KEY),
-        loadParodyScores(),
-        loadParodySessions(),
         loadRunArchive(),
       ]);
       // Cold-start invariant: undo state is in-memory only, so a
@@ -1542,21 +1264,8 @@ export const useGameState = create<GameStateValue>((set, get) => ({
         reduceMotionEnabled: reduceMotionEnabled ?? false,
         highContrastTextEnabled: highContrastTextEnabled ?? false,
         recentlyDiscarded: [],
-        parody,
-        parodySessions: sessionsLoaded.parsed,
         runArchive,
       });
-      // If the on-disk blob was carrying same-day-gated snapshots
-      // that the parser just dropped (stale dateKey, malformed row),
-      // rewrite the blob now so the disk row stops accumulating
-      // stale slots indefinitely. Goes through the same serialized
-      // write chain as every other session save, so it can never
-      // race a concurrent `setWordLowStreak` / `saveXSession` call.
-      // WordLow's streak is preserved because the flush re-reads the
-      // current `parodySessions` slice (which kept the loaded value).
-      if (sessionsLoaded.needsRewrite) {
-        void flushParodySessions(() => get().parodySessions);
-      }
     })();
     return hydrationPromise;
   },
@@ -1614,65 +1323,6 @@ export const useGameState = create<GameStateValue>((set, get) => ({
   setHighContrastTextEnabled: async (enabled) => {
     set({ highContrastTextEnabled: enabled });
     await saveBoolPref(HIGH_CONTRAST_KEY, enabled);
-  },
-
-  recordParodyScore: async (game, value) => {
-    // Coerce caller-supplied junk (NaN, negative, fractional) into
-    // the same shape the loader produces so the in-memory and
-    // on-disk views never disagree.
-    const safe = clampNonNegInt(value);
-    const prev = get().parody;
-    const key = parodyKeyFor(game);
-    const current = prev[key];
-    if (safe <= current) return false;
-    const next: ParodyScores = { ...prev, [key]: safe };
-    // Flip the in-memory state synchronously so subscribers (the
-    // parody UIs, any "new high" sting) re-render immediately —
-    // the disk write below is serialized through `flushParodyScores`
-    // and never blocks the visual update.
-    set({ parody: next });
-    // Hand the persist to the serialized write chain. The closure
-    // re-reads `get().parody` at the moment its turn comes up so a
-    // sibling save queued behind a slow earlier write still merges
-    // every later high score, instead of clobbering them with a
-    // stale snapshot.
-    await flushParodyScores(() => get().parody);
-    return true;
-  },
-
-  setWordLowStreak: async (value) => {
-    const safe = clampNonNegInt(value);
-    const prev = get().parodySessions;
-    if (prev.wordLowStreak === safe) return;
-    const next: ParodySessions = { ...prev, wordLowStreak: safe };
-    set({ parodySessions: next });
-    await flushParodySessions(() => get().parodySessions);
-  },
-
-  saveSafeSpotSession: async (snap) => {
-    const prev = get().parodySessions;
-    // Identity-equal slot — no-op so a save loop in the game can't
-    // accidentally rewrite the blob with the same data each frame.
-    if (prev.safeSpot === snap) return;
-    const next: ParodySessions = { ...prev, safeSpot: snap };
-    set({ parodySessions: next });
-    await flushParodySessions(() => get().parodySessions);
-  },
-
-  saveEgoTripSession: async (snap) => {
-    const prev = get().parodySessions;
-    if (prev.egoTrip === snap) return;
-    const next: ParodySessions = { ...prev, egoTrip: snap };
-    set({ parodySessions: next });
-    await flushParodySessions(() => get().parodySessions);
-  },
-
-  saveSugarCoatSession: async (snap) => {
-    const prev = get().parodySessions;
-    if (prev.sugarCoat === snap) return;
-    const next: ParodySessions = { ...prev, sugarCoat: snap };
-    set({ parodySessions: next });
-    await flushParodySessions(() => get().parodySessions);
   },
 
   startNewRun: async (forced) => {

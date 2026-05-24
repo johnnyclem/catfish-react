@@ -159,6 +159,10 @@ export function ThreadView({ threadId }: ThreadViewProps) {
 
   const startDate = useGameState((s) => s.startDate);
   const setActiveDateScene = usePhoneShell((s) => s.setActiveDateScene);
+  const openGoggleForCandidate = usePhoneShell((s) => s.openGoggleForCandidate);
+  const markBackgroundCheckPending = usePhoneShell(
+    (s) => s.markBackgroundCheckPending,
+  );
 
   const [pending, setPending] = useState(false);
   const [unmatchPending, setUnmatchPending] = useState(false);
@@ -195,6 +199,15 @@ export function ThreadView({ threadId }: ThreadViewProps) {
       void openThread(threadId);
     }
   }, [hydrated, thread, threadId, openThread]);
+
+  // Seed the Goggle home-grid badge with this candidate as a "to be
+  // background-checked" lead. Cleared the moment the player runs a
+  // Goggle search for their name. Idempotent — `markBackgroundCheckPending`
+  // is a no-op if the id is already in the set.
+  useEffect(() => {
+    if (!candidate) return;
+    markBackgroundCheckPending(candidate.id);
+  }, [candidate, markBackgroundCheckPending]);
 
   // Auto-scroll to bottom whenever messages change.
   useEffect(() => {
@@ -493,6 +506,29 @@ export function ThreadView({ threadId }: ThreadViewProps) {
         </View>
         {match && !isUnmatched && !run?.closed && (
           <Pressable
+            onPress={() => {
+              emitSfx("tab_switch");
+              openGoggleForCandidate(candidate.id);
+              // The phone shell is mounted under the chat route; switching
+              // currentApp in the shell store doesn't pop us off this
+              // chat screen, so explicitly back out to land on Goggle.
+              router.back();
+            }}
+            hitSlop={8}
+            style={({ pressed }) => [
+              styles.bgCheckBtn,
+              { opacity: pressed ? 0.6 : 1 },
+            ]}
+            testID="thread-background-check"
+            accessibilityLabel={`Background check ${candidate.displayName}`}
+          >
+            <PixelText size={7} color={cfPalette.cyan} uppercase>
+              bg check
+            </PixelText>
+          </Pressable>
+        )}
+        {match && !isUnmatched && !run?.closed && (
+          <Pressable
             onPress={handlePlanDate}
             disabled={datePending}
             hitSlop={8}
@@ -732,6 +768,13 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderWidth: 1,
     borderColor: cfPalette.pinkHot,
+    marginRight: 6,
+  },
+  bgCheckBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: cfPalette.cyan,
     marginRight: 6,
   },
   unmatchedTag: {

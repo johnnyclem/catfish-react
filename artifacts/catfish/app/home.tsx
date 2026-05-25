@@ -34,11 +34,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useGameState } from "@/core/gameStore";
 import { buildDateSceneFor } from "@/core/dateSceneFactory";
 
-import { BrowserApp } from "@/features/phone/BrowserApp";
+import { GoggleApp } from "@/features/investigation/GoggleApp";
+import { InstagrimApp } from "@/features/investigation/InstagrimApp";
+import { LinkedOutApp } from "@/features/investigation/LinkedOutApp";
 import { PhotosApp } from "@/features/parody/PhotosApp";
 import { PhoneApp } from "@/features/phone/PhoneApp";
 import { FaceTimeApp } from "@/features/phone/FaceTimeApp";
-import { GameCenter } from "@/features/parody/GameCenter";
 import { HomeGrid } from "@/features/parody/HomeGrid";
 import { HomeIndicator } from "@/features/parody/HomeIndicator";
 import SettingsScreen from "@/features/settings/SettingsScreen";
@@ -46,10 +47,6 @@ import { JournalApp } from "@/features/parody/JournalApp";
 import { LotsOfFishApp } from "@/features/parody/LotsOfFishApp";
 import { PhoneStatusBar } from "@/features/parody/PhoneStatusBar";
 import { usePhoneShell } from "@/features/parody/phoneShellState";
-import { EgoTrip } from "@/features/parody/games/EgoTrip";
-import { SafeSpot } from "@/features/parody/games/SafeSpot";
-import { SugarCoat } from "@/features/parody/games/SugarCoat";
-import { WordLow } from "@/features/parody/games/WordLow";
 import { DateSceneView } from "@/features/date/DateSceneView";
 import { emitSfx } from "@/features/audio/audioEvents";
 
@@ -149,19 +146,11 @@ export default function PhoneHomeShell() {
         {currentApp === "lotsOfFish" && <LotsOfFishApp />}
         {currentApp === "journal" && <JournalApp />}
         {currentApp === "phone" && <PhoneApp />}
-        {currentApp === "browser" && <BrowserApp />}
+        {currentApp === "goggle" && <GoggleApp />}
+        {currentApp === "linkedOut" && <LinkedOutApp />}
+        {currentApp === "instagrim" && <InstagrimApp />}
         {currentApp === "facetime" && <FaceTimeApp />}
         {currentApp === "photos" && <PhotosApp />}
-        {currentApp === "gameCenter" && (
-          <GameCenter
-            onOpenApp={(id) => openApp(id)}
-            onExitToHome={goHome}
-          />
-        )}
-        {currentApp === "wordLow" && <WordLow onExit={goHome} />}
-        {currentApp === "egoTrip" && <EgoTrip onExit={goHome} />}
-        {currentApp === "safeSpot" && <SafeSpot onExit={goHome} />}
-        {currentApp === "sugarCoat" && <SugarCoat onExit={goHome} />}
         {currentApp === "settings" && <SettingsScreen />}
       </View>
 

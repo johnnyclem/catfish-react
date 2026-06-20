@@ -11,26 +11,26 @@
  * studied on subsequent sessions.
  */
 import { useState } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import { PixelText } from "@/components/PixelChrome";
 import { cfPalette } from "@/constants/colors";
+import { isFactRevealedYet } from "@/core/factBootstrap";
 import { useGameState } from "@/core/gameStore";
 
 import { EvidenceDetail } from "@/features/apps/EvidenceDetail";
 import { AssetImage } from "@/components/AssetImage";
 import type { Fact } from "@/core/models";
 
-function evidenceGrid(facts: Fact[]) {
-  return facts.filter((f) => f.payload?.imageAssetID != null);
-}
-
 export function PhotosApp() {
   const run = useGameState((s) => s.run);
 
   const facts = run?.facts ?? [];
   const evidence = facts.filter(
-    (f) => f.committed && f.payload.imageAssetID != null,
+    (f) =>
+      f.committed &&
+      f.payload.imageAssetID != null &&
+      (!run || isFactRevealedYet(f, run)),
   ) as Array<Fact & { payload: { imageAssetID: string; text: string; subject?: string } }>;
 
   type EvidenceFact = (typeof evidence)[number];
@@ -58,7 +58,14 @@ export function PhotosApp() {
     <>
       <ScrollView contentContainerStyle={styles.grid}>
         {evidence.map((fact) => (
-          <View key={fact.id} style={styles.thumb}>
+          <Pressable
+            key={fact.id}
+            testID={`photos-thumb-${fact.id}`}
+            onPress={() => setSelected(fact)}
+            style={({ pressed }) => [styles.thumb, pressed && { opacity: 0.7 }]}
+            accessibilityRole="button"
+            accessibilityLabel={`View evidence: ${fact.payload.text}`}
+          >
             <AssetImage
               id={fact.payload.imageAssetID}
               style={styles.thumbImg}
@@ -68,12 +75,11 @@ export function PhotosApp() {
             <PixelText
               size={5}
               color={cfPalette.fog}
-              
               style={styles.thumbLabel}
             >
               {fact.payload.text}
             </PixelText>
-          </View>
+          </Pressable>
         ))}
       </ScrollView>
       {selected && (

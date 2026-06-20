@@ -1,8 +1,8 @@
 /**
- * End-to-end Playwright suite for Journal ↔ AccusationSheet integration.
+ * End-to-end Playwright suite for Journal ↔ accusation wizard integration.
  *
  * Tests the interactions between the Journal (evidence management) and
- * the AccusationSheet (suspect selection):
+ * the accusation wizard (suspect selection):
  *
  *   1. Multi-suspect fact filing — capture facts against 2+ suspects,
  *      verify row sort order on the sheet (matched > dropped > passed;
@@ -10,8 +10,8 @@
  *   2. Discard → sheet — file a fact then discard it; the accusation
  *      row should update from "1 fact filed" to "no facts filed".
  *   3. Journal filter is independent of the sheet — filtering the
- *      Journal view does NOT pre-filter the AccusationSheet.
- *   4. Fact-badge accuracy — each AccusationSheet row's "N fact(s) filed"
+ *      Journal view does NOT pre-filter the accusation wizard.
+ *   4. Fact-badge accuracy — each accusation wizard row's "N fact(s) filed"
  *      label reflects exactly what the Journal knows about that suspect.
  *   5. Undo discard — discard a fact, tap UNDO in the toast, verify the
  *      fact reappears in the Journal AND the sheet's badge updates.
@@ -75,7 +75,16 @@ interface PersistedRun {
 async function bootIntoFreshRun(page: Page): Promise<void> {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.evaluate(() => {
-    try { window.localStorage.clear(); } catch { /* best effort */ }
+    try {
+      window.localStorage.clear();
+      // Returning-user state: skip the first-run onboarding overlay so
+      // the title screen's "Start New Case" is clickable (the overlay
+      // sits at zIndex 9999 and intercepts pointer events otherwise).
+      window.localStorage.setItem(
+        "catfish/onboarding/v1",
+        JSON.stringify({ completed: true, step: 0 }),
+      );
+    } catch { /* best effort */ }
   });
   await page.reload({ waitUntil: "domcontentloaded" });
 
@@ -297,23 +306,24 @@ test.describe("accusation — journal integration", () => {
       }
     }
 
-    // Navigate to Journal and open the AccusationSheet.
+    // Navigate to Journal and open the accusation wizard.
     await page.getByTestId("thread-back").click();
     await tapHomeIndicator(page);
     await page.getByTestId("parody-app-journal").click();
 
     await page.getByText("Accuse A Suspect").first().click();
-    const sheet = page.getByText("file an accusation");
-    await expect(sheet).toBeVisible({ timeout: 5_000 });
+    const wizard = page.getByText("review evidence");
+    await expect(wizard).toBeVisible({ timeout: 5_000 });
+    await page.getByTestId("accuse-step1-continue").click();
 
-    // Both suspects should appear on the sheet.
+    // Both suspects should appear on Step 2's picker.
     const killerRow = page.getByTestId(`accuse-row-${killer.id}`);
     const decoyRow = page.getByTestId(`accuse-row-${decoy.id}`);
     await expect(killerRow).toBeVisible();
     await expect(decoyRow).toBeVisible();
 
-    // Both should show "1 fact filed".
-    await expect(page.getByText(/1 fact filed/i).first()).toBeVisible();
+    // Both should show "1 fact".
+    await expect(page.getByText(/1 fact/i).first()).toBeVisible();
 
     // Both suspects are matched (slept), so neither shows "dropped".
     // The rows are sorted: matched suspects float up, then by fact count.
@@ -390,15 +400,16 @@ test.describe("accusation — journal integration", () => {
       page.getByText(/1 fact on file/i),
     ).toHaveCount(0, { timeout: 5_000 });
 
-    // Open AccusationSheet — the killer's row should now say "no facts filed".
+    // Open the wizard — the killer's Step 2 row should now say "no facts".
     await page.getByText("Accuse A Suspect").first().click();
-    await expect(page.getByText(/file an accusation/i)).toBeVisible();
+    await expect(page.getByText(/review evidence/i)).toBeVisible();
+    await page.getByTestId("accuse-step1-continue").click();
     const killerRow = page.getByTestId(`accuse-row-${killer.id}`);
-    await expect(killerRow.getByText(/no facts filed/i)).toBeVisible();
+    await expect(killerRow.getByText(/no facts/i)).toBeVisible();
   });
 
   // -------------------------------------------------------------------------
-  // Scenario 3 — Journal filter is independent of the AccusationSheet
+  // Scenario 3 — Journal filter is independent of the accusation wizard
   // -------------------------------------------------------------------------
   test("filtering the Journal does not filter the accusation sheet", async () => {
     await bootIntoFreshRun(page);
@@ -407,7 +418,9 @@ test.describe("accusation — journal integration", () => {
     const killer = run.deck.find((c) => c.isKillerCandidate)!;
     const decoy = run.deck.find((c) => !c.isKillerCandidate)!;
 
-    // Swipe everyone, sleep, file a fact against the killer (not decoy).
+    // The Journal's suspect-filter chips only render with 2+ suspects on
+    // file, so capture a fact from BOTH the killer and the decoy. Swipe
+    // everyone and sleep so both threads open.
     await page.getByTestId("parody-app-lotsOfFish").click();
     const enter = page.getByTestId("parody-lotsofish-open");
     if (await enter.isVisible({ timeout: 3_000 }).catch(() => false)) {
@@ -422,22 +435,56 @@ test.describe("accusation — journal integration", () => {
     const killerMatch = (matchedRun.matches ?? []).find(
       (m) => m.candidateId === killer.id,
     )!;
-    await page.getByTestId(`match-row-${killerMatch.id}`).click();
-    const firstMsg = await waitForSuspectMessage(page, killerMatch.threadId);
-    await longPressFactGesture(page, firstMsg.id);
+    const decoyMatch = (matchedRun.matches ?? []).find(
+      (m) => m.candidateId === decoy.id,
+    )!;
 
-    // Wait for persist.
+    // Capture from the decoy first.
+    await page.getByTestId(`match-row-${decoyMatch.id}`).click();
+    const decoyMsg = await waitForSuspectMessage(page, decoyMatch.threadId);
+    await longPressFactGesture(page, decoyMsg.id);
     {
       const deadline = Date.now() + 10_000;
       while (Date.now() < deadline) {
         const facts = await readPersistedFacts(page);
-        const found = facts.find(
-          (f) =>
-            f.committed &&
-            f.capturedFromMessageId === firstMsg.id &&
-            f.capturedFromCandidateId === killer.id,
-        );
-        if (found) break;
+        if (
+          facts.find(
+            (f) =>
+              f.committed &&
+              f.capturedFromMessageId === decoyMsg.id &&
+              f.capturedFromCandidateId === decoy.id,
+          )
+        )
+          break;
+        await page.waitForTimeout(150);
+      }
+    }
+
+    // Back out and capture from the killer.
+    await page.getByTestId("thread-back").click();
+    await tapHomeIndicator(page);
+    await page.getByTestId("parody-app-lotsOfFish").click();
+    const enterLof = page.getByTestId("parody-lotsofish-open");
+    if (await enterLof.isVisible({ timeout: 3_000 }).catch(() => false)) {
+      await enterLof.click();
+    }
+    await page.getByTestId("lof-tab-matches").click();
+    await page.getByTestId(`match-row-${killerMatch.id}`).click();
+    const killerMsg = await waitForSuspectMessage(page, killerMatch.threadId);
+    await longPressFactGesture(page, killerMsg.id);
+    {
+      const deadline = Date.now() + 10_000;
+      while (Date.now() < deadline) {
+        const facts = await readPersistedFacts(page);
+        if (
+          facts.find(
+            (f) =>
+              f.committed &&
+              f.capturedFromMessageId === killerMsg.id &&
+              f.capturedFromCandidateId === killer.id,
+          )
+        )
+          break;
         await page.waitForTimeout(150);
       }
     }
@@ -447,28 +494,39 @@ test.describe("accusation — journal integration", () => {
     await tapHomeIndicator(page);
     await page.getByTestId("parody-app-journal").click();
 
-    // Filter to just the killer by tapping their chip.
-    // The chip text is the candidate's displayName.
-    const killerChip = page.getByText(killer.displayName).first();
+    // Filter to just the killer by tapping their filter chip. Target the
+    // chip by its accessibility label rather than visible text — a bare
+    // displayName match (e.g. "Sam") would also hit FactCards and open
+    // the fact-detail modal instead of toggling the filter.
+    const killerChip = page.getByLabel(`Filter by ${killer.displayName}`, {
+      exact: true,
+    });
     await expect(killerChip).toBeVisible({ timeout: 5_000 });
     await killerChip.click();
 
-    // Only the killer's suspect group should be visible now.
-    const decoyGroupLabel = page.getByText(decoy.displayName).first();
-    await expect(decoyGroupLabel).toHaveCount(0, { timeout: 3_000 });
+    // Filtering to the killer hides the decoy's fact group. Assert on the
+    // group structure, not the decoy's name: the filter chip bar keeps
+    // every suspect's chip (so you can switch filters), so the decoy's
+    // name stays on screen — but only ONE "fact on file" group header
+    // (the killer's) should remain in the list.
+    await expect(page.getByText(/fact[s]? on file/i)).toHaveCount(1, {
+      timeout: 3_000,
+    });
 
-    // Open AccusationSheet — BOTH suspects should still appear (filter
-    // is Journal-only, not a pre-selection on the sheet).
+    // Open the wizard — BOTH suspects should still appear on Step 2
+    // (filter is Journal-only, not a pre-selection on the picker).
     await page.getByText("Accuse A Suspect").first().click();
-    await expect(page.getByText(/file an accusation/i)).toBeVisible();
+    await expect(page.getByText(/review evidence/i)).toBeVisible();
+    await page.getByTestId("accuse-step1-continue").click();
     const killerRow = page.getByTestId(`accuse-row-${killer.id}`);
     const decoyRow = page.getByTestId(`accuse-row-${decoy.id}`);
     await expect(killerRow).toBeVisible();
     await expect(decoyRow).toBeVisible();
 
-    // Killer's badge should read "1 fact filed", decoy should show "no facts filed".
-    await expect(killerRow.getByText(/1 fact filed/i)).toBeVisible();
-    await expect(decoyRow.getByText(/no facts filed/i)).toBeVisible();
+    // Both filed exactly one fact, so both rows read "1 fact" — proving
+    // the Journal's killer-only filter did not carry into the wizard.
+    await expect(killerRow.getByText(/1 fact/i)).toBeVisible();
+    await expect(decoyRow.getByText(/1 fact/i)).toBeVisible();
   });
 
   // -------------------------------------------------------------------------
@@ -538,11 +596,12 @@ test.describe("accusation — journal integration", () => {
     await expect(page.getByText(/fact discarded/i)).toHaveCount(0, { timeout: 5_000 });
     await expect(page.getByText(/1 fact on file/i).first()).toBeVisible({ timeout: 5_000 });
 
-    // Open AccusationSheet — badge should again read "1 fact filed".
+    // Open the wizard — Step 2's badge should again read "1 fact".
     await page.getByText("Accuse A Suspect").first().click();
-    await expect(page.getByText(/file an accusation/i)).toBeVisible();
+    await expect(page.getByText(/review evidence/i)).toBeVisible();
+    await page.getByTestId("accuse-step1-continue").click();
     const killerRow = page.getByTestId(`accuse-row-${killer.id}`);
-    await expect(killerRow.getByText(/1 fact filed/i)).toBeVisible();
+    await expect(killerRow.getByText(/1 fact/i)).toBeVisible();
   });
 
   // -------------------------------------------------------------------------

@@ -69,6 +69,41 @@ function assert(cond: unknown, msg: string): asserts cond {
 
 const state = useGameState.getState;
 
+/**
+ * Play a fresh run far enough that the killer's full deduction chain is
+ * actually *revealed* (not just materialized): the accuse path gates
+ * `discoveredFactIds` through `isFactRevealedYet`, so the bio/IG/portrait
+ * facts need the killer matched and the day clock needs to reach the
+ * latest fact's day stamp (the day-5 portrait swap).
+ *
+ *  1. swipe the deck in cursor order — right on the killer, left on decoys
+ *  2. sleep once so the overnight resolver mints the match
+ *  3. sleep until day 5 so the day-gated facts unlock
+ */
+async function playUntilFullChainRevealed(): Promise<void> {
+  const run = state().run!;
+  const killerCand = run.deck.find((c) => c.isKillerCandidate)!;
+  assert(killerCand, "run should carry a killer-candidate to play toward");
+  while (state().run!.deckCursor < state().run!.deck.length) {
+    const cur = state().run!;
+    const card = cur.deck[cur.deckCursor];
+    const dir = card.id === killerCand.id ? "right" : "left";
+    const ok = await state().swipe(card.id, dir);
+    assert(ok === true, `swipe on ${card.displayName} should be accepted`);
+  }
+  while (state().run!.day < 5) {
+    await state().advanceDay();
+    assert(
+      state().run!.closed === false,
+      "advancing to day 5 must not close the run",
+    );
+  }
+  const matched = state().run!.matches.some(
+    (m) => m.candidateId === killerCand.id,
+  );
+  assert(matched, "killer should be matched after the overnight resolver");
+}
+
 // ─── Test 1: correct accusation with the full chain ────────────────────
 {
   await state().resetRun();
@@ -97,6 +132,11 @@ const state = useGameState.getState;
       `expected required fact ${k} to be present + committed`,
     );
   }
+
+  // The accuse path additionally gates the discovered set through
+  // `isFactRevealedYet` — play the run to day 5 with Miles matched so
+  // the whole chain is actually revealed, then accuse.
+  await playUntilFullChainRevealed();
 
   const result = await state().accuse({ accused: "miles" });
   assert(result, "accuse should return an AccusationResult");

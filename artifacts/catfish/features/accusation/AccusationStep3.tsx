@@ -23,7 +23,7 @@ import {
 } from "@/components/PixelChrome";
 import { cfPalette } from "@/constants/colors";
 import { useGameState } from "@/core/gameStore";
-import { CandidateId, EvidenceChain, Fact } from "@/core/models";
+import { CandidateId, EvidenceChain } from "@/core/models";
 import { emitSfx } from "@/features/audio/audioEvents";
 import { getIdentityModule } from "@/core/identities";
 
@@ -50,10 +50,6 @@ export function AccusationStep3({
   }, [run, accusedCandidateId]);
 
   const chains = useMemo<EvidenceChain[]>(() => run?.evidenceChains ?? [], [run]);
-  const committedFacts = useMemo<Fact[]>(() => {
-    if (!run) return [];
-    return run.facts.filter((f) => f.committed);
-  }, [run]);
 
   const candidateChains = useMemo(() => {
     return chains.filter((c) => {
@@ -126,7 +122,11 @@ export function AccusationStep3({
   }
 
   const previewOutcome = getPreviewOutcome();
-  const canSubmit = selectedChainIds.size > 0 && !submitting;
+  // Chains strengthen the case but are never required to file — a
+  // zero-chain accusation is simply a weak one (the resolver decides
+  // off discovered facts, not selected chains). Requiring a selection
+  // here used to make runs with no buildable chains unwinnable.
+  const canSubmit = !submitting;
 
   return (
     <View style={styles.root}>
@@ -261,6 +261,7 @@ export function AccusationStep3({
           disabled={!canSubmit}
           onPress={() => { void handleSubmit(); }}
           style={styles.footerBtn}
+          testID="accuse-step3-file"
         />
       </View>
     </View>

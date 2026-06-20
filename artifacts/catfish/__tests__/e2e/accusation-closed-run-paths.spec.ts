@@ -58,7 +58,16 @@ interface PersistedRun {
 async function bootIntoFreshRun(page: Page): Promise<void> {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.evaluate(() => {
-    try { window.localStorage.clear(); } catch { /* best effort */ }
+    try {
+      window.localStorage.clear();
+      // Returning-user state: skip the first-run onboarding overlay so
+      // the title screen's "Start New Case" is clickable (the overlay
+      // sits at zIndex 9999 and intercepts pointer events otherwise).
+      window.localStorage.setItem(
+        "catfish/onboarding/v1",
+        JSON.stringify({ completed: true, step: 0 }),
+      );
+    } catch { /* best effort */ }
   });
   await page.reload({ waitUntil: "domcontentloaded" });
 
@@ -227,12 +236,20 @@ async function closeRunWithEnding(
     await tapHomeIndicator(page);
     await page.getByTestId("parody-app-journal").click();
 
-    // File accusation against the specified candidate (killer or decoy).
+    // File accusation against the specified candidate (killer or decoy)
+    // via the 3-step wizard: review → pick row (weak-evidence picks need
+    // a confirm tap) → file.
     const targetId = accusedCandidateId ?? killer.id;
     const targetRowTestId = `accuse-row-${targetId}`;
     await page.getByText("Accuse A Suspect").first().click();
+    await page.getByTestId("accuse-step1-continue").click();
     await page.getByTestId(targetRowTestId).click();
-    await page.getByText("File Accusation").first().click();
+    const step2Next = page.getByTestId("accuse-step2-continue");
+    await step2Next.click();
+    if (await step2Next.isVisible({ timeout: 1_500 }).catch(() => false)) {
+      await step2Next.click();
+    }
+    await page.getByTestId("accuse-step3-file").click();
   } else {
     // "skip" path — go to Journal and use Skip Town.
     await tapHomeIndicator(page);
@@ -419,10 +436,18 @@ test.describe("accusation — closed-run recovery for all ending types", () => {
     await page.getByTestId("parody-app-journal").click();
 
     await page.getByText("Accuse A Suspect").first().click();
+    await page.getByTestId("accuse-step1-continue").click();
     const decoyRow = page.getByTestId(`accuse-row-${decoy.id}`);
     await expect(decoyRow).toBeVisible({ timeout: 5_000 });
     await decoyRow.click();
-    await page.getByText("File Accusation").first().click();
+    {
+      const step2Next = page.getByTestId("accuse-step2-continue");
+      await step2Next.click();
+      if (await step2Next.isVisible({ timeout: 1_500 }).catch(() => false)) {
+        await step2Next.click();
+      }
+    }
+    await page.getByTestId("accuse-step3-file").click();
 
     // Dismiss via Back To Title.
     const endCard = page.getByTestId("end-of-run-card");
@@ -593,10 +618,18 @@ test.describe("accusation — closed-run recovery for all ending types", () => {
     await page.getByTestId("parody-app-journal").click();
 
     await page.getByText("Accuse A Suspect").first().click();
+    await page.getByTestId("accuse-step1-continue").click();
     const killerRow = page.getByTestId(`accuse-row-${killer.id}`);
     await expect(killerRow).toBeVisible({ timeout: 5_000 });
     await killerRow.click();
-    await page.getByText("File Accusation").first().click();
+    {
+      const step2Next = page.getByTestId("accuse-step2-continue");
+      await step2Next.click();
+      if (await step2Next.isVisible({ timeout: 1_500 }).catch(() => false)) {
+        await step2Next.click();
+      }
+    }
+    await page.getByTestId("accuse-step3-file").click();
 
     const endCard = page.getByTestId("end-of-run-card");
     await expect(endCard).toBeVisible({ timeout: 10_000 });

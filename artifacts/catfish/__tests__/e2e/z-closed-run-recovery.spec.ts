@@ -62,6 +62,13 @@ async function bootIntoFreshRun(page: Page): Promise<void> {
   await page.evaluate(() => {
     try {
       window.localStorage.clear();
+      // Returning-user state: skip the first-run onboarding overlay so
+      // the title screen's "Start New Case" is clickable (the overlay
+      // sits at zIndex 9999 and intercepts pointer events otherwise).
+      window.localStorage.setItem(
+        "catfish/onboarding/v1",
+        JSON.stringify({ completed: true, step: 0 }),
+      );
     } catch {
       /* private mode / quota — best effort */
     }
@@ -115,7 +122,7 @@ async function reachClosedDismissedRun(page: Page): Promise<void> {
   const killerRowTestId = `accuse-row-${killerCandidate!.id}`;
 
   // Right-swipe every deck candidate so the killer shows up on the
-  // AccusationSheet (sheet only lists `seen = deck.slice(0, cursor)`).
+  // accusation wizard (Step 2 only lists `seen = deck.slice(0, cursor)`).
   await page.getByTestId("parody-app-lotsOfFish").click();
   const enter = page.getByTestId("parody-lotsofish-open");
   if (await enter.isVisible({ timeout: 3_000 }).catch(() => false)) {
@@ -144,7 +151,7 @@ async function reachClosedDismissedRun(page: Page): Promise<void> {
     await page.waitForTimeout(50);
   }
 
-  // No need to file a fact for this spec — the AccusationSheet works
+  // No need to file a fact for this spec — the accusation wizard works
   // with zero captured evidence; the recap shown is just a wrongful-
   // accusation/caughtThem outcome rather than a full deduction chain.
 
@@ -153,10 +160,17 @@ async function reachClosedDismissedRun(page: Page): Promise<void> {
   await page.getByTestId("parody-home-indicator").click();
   await page.getByTestId("parody-app-journal").click();
 
-  // File against the killer.
+  // File against the killer via the 3-step wizard (zero evidence reads
+  // as weak, so Step 2's Continue needs the extra confirm tap).
   await page.getByText("Accuse A Suspect").first().click();
+  await page.getByTestId("accuse-step1-continue").click();
   await page.getByTestId(killerRowTestId).click();
-  await page.getByText("File Accusation").first().click();
+  const step2Next = page.getByTestId("accuse-step2-continue");
+  await step2Next.click();
+  if (await step2Next.isVisible({ timeout: 1_500 }).catch(() => false)) {
+    await step2Next.click();
+  }
+  await page.getByTestId("accuse-step3-file").click();
 
   // EndOfRunCard appears, then dismiss via "Back To Title". That
   // routes to "/" (title screen) and (Task #68) keeps the run's

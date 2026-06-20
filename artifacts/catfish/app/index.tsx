@@ -7,7 +7,7 @@
 
 import { router } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Animated, Platform, ScrollView, StyleSheet, View } from "react-native";
+import { Animated, Platform, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AssetImage } from "@/components/AssetImage";
@@ -28,6 +28,10 @@ export default function TitleScreen() {
   const hydrated = useGameState((s) => s.hydrated);
   const startNewRun = useGameState((s) => s.startNewRun);
   const [debugOpen, setDebugOpen] = useState(false);
+  // Inline confirm for "New Case (Reset)" — Alert.alert is a no-op on
+  // web, so the destructive reset confirms via this two-tap panel
+  // instead of a native dialog.
+  const [confirmReset, setConfirmReset] = useState(false);
 
   const topPad = Math.max(insets.top, Platform.OS === "web" ? 24 : 16);
   const bottomPad = Math.max(insets.bottom, 16);
@@ -66,22 +70,18 @@ export default function TitleScreen() {
 
   const handleNewCase = useCallback(async () => {
     if (run && !run.closed) {
-      Alert.alert(
-        "Start New Case?",
-        "This will end your current investigation. All progress will be lost.",
-        [
-          { text: "Cancel", style: "cancel" },
-          { text: "Start New", style: "destructive", onPress: async () => {
-            await startNewRun();
-            enterCase();
-          }},
-        ],
-      );
+      setConfirmReset(true);
     } else {
       await startNewRun();
       enterCase();
     }
   }, [run, startNewRun, enterCase]);
+
+  const handleConfirmedReset = useCallback(async () => {
+    setConfirmReset(false);
+    await startNewRun();
+    enterCase();
+  }, [startNewRun, enterCase]);
 
   const handleForceKiller = useCallback(async (identity: KillerIdentity) => {
     await startNewRun(identity);
@@ -153,14 +153,50 @@ export default function TitleScreen() {
               <PixelText size={7} color={cfPalette.ash} align="center" style={{ marginTop: 12 }}>
                 {`day ${run.day}  ·  ${run.deck.length} suspects  ·  ${evidenceCount} clues  ·  ${run.swipes.length} swipes`}
               </PixelText>
-              <NeonButton
-                label="New Case (Reset)"
-                variant="ghost"
-                size="sm"
-                fullWidth
-                onPress={handleNewCase}
-                style={{ marginTop: 18 }}
-              />
+              {confirmReset ? (
+                <PixelPanel
+                  style={styles.confirmPanel}
+                  borderColor={cfPalette.err}
+                >
+                  <PixelText size={7} color={cfPalette.err} align="center" uppercase>
+                    end your current investigation?
+                  </PixelText>
+                  <PixelText
+                    size={6}
+                    color={cfPalette.ash}
+                    align="center"
+                    style={{ marginTop: 6, lineHeight: 10 }}
+                  >
+                    All progress will be lost.
+                  </PixelText>
+                  <View style={styles.confirmRow}>
+                    <NeonButton
+                      label="Cancel"
+                      variant="ghost"
+                      size="sm"
+                      onPress={() => setConfirmReset(false)}
+                      style={{ flex: 1 }}
+                    />
+                    <NeonButton
+                      label="Start New"
+                      variant="danger"
+                      size="sm"
+                      onPress={handleConfirmedReset}
+                      style={{ flex: 1 }}
+                      testID="title-confirm-reset-yes"
+                    />
+                  </View>
+                </PixelPanel>
+              ) : (
+                <NeonButton
+                  label="New Case (Reset)"
+                  variant="ghost"
+                  size="sm"
+                  fullWidth
+                  onPress={handleNewCase}
+                  style={{ marginTop: 18 }}
+                />
+              )}
             </>
           ) : (
             <>
@@ -287,6 +323,15 @@ const styles = StyleSheet.create({
     marginTop: 12,
     padding: 14,
     width: "100%",
+  },
+  confirmPanel: {
+    marginTop: 18,
+    padding: 14,
+  },
+  confirmRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 12,
   },
   killerGrid: {
     flexDirection: "row",

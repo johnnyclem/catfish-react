@@ -190,6 +190,7 @@ export function AccusationStep2({ onNext, onBack }: AccusationStep2Props) {
           return (
             <Pressable
               key={r.candidate.id}
+              testID={`accuse-row-${r.candidate.id}`}
               onPress={() => {
                 setSelected(r.candidate.id);
                 setAcknowledgedWeak(false);
@@ -271,6 +272,7 @@ export function AccusationStep2({ onNext, onBack }: AccusationStep2Props) {
           disabled={!selected}
           onPress={handleNext}
           style={styles.footerBtn}
+          testID="accuse-step2-continue"
         />
       </View>
     </View>

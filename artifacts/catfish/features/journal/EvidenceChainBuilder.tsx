@@ -35,6 +35,7 @@ import {
   ScanlineOverlay,
 } from "@/components/PixelChrome";
 import { cfPalette } from "@/constants/colors";
+import { isFactRevealedYet } from "@/core/factBootstrap";
 import { useGameState } from "@/core/gameStore";
 import { Fact, FactId } from "@/core/models";
 import { emitSfx } from "@/features/audio/audioEvents";
@@ -42,7 +43,6 @@ import { emitSfx } from "@/features/audio/audioEvents";
 interface EvidenceChainBuilderProps {
   visible: boolean;
   onClose: () => void;
-  onChainBuilt: () => void;
 }
 
 interface FactChip {
@@ -56,7 +56,6 @@ type SelectionPhase = "pickA" | "pickB";
 export function EvidenceChainBuilder({
   visible,
   onClose,
-  onChainBuilt,
 }: EvidenceChainBuilderProps) {
   const run = useGameState((s) => s.run);
   const buildChain = useGameState((s) => s.buildChain);
@@ -68,9 +67,12 @@ export function EvidenceChainBuilder({
   const [successToast, setSuccessToast] = useState<string | null>(null);
   const [linking, setLinking] = useState(false);
 
+  // Only facts the player has actually been shown — the same reveal
+  // gate the Journal uses. Without it the builder lists day-5 portrait
+  // tells on day 1 and spoils the whole case.
   const committedFacts = useMemo<Fact[]>(() => {
     if (!run) return [];
-    return run.facts.filter((f) => f.committed);
+    return run.facts.filter((f) => f.committed && isFactRevealedYet(f, run));
   }, [run]);
 
   const existingChainPairs = useMemo(() => {
@@ -115,7 +117,6 @@ export function EvidenceChainBuilder({
         setSuccessToast(`Chain connected: ${chain.label}`);
         setTimeout(() => {
           setSuccessToast(null);
-          onChainBuilt();
           onClose();
           resetForRetry();
         }, 1800);

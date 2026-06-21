@@ -123,6 +123,27 @@ const state = useGameState.getState;
   const run = state().run!;
   const killerCand = run.deck.find((c) => c.isKillerCandidate)!;
 
+  // The accuse path gates discovered facts through `isFactRevealedYet`,
+  // so the full chain only counts once the killer is matched and the
+  // day clock has reached the day-5 portrait fact: swipe the deck
+  // (right on the killer), then sleep to day 5.
+  while (state().run!.deckCursor < state().run!.deck.length) {
+    const cur = state().run!;
+    const card = cur.deck[cur.deckCursor];
+    const ok = await state().swipe(
+      card.id,
+      card.id === killerCand.id ? "right" : "left",
+    );
+    assert(ok === true, `swipe on ${card.displayName} should be accepted`);
+  }
+  while (state().run!.day < 5) {
+    await state().advanceDay();
+  }
+  assert(
+    state().run!.matches.some((m) => m.candidateId === killerCand.id),
+    "killer should be matched after the overnight resolver",
+  );
+
   const result = await state().accuse({
     accusedCandidateId: killerCand.id,
     outcome: "accuse",

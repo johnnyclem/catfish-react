@@ -19,7 +19,7 @@
  *      → Matches tab → open the killer's chat thread
  *      → long-press the suspect's opening line → fact filed
  *      → home indicator → Journal app → captured fact is visible
- *      → "Accuse A Suspect" → AccusationSheet
+ *      → "Accuse A Suspect" → AccusationWizard (review → name → present)
  *      → tap THE KILLER row → "File Accusation"
  *      → EndOfRunCard with "case closed" / killer reveal
  *      → "Start New Case" lands back in Lots 'o Fish with a fresh deck
@@ -32,7 +32,7 @@
  *
  * Bugs this test pins down (the audit Task #65 fixed):
  *
- *   - AccusationSheet selection used to highlight ALL rows at once
+ *   - accusation wizard selection used to highlight ALL rows at once
  *     because every decoy carried the killer's `identity` slot. We
  *     verify single-row selection by tapping two suspects in sequence
  *     and asserting the visible ✓ checkmark moves rather than stacks.
@@ -124,6 +124,13 @@ async function bootIntoFreshRun(page: Page): Promise<void> {
   await page.evaluate(() => {
     try {
       window.localStorage.clear();
+      // Returning-user state: skip the first-run onboarding overlay so
+      // the title screen's "Start New Case" is clickable (the overlay
+      // sits at zIndex 9999 and intercepts pointer events otherwise).
+      window.localStorage.setItem(
+        "catfish/onboarding/v1",
+        JSON.stringify({ completed: true, step: 0 }),
+      );
     } catch {
       /* private mode / quota — best effort */
     }
@@ -333,7 +340,7 @@ test.describe("accusation happy path — file against the killer", () => {
     }
 
     // 3. Right-swipe every candidate in the deck so the killer is
-    //    guaranteed to appear on the AccusationSheet (the sheet only
+    //    guaranteed to appear on the accusation wizard (the sheet only
     //    lists candidates the player has surfaced — `seen = deck.slice(0,
     //    deckCursor)`). Drive the loop off the persisted deckCursor
     //    rather than a visibility probe so we don't terminate early
@@ -435,7 +442,7 @@ test.describe("accusation happy path — file against the killer", () => {
     ).toBeVisible({ timeout: 3_000 });
 
     // 7. Back out of the chat → home indicator → Journal. Verify our
-    //    captured fact is visible BEFORE we open the AccusationSheet —
+    //    captured fact is visible BEFORE we open the accusation wizard —
     //    that's the chain the player walks (capture → review →
     //    accuse) and the architect's required acceptance criterion
     //    for this happy-path test.
@@ -468,9 +475,11 @@ test.describe("accusation happy path — file against the killer", () => {
       ).toBeVisible({ timeout: 5_000 });
     }
 
-    // 8. "Accuse A Suspect" → AccusationSheet appears with one row
-    //    per met candidate.
+    // 8. "Accuse A Suspect" → AccusationWizard. Step 1 reviews the
+    //    evidence on record; Continue lands on Step 2 ("name the
+    //    killer"), which renders one accuse-row per met candidate.
     await page.getByText("Accuse A Suspect").first().click();
+    await page.getByTestId("accuse-step1-continue").click();
     const killerRow = page.getByTestId(killerRowTestId);
     await expect(killerRow).toBeVisible({ timeout: 5_000 });
 
@@ -493,9 +502,16 @@ test.describe("accusation happy path — file against the killer", () => {
     await expect(killerRow.getByText("✓")).toBeVisible({ timeout: 3_000 });
     await expect(decoyRow.getByText("✓")).toHaveCount(0);
 
-    // 7. File Accusation.
-    const fileBtn = page.getByText("File Accusation").first();
-    await expect(fileBtn).toBeVisible();
+    // 7. Continue to Step 3 and file. A single captured fact reads as
+    //    weak evidence, so Step 2's Continue needs an extra "Proceed
+    //    Anyway" confirmation tap before the wizard advances.
+    const step2Next = page.getByTestId("accuse-step2-continue");
+    await step2Next.click();
+    if (await step2Next.isVisible({ timeout: 1_500 }).catch(() => false)) {
+      await step2Next.click();
+    }
+    const fileBtn = page.getByTestId("accuse-step3-file");
+    await expect(fileBtn).toBeVisible({ timeout: 5_000 });
     await fileBtn.click();
 
     // 8. EndOfRunCard appears. With the killer correctly selected, the

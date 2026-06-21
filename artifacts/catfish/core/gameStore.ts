@@ -2402,17 +2402,24 @@ const playerMsg: Message = {
   buildChain: async (factIdA, factIdB) => {
     const prev = get().run;
     if (!prev || prev.closed) return null;
-    const existingChains = prev.evidenceChains ?? [];
-    if (existingChains.some((c) => c.factIdA === factIdA && c.factIdB === factIdB)) {
-      return null;
-    }
     const { findChainDefinition } = await import("./evidenceChains");
+    // Order-insensitive lookup — the player can pick the pair in either
+    // order. Persist the definition's canonical order so dedupe below
+    // can't be defeated by re-linking the same pair reversed.
     const def = findChainDefinition(factIdA, factIdB);
     if (!def) return null;
+    const existingChains = prev.evidenceChains ?? [];
+    if (
+      existingChains.some(
+        (c) => c.factIdA === def.factIdA && c.factIdB === def.factIdB,
+      )
+    ) {
+      return null;
+    }
     const chain: EvidenceChain = {
       id: `chain_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`,
-      factIdA,
-      factIdB,
+      factIdA: def.factIdA,
+      factIdB: def.factIdB,
       label: def.label,
       aboutCandidate: def.aboutCandidate,
       builtAt: nowIso(),

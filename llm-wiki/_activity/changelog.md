@@ -4,6 +4,86 @@ Session logs and activity records. Append newest entries at the top.
 
 ---
 
+## 2026-06-15 — Beta Release-Candidate Review (Phase 13 integration pass)
+
+End-to-end review of code, gameplay, and mechanics with the goal of a
+beta-ready RC. Removed dead code, fixed bugs, finished half-wired
+features, and hardened the test suite.
+
+### Winnability / mechanics fixes
+- **Evidence chains were broken for 6 of 8 killers.** `core/evidenceChains.ts`
+  referenced fact ids that don't exist in `factUniverse.json` (e.g.
+  `ren_bio_dealbreakers`, `kai_ig_workout`, `dev_text_day5_lead`,
+  `nia_text_day3_coverup`). Rewrote every Ren/Kai/Delphine/Jules/River/Sam
+  chain to reference real, discoverable facts (bio→IG→conditional→portrait),
+  3 chains per killer. Each killer now has a ≤3-chain selection covering
+  ≥80% of its solving deduction (the AccusationStep3 "full evidence" bar).
+- **`findChainDefinition` was order-sensitive** — linking facts B→A failed
+  even when A→B was valid. Made it order-insensitive; `buildChain` now
+  persists the definition's canonical order so dedupe can't be bypassed.
+- **AccusationStep3 required selecting a chain to file.** Runs where a
+  player built no chains were un-accusable. Filing now always allowed
+  (the resolver scores discovered facts, not selected chains).
+- **EvidenceChainBuilder / PhotosApp now respect the reveal gate**
+  (`isFactRevealedYet`) so future-day facts don't leak early.
+
+### Onboarding (was badly broken)
+- **6 of 8 onboarding steps were unreachable.** `OnboardingManager`
+  auto-starts a run at the swipe step, but `OnboardingGate` hid the
+  overlay the instant a run existed (`!run`), tearing down the tutorial
+  mid-flow. Added a `step > 0` latch so onboarding persists until
+  completed. (`OnboardingGate.tsx`)
+- Fixed the swipe-tutorial card emitting bare `{"\n"}` text nodes as
+  `<View>` children (RN-web console error). (`OnboardingManager.tsx`)
+- Hardened the swipe-step auto-advance ref (matched its sibling steps).
+
+### Web-platform + UX fixes
+- Title-screen "New Case (Reset)" used `Alert.alert`, a **no-op on web** —
+  the confirm never appeared. Replaced with an inline confirm panel.
+  (`app/index.tsx`)
+- PhotosApp evidence thumbnails were non-interactive `<View>`s, so the
+  finished `EvidenceDetail` viewer was unreachable. Made them `Pressable`.
+
+### Dead code removed
+- `features/accusation/AccusationSheet.tsx` (replaced by the wizard; was
+  mounted but never opened — `accuseOpen` was never set true).
+- `components/KeyboardAwareScrollViewCompat.tsx` (never imported).
+- `core/friendDMContent.ts` (never wired; voicemail is the live channel).
+- Unused `@workspace/api-client-react` dependency.
+- `EvidenceChainBuilder`'s no-op `onChainBuilt` prop.
+
+### Tooling
+- Bumped Expo packages to expected SDK pins so `pnpm dev`'s version-check
+  shim no longer blocks startup.
+
+### Tests
+- Added `scripts/test-content-integrity.mts` (`pnpm test:content-integrity`):
+  cross-references every killer's deck, deduction, reveal gates, chain
+  coverage, and voicemail fact-links — proves all 8 killers are winnable.
+- Migrated all e2e specs from the retired AccusationSheet to the
+  AccusationWizard flow; restored the lost "Skip Town" ending in the
+  wizard (Step 1).
+- Added `__tests__/e2e/z-onboarding-first-run.spec.ts` — drives the full
+  8-step tutorial to the game (the path that was silently broken).
+- Seeded onboarding-completed state in every game-loop boot helper so the
+  overlay doesn't block the suite.
+- Fixed fragile journal-filter assertions (substring name matches →
+  structural group-count + accessibility-label chip targeting).
+
+### Validation
+- `pnpm typecheck` clean across all packages.
+- 15/15 unit suites green (incl. new content-integrity).
+- Full Playwright suite green (23 passed, 2 intentionally skipped — the
+  non-deterministic Day-7 face-to-face tests, covered by legacy-seeded
+  specs instead).
+
+### Known content gap (not a code bug)
+- No authored facts carry evidence images (A3xx range is UI chrome only),
+  so the Photos app shows a graceful empty state. Wiring is correct for
+  when evidence images are authored.
+
+---
+
 ## 2026-05-12 — Phase 11 Full Implementation
 
 **Agent**: opencode (big-pickle)

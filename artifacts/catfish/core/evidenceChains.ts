@@ -69,96 +69,125 @@ export const CHAIN_DEFINITIONS: ChainDefinition[] = [
     label: "The late-slot alibi cracks under the same-day portrait change",
     aboutCandidate: "tessa",
   },
+  {
+    factIdA: "tessa_ig_keychain",
+    factIdB: "tessa_conditional_lateshift",
+    label: "She posted from the studio 'after another long one' — but the station ran a rerun that night",
+    aboutCandidate: "tessa",
+  },
   // ── Ren chains ───────────────────────────────────────────────────────────
   {
-    factIdA: "ren_bio_dealbreakers",
-    factIdB: "ren_ig_graffiti",
-    label: "Ren's bio says 'no games' — but his IG is full of coded references to the old crew",
+    factIdA: "ren_bio_dawn_call",
+    factIdB: "ren_ig_marina_lights",
+    label: "Ren's bio says he's on the water at 4:30am — but his marina shot is under floodlights, hours before dawn",
     aboutCandidate: "ren",
   },
   {
-    factIdA: "ren_bio_dealbreakers",
-    factIdB: "ren_portrait_uneasy_day5",
-    label: "The 'dealbreaker' line and the day-5 expression change tell different stories",
+    factIdA: "ren_ig_marina_lights",
+    factIdB: "ren_conditional_dawn_alibi",
+    label: "'First one in' — but the marina logs say he signed out at 2am, not 4:30 like he claimed",
+    aboutCandidate: "ren",
+  },
+  {
+    factIdA: "ren_bio_dawn_call",
+    factIdB: "ren_portrait_sinister_day5",
+    label: "The dawn-patrol alibi and the day-5 expression change tell different stories",
     aboutCandidate: "ren",
   },
   // ── Kai chains ───────────────────────────────────────────────────────────
   {
-    factIdA: "kai_bio_athletic",
-    factIdB: "kai_ig_workout",
-    label: "Kai's bio says he trains at the community gym — his IG shows a different location entirely",
+    factIdA: "kai_bio_transit_wall",
+    factIdB: "kai_ig_scissor_lift",
+    label: "Kai's bio invites you to the transit-lot mural by day — his IG shows him up the lift after dark",
     aboutCandidate: "kai",
   },
   {
-    factIdA: "kai_ig_workout",
-    factIdB: "kai_portrait_uneasy_day5",
-    label: "The gym alibi doesn't match the background in his latest photo or his expression",
+    factIdA: "kai_ig_scissor_lift",
+    factIdB: "kai_conditional_paint_late",
+    label: "He says he was painting late by the transit lot — but the lot's been fenced off all month",
+    aboutCandidate: "kai",
+  },
+  {
+    factIdA: "kai_bio_transit_wall",
+    factIdB: "kai_portrait_sinister_day5",
+    label: "The open-invite mural persona doesn't survive the day-5 photo — that grin is being held very still",
     aboutCandidate: "kai",
   },
   // ── Delphine chains ──────────────────────────────────────────────────────
   {
-    factIdA: "delphine_bio_artstore",
-    factIdB: "delphine_ig_paint",
-    label: "Delphine's bio mentions the art supply store downtown — her IG has photos taken at a warehouse",
+    factIdA: "delphine_bio_quiet_nights",
+    factIdB: "delphine_ig_workbench",
+    label: "Delphine's 'quiet nights at the shop' line matches her IG — but only one of those nights has a receipt",
     aboutCandidate: "delphine",
   },
   {
-    factIdA: "delphine_bio_artstore",
+    factIdA: "delphine_ig_workbench",
+    factIdB: "delphine_conditional_smell_secret",
+    label: "'Tonight's batch' — but the shop receipts have her opening at 7am after a night she swore she was home",
+    aboutCandidate: "delphine",
+  },
+  {
+    factIdA: "delphine_bio_quiet_nights",
     factIdB: "delphine_portrait_uneasy_day5",
-    label: "The art store regular persona and the day-5 expression shift don't fit together",
+    label: "The night-owl shopkeeper persona and the day-5 expression shift don't fit together",
     aboutCandidate: "delphine",
   },
   // ── Jules chains ─────────────────────────────────────────────────────────
   {
-    factIdA: "jules_bio_systems",
-    factIdB: "jules_ig_hacked",
-    label: "Jules's bio says 'I keep systems running' — their IG got hacked the same week as the incident",
+    factIdA: "jules_bio_night_walks",
+    factIdB: "jules_ig_canal_late",
+    label: "Jules says the bar is his until eleven — his 2am story puts him on a quiet street, 'walking it off'",
     aboutCandidate: "jules",
   },
   {
-    factIdA: "jules_ig_hacked",
-    factIdB: "jules_portrait_uneasy_day5",
-    label: "The hacked account and the day-5 portrait change both point to someone scrambling",
+    factIdA: "jules_ig_canal_late",
+    factIdB: "dev_text_day4_jules_sus",
+    label: "The 2am walk and Sasha's tip line up — the bar was dark by ten on the night he 'closed alone'",
+    aboutCandidate: "jules",
+  },
+  {
+    factIdA: "jules_bio_night_walks",
+    factIdB: "jules_portrait_sinister_day5",
+    label: "The closing-time alibi and the day-5 smile that doesn't reach his eyes tell different stories",
     aboutCandidate: "jules",
   },
   // ── River chains ─────────────────────────────────────────────────────────
   {
-    factIdA: "river_bio_hiking",
-    factIdB: "river_ig_trailcam",
-    label: "River's bio boasts about hiking experience — their trail cam photo shows someone who knows the terrain",
+    factIdA: "river_bio_solo_sundays",
+    factIdB: "river_ig_trailhead",
+    label: "River's bio swears Sundays are solo — the trailhead shot is captioned 'just me and the rock'",
     aboutCandidate: "river",
   },
   {
-    factIdA: "river_ig_trailcam",
-    factIdB: "river_portrait_uneasy_day5",
-    label: "The trail cam image and the day-5 portrait change both land on the same person",
+    factIdA: "river_ig_trailhead",
+    factIdB: "river_conditional_solo_scout",
+    label: "'Just me' — but a hiker placed River at that trailhead with someone else last Sunday",
+    aboutCandidate: "river",
+  },
+  {
+    factIdA: "river_bio_solo_sundays",
+    factIdB: "river_portrait_sinister_day5",
+    label: "The solo-Sundays line and the day-5 careful grin both crack under the same weight",
     aboutCandidate: "river",
   },
   // ── Sam chains ───────────────────────────────────────────────────────────
   {
-    factIdA: "sam_bio_med",
-    factIdB: "sam_ig_surgery",
-    label: "Sam's bio claims hospital shifts — but their IG shows a surgery date that doesn't match any schedule",
+    factIdA: "sam_bio_overnight",
+    factIdB: "sam_ig_breakroom",
+    label: "Sam's bio puts her on the overnight unit — the breakroom post says she had time to finish a novel",
     aboutCandidate: "sam",
   },
   {
-    factIdA: "sam_ig_surgery",
-    factIdB: "sam_portrait_uneasy_day5",
-    label: "The impossible surgery date and the day-5 portrait change both point toward Sam",
+    factIdA: "sam_ig_breakroom",
+    factIdB: "sam_conditional_double_shift",
+    label: "'Finished another one tonight' — but badge swipes show she was offsite for two hours of that shift",
     aboutCandidate: "sam",
   },
-  // ── General investigative chains (no specific suspect) ───────────────────
   {
-    factIdA: "dev_text_day4_miles_sus",
-    factIdB: "dev_text_day5_lead",
-    label: "Dev's tip on day 4 and their follow-up lead on day 5 both point at the same person",
-    aboutCandidate: "miles",
-  },
-  {
-    factIdA: "nia_text_day3_coverup",
-    factIdB: "nia_text_day5_confirm",
-    label: "Nia's early warning about a cover-up and her later confirmation both land on the same suspect",
-    aboutCandidate: "tessa",
+    factIdA: "sam_bio_overnight",
+    factIdB: "sam_portrait_sinister_day5",
+    label: "The double-shift alibi and the day-5 photo where the eyes don't match the smile",
+    aboutCandidate: "sam",
   },
 ];
 
@@ -169,11 +198,21 @@ export const CHAIN_MAP: Map<string, ChainDefinition> = new Map(
 
 /**
  * Validate a fact-pair link against chain definitions.
+ *
+ * Order-insensitive: the player picks two facts in whatever order they
+ * spotted them, so `(A, B)` and `(B, A)` both resolve to the same
+ * definition. Callers that persist the chain should store the
+ * definition's own `factIdA`/`factIdB` order, not the pick order.
+ *
  * Returns the matching ChainDefinition if valid, null otherwise.
  */
 export function findChainDefinition(
   factIdA: string,
   factIdB: string,
 ): ChainDefinition | null {
-  return CHAIN_MAP.get(`${factIdA}::${factIdB}`) ?? null;
+  return (
+    CHAIN_MAP.get(`${factIdA}::${factIdB}`) ??
+    CHAIN_MAP.get(`${factIdB}::${factIdA}`) ??
+    null
+  );
 }

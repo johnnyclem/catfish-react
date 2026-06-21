@@ -31,7 +31,6 @@ import { useGameState } from "@/core/gameStore";
 import { isFactRevealedYet } from "@/core/factBootstrap";
 import { getIdentityModule } from "@/core/identities";
 import { CaseRun, Candidate, CandidateId, Fact } from "@/core/models";
-import { AccusationSheet } from "@/features/accusation/AccusationSheet";
 import { AccusationWizard } from "@/features/accusation/AccusationWizard";
 import { paletteForEnding } from "@/features/accusation/EndOfRunCard";
 import { FactCard } from "@/features/journal/FactCard";
@@ -60,7 +59,6 @@ export function JournalScreen() {
   const [selectedSuspectId, setSelectedSuspectId_] =
     useState<CandidateId | null>(null);
   const [sortMode, setSortMode] = useState<JournalSortMode>("newest");
-  const [accuseOpen, setAccuseOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [chainBuilderOpen, setChainBuilderOpen] = useState(false);
   const [selectedFact, setSelectedFact] = useState<Fact | null>(null);
@@ -324,11 +322,6 @@ export function JournalScreen() {
 
       <UndoDiscardBanner bottomOffset={16} />
 
-      <AccusationSheet
-        visible={accuseOpen}
-        onClose={() => setAccuseOpen(false)}
-      />
-
       <AccusationWizard
         visible={wizardOpen}
         onClose={() => setWizardOpen(false)}
@@ -337,7 +330,6 @@ export function JournalScreen() {
       <EvidenceChainBuilder
         visible={chainBuilderOpen}
         onClose={() => setChainBuilderOpen(false)}
-        onChainBuilt={() => {}}
       />
 
       {selectedFact && (

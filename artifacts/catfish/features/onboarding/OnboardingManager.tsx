@@ -117,6 +117,7 @@ function Step3WaitForSwipe({ onAdvance }: { onAdvance: () => void }) {
     if (run.swipes.length > prevSwipes.current) {
       onAdvance();
     }
+    prevSwipes.current = run.swipes.length;
   }, [run, onAdvance]);
 
   return (
@@ -125,13 +126,15 @@ function Step3WaitForSwipe({ onAdvance }: { onAdvance: () => void }) {
         Swipe to Investigate
       </PixelText>
       <Card>
-        <PixelText size={8} color={cfPalette.pinkHot}>Swipe right</PixelText>
-        <PixelText size={8} color={cfPalette.ash}> to match with a suspect</PixelText>
-        {"\n"}
-        <PixelText size={8} color={cfPalette.cyan}>Swipe left</PixelText>
-        <PixelText size={8} color={cfPalette.ash}> to pass</PixelText>
-        {"\n\n"}
-        <PixelText size={8} color={cfPalette.ash}>Your matches are how you uncover the truth.</PixelText>
+        <PixelText size={8} color={cfPalette.ash} style={{ lineHeight: 16 }}>
+          <PixelText size={8} color={cfPalette.pinkHot}>Swipe right</PixelText>
+          <PixelText size={8} color={cfPalette.ash}> to match with a suspect</PixelText>
+          {"\n"}
+          <PixelText size={8} color={cfPalette.cyan}>Swipe left</PixelText>
+          <PixelText size={8} color={cfPalette.ash}> to pass</PixelText>
+          {"\n\n"}
+          Your matches are how you uncover the truth.
+        </PixelText>
       </Card>
     </StepLayout>
   );

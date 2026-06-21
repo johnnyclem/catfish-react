@@ -3,7 +3,7 @@
  *
  * Covers the non-happy-path routes through the accusation system:
  *
- *   1. Skip Town       — open AccusationSheet, choose "Skip Town",
+ *   1. Skip Town       — open accusation wizard, choose "Skip Town",
  *                       verify "they got away" ending.
  *   2. Wrongful accusation — swipe everyone, accuse a DECOY, verify
  *                       "wrong call" ending + the two-portrait layout.
@@ -62,7 +62,16 @@ interface PersistedRun {
 async function bootIntoFreshRun(page: Page): Promise<void> {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.evaluate(() => {
-    try { window.localStorage.clear(); } catch { /* best effort */ }
+    try {
+      window.localStorage.clear();
+      // Returning-user state: skip the first-run onboarding overlay so
+      // the title screen's "Start New Case" is clickable (the overlay
+      // sits at zIndex 9999 and intercepts pointer events otherwise).
+      window.localStorage.setItem(
+        "catfish/onboarding/v1",
+        JSON.stringify({ completed: true, step: 0 }),
+      );
+    } catch { /* best effort */ }
   });
   await page.reload({ waitUntil: "domcontentloaded" });
 
@@ -167,15 +176,15 @@ test.describe("accusation — alternative paths", () => {
     await firstLike.click();
     await page.waitForTimeout(200);
 
-    // Navigate to Journal and open AccusationSheet.
+    // Navigate to Journal and open accusation wizard.
     await tapHomeIndicator(page);
     await page.getByTestId("parody-app-journal").click();
 
     await page.getByText("Accuse A Suspect").first().click();
-    const sheet = page.getByText("file an accusation");
-    await expect(sheet).toBeVisible({ timeout: 5_000 });
+    const wizard = page.getByText("review evidence");
+    await expect(wizard).toBeVisible({ timeout: 5_000 });
 
-    // Tap "Skip Town" — no candidate selection required.
+    // Tap "Skip Town" — lives on Step 1, no candidate selection required.
     const skipTown = page.getByText("Skip Town").first();
     await expect(skipTown).toBeVisible();
     await skipTown.click();
@@ -203,7 +212,7 @@ test.describe("accusation — alternative paths", () => {
     expect(decoyCandidate).toBeDefined();
     const decoyRowTestId = `accuse-row-${decoyCandidate!.id}`;
 
-    // Right-swipe every candidate so everyone appears on the AccusationSheet.
+    // Right-swipe every candidate so everyone appears on the accusation wizard.
     await page.getByTestId("parody-app-lotsOfFish").click();
     const enter = page.getByTestId("parody-lotsofish-open");
     if (await enter.isVisible({ timeout: 3_000 }).catch(() => false)) {
@@ -216,15 +225,21 @@ test.describe("accusation — alternative paths", () => {
     await tapHomeIndicator(page);
     await page.getByTestId("parody-app-journal").click();
 
-    // Open the sheet and select the DECOY.
+    // Open the wizard, advance past Review Evidence, select the DECOY.
     await page.getByText("Accuse A Suspect").first().click();
+    await page.getByTestId("accuse-step1-continue").click();
     const decoyRow = page.getByTestId(decoyRowTestId);
     await expect(decoyRow).toBeVisible({ timeout: 5_000 });
     await decoyRow.click();
 
-    // File Accusation with the decoy selected.
-    const fileBtn = page.getByText("File Accusation").first();
-    await expect(fileBtn).toBeVisible();
+    // Continue (weak evidence needs the extra confirm tap), then file.
+    const step2Next = page.getByTestId("accuse-step2-continue");
+    await step2Next.click();
+    if (await step2Next.isVisible({ timeout: 1_500 }).catch(() => false)) {
+      await step2Next.click();
+    }
+    const fileBtn = page.getByTestId("accuse-step3-file");
+    await expect(fileBtn).toBeVisible({ timeout: 5_000 });
     await fileBtn.click();
 
     // EndOfRunCard shows "wrong call".
@@ -268,20 +283,27 @@ test.describe("accusation — alternative paths", () => {
     await tapHomeIndicator(page);
     await page.getByTestId("parody-app-journal").click();
 
-    // AccusationSheet should open; all rows show "no facts filed".
+    // The wizard should open on Review Evidence; Step 2's rows all
+    // read "no facts".
     await page.getByText("Accuse A Suspect").first().click();
-    const sheet = page.getByText("file an accusation");
-    await expect(sheet).toBeVisible({ timeout: 5_000 });
+    const wizard = page.getByText("review evidence");
+    await expect(wizard).toBeVisible({ timeout: 5_000 });
+    await page.getByTestId("accuse-step1-continue").click();
 
-    // Each row's meta text should say "no facts filed".
-    const noFactsLabel = page.getByText(/no facts filed/i).first();
+    // Each row's meta text should say "no facts".
+    const noFactsLabel = page.getByText(/no facts/i).first();
     await expect(noFactsLabel).toBeVisible({ timeout: 3_000 });
 
-    // Select the killer and file.
+    // Select the killer, continue (zero facts = weak evidence, so the
+    // confirm tap fires), and file from Step 3.
     const killerRow = page.getByTestId(killerRowTestId);
     await killerRow.click();
-    const fileBtn = page.getByText("File Accusation").first();
-    await fileBtn.click();
+    const step2Next = page.getByTestId("accuse-step2-continue");
+    await step2Next.click();
+    if (await step2Next.isVisible({ timeout: 1_500 }).catch(() => false)) {
+      await step2Next.click();
+    }
+    await page.getByTestId("accuse-step3-file").click();
 
     // Even with zero facts the killer should still resolve to "case closed".
     const endCard = page.getByTestId("end-of-run-card");

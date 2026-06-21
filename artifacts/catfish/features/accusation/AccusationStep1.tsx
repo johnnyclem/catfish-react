@@ -5,11 +5,15 @@
  * Shows a summary of all evidence chains the player has built,
  * plus an overall fact count.
  *
+ * Also carries the "Skip Town" affordance (ported from the retired
+ * AccusationSheet): fires the resolver with `outcome: "escaped"`,
+ * which always closes the run as `escapedStub`.
+ *
  * Navigation: Next → Step 2, Back → close wizard
  */
 
-import { useMemo } from "react";
-import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { useMemo, useState } from "react";
+import { ScrollView, StyleSheet, View } from "react-native";
 
 import { AssetImage } from "@/components/AssetImage";
 import {
@@ -30,6 +34,21 @@ interface AccusationStep1Props {
 
 export function AccusationStep1({ onNext, onBack }: AccusationStep1Props) {
   const run = useGameState((s) => s.run);
+  const accuse = useGameState((s) => s.accuse);
+  const [skipping, setSkipping] = useState(false);
+
+  async function handleSkipTown() {
+    if (skipping) return;
+    setSkipping(true);
+    try {
+      // `escaped` ignores the accused slot — the run closes as
+      // escapedStub and the EndOfRunCard takes over from the root.
+      await accuse({ outcome: "escaped" });
+      onBack();
+    } finally {
+      setSkipping(false);
+    }
+  }
 
   const { chains, facts, capturedCount, authoredCount } = useMemo(() => {
     if (!run) return { chains: [], facts: [], capturedCount: 0, authoredCount: 0 };
@@ -113,6 +132,7 @@ export function AccusationStep1({ onNext, onBack }: AccusationStep1Props) {
           label="Back"
           variant="ghost"
           size="sm"
+          disabled={skipping}
           onPress={onBack}
           style={styles.footerBtn}
         />
@@ -120,10 +140,24 @@ export function AccusationStep1({ onNext, onBack }: AccusationStep1Props) {
           label="Continue"
           variant="primary"
           size="md"
+          disabled={skipping}
           onPress={onNext}
           style={styles.footerBtn}
+          testID="accuse-step1-continue"
         />
       </View>
+      <NeonButton
+        label={skipping ? "Leaving…" : "Skip Town"}
+        variant="danger"
+        size="sm"
+        fullWidth
+        disabled={skipping}
+        onPress={() => {
+          void handleSkipTown();
+        }}
+        style={styles.skipBtn}
+        testID="accuse-skip-town"
+      />
     </View>
   );
 }
@@ -267,5 +301,8 @@ const styles = StyleSheet.create({
   },
   footerBtn: {
     flex: 1,
+  },
+  skipBtn: {
+    marginTop: 10,
   },
 });
